@@ -23,6 +23,6 @@ uninstall:
 	rm -f $(DESTDIR)$(PREFIX)/bin/$(PROG) $(DESTDIR)$(MANPREFIX)/man1/$(PROG).1
 
 clean:
-	rm $(PROG)
+	rm -f $(PROG)
 
 .PHONY: all install uninstall clean

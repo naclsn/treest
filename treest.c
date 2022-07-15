@@ -1,7 +1,33 @@
 #include "./treest.h"
 #include "./commands.h"
 
-//#region node methods (free and print)
+struct Node* node_alloc(struct Node* parent, char* path) {
+    char* name = strrchr(path, '/')+1;
+
+    struct stat sb;
+    enum Type type = stat(path, &sb) < 0
+        ? Type_UNKNOWN
+        : S_IFMT & sb.st_mode;
+
+    struct Node* niw = malloc(sizeof(struct Node));
+    struct Node fill = {
+        .path=path,
+        .name=name,
+        .type=type,
+        .parent=parent,
+    };
+    memcpy(niw, &fill, sizeof(struct Node));
+
+    if (Type_REG == type) {
+        if (sb.st_mode & S_IXUSR)
+            niw->type = Type_EXEC;
+    } else if (Type_LNK == type) {
+        // TODO: handle ELOOP as broken symlinks
+        lnk_resolve(niw);
+    }
+
+    return niw;
+}
 
 void def_free(struct Node* node) {
     free(node->path);
@@ -58,7 +84,8 @@ void dir_print(struct Node* node, struct Printer* pr, size_t index, size_t count
 
 void lnk_print(struct Node* node, struct Printer* pr, size_t index, size_t count) {
     pr->node(node, index, count);
-    if (Type_DIR == node->as.link.to->type) {
+    while (Type_LNK == node->type) node = node->as.link.to;
+    if (node && Type_DIR == node->as.link.to->type) {
         struct Dir dir = node->as.link.to->as.dir;
         if (dir.unfolded) {
             pr->enter(node, index, count);
@@ -76,11 +103,52 @@ void lnk_print(struct Node* node, struct Printer* pr, size_t index, size_t count
     }
 }
 
-//#endregion
+void lnk_resolve(struct Node* node) {
+    char relpath[_MAX_PATH];
+    relpath[readlink(node->path, relpath, _MAX_PATH-1)+1] = '\0';
 
-//#region directory fold/unfold
+    char fullpath[_MAX_PATH];
+    char* paste;
+    char* copy;
+    if ('/' == relpath[0]) {
+        paste = copy = strcpy(fullpath, relpath)+1;
+    } else {
+        paste = strcpy(fullpath, node->path) + strlen(node->path);
+        copy = relpath;
+    }
+
+    if ('/' != paste[-1]) *paste++ = '/';
+    do {
+        if ('.' == *copy) {
+            if ('.' == *(copy+1)) {
+                paste--;
+                if (fullpath == paste) {
+                    // TODO: handle beyond root as broken link
+                    errno = ENOTDIR;
+                    die(relpath);
+                }
+                while ('/' != *--paste);
+                paste++;
+            } else if ('/' == *(copy+1)) copy++;
+        } else if ('/' == *copy) {
+            *paste++ = '/';
+            while ('/' == *(copy+1)) copy++;
+        } else *paste++ = *copy;
+    } while (*copy++);
+    paste--;
+    while ('/' == *(paste-1)) paste--;
+    *paste = '\0';
+
+    char* path = strdup(fullpath);
+
+    struct Node* niw = node_alloc(node->parent, path);
+    node->as.link.to = niw;
+}
 
 void dir_unfold(struct Node* node) {
+    while (Type_LNK == node->type) node = node->as.link.to;
+    if (!node || Type_DIR != node->type) return;
+
     node->as.dir.unfolded = true;
     if (node->as.dir.children) return;
 
@@ -102,43 +170,21 @@ void dir_unfold(struct Node* node) {
                 node->as.dir.children = realloc(node->as.dir.children, cap * sizeof(struct Node*));
             }
 
-            char* path = malloc(parent_path_len+2 +
+            size_t path_len = parent_path_len+2 +
                 #ifdef _DIRENT_HAVE_D_NAMLEN
                     ent->d_namlen
                 #else
                     strlen(ent->d_name)
                 #endif
-            );
+            ;
+            char* path = malloc(path_len);
             strcpy(path, node->path);
 
             char* name = path + parent_path_len;
             if ('/' != name[-1]) *name++ = '/';
             strcpy(name, ent->d_name);
 
-            enum Type type =
-                #ifdef _DIRENT_HAVE_D_TYPE
-                    ent->d_type
-                #else
-                    Type_UNKNOWN
-                #endif
-            ;
-
-            if (Type_UNKNOWN == type || Type_REG == type) {
-                struct stat sb;
-                if (0 == stat(path, &sb) && sb.st_mode & S_IXUSR)
-                    type = Type_EXEC;
-            } else if (Type_LNK == type) {
-                // TODO
-            }
-
-            struct Node* niw = malloc(sizeof(struct Node));
-            struct Node fill = {
-                .path=path,
-                .name=name,
-                .type=type,
-                .parent=node,
-            };
-            memcpy(niw, &fill, sizeof(struct Node));
+            struct Node* niw = node_alloc(node, path);
             node->as.dir.children[node->as.dir.children_count++] = niw;
         }
         closedir(dir);
@@ -149,10 +195,7 @@ void dir_fold(struct Node* node) {
     node->as.dir.unfolded = false;
 }
 
-//#endregion
-
-//#region cfmakeraw: 1960 magic shit
-
+// cfmakeraw: 1960 magic shit
 static struct termios orig_termios;
 
 static void term_restore() {
@@ -175,8 +218,6 @@ static void term_raw_mode() {
 
     if (tcsetattr(STDOUT_FILENO, TCSAFLUSH, &raw) < 0) die("tcsetattr");
 }
-
-//#endregion
 
 char* opts(int argc, char* argv[]) {
     char delay_toggle_flags[256] = {0};

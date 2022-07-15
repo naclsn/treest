@@ -1,5 +1,5 @@
 #ifndef TREEST_VERSION
-#define TREEST_VERSION "0.0.1"
+#define TREEST_VERSION "0.0.2"
 
 #include <dirent.h>
 #include <errno.h>
@@ -50,17 +50,15 @@ struct Node {
     char* path;
     char* name;
     enum Type {
-        Type_UNKNOWN = DT_UNKNOWN, // The type is unknown.
-        Type_FIFO    = DT_FIFO,    // A named pipe, or FIFO. See FIFO Special Files.
-        Type_CHR     = DT_CHR,     // A character device.
-        Type_DIR     = DT_DIR,     // A directory.
-        Type_BLK     = DT_BLK,     // A block device.
-        Type_REG     = DT_REG,     // A regular file.
-        Type_LNK     = DT_LNK,     // A symbolic link.
-        Type_SOCK    = DT_SOCK,    // A local-domain socket.
-        //Type_WHT     = DT_WHT,     // An unionfs "whiteout".
-        Type_EXEC    = 255,
-        Type_COUNT   = 9, //10,
+        Type_UNKNOWN = 0,
+        Type_FIFO    = S_IFIFO,  // named pipe
+        Type_CHR     = S_IFCHR,  // character device
+        Type_DIR     = S_IFDIR,  // directory
+        Type_BLK     = S_IFBLK,  // block device
+        Type_REG     = S_IFREG,  // regular file
+        Type_LNK     = S_IFLNK,  // symbolic link
+        Type_SOCK    = S_IFSOCK, // socket
+        Type_EXEC    = 255,      // regular file with exec flag
     } type;
     union {
         struct Dir {
@@ -88,12 +86,14 @@ struct Printer {
 #undef DO
 #undef SEP
 
+struct Node* node_alloc(struct Node* parent, char* path);
 void def_free(struct Node* node);
 void dir_free(struct Node* node);
 void lnk_free(struct Node* node);
 void def_print(struct Node* node, struct Printer* pr, size_t index, size_t count);
 void dir_print(struct Node* node, struct Printer* pr, size_t index, size_t count);
 void lnk_print(struct Node* node, struct Printer* pr, size_t index, size_t count);
+void lnk_resolve(struct Node* node);
 void dir_unfold(struct Node* node);
 void dir_fold(struct Node* node);
 
