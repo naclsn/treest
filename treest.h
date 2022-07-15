@@ -64,13 +64,15 @@ struct Node {
         struct Dir {
             bool unfolded;
             struct Node** children;
-            size_t children_count;
         } dir;
         struct Link {
             struct Node* to;
+            struct Node* tail;
         } link;
     } as;
     struct Node* parent;
+    size_t index;
+    size_t count;
 } root, * cursor;
 
 #define DO(ident, name) ident
@@ -79,20 +81,20 @@ struct Printer {
     void (* toggle)(char flag);
     void (* begin)();
     void (* end)();
-    void (* node)(struct Node* node, size_t index, size_t count);
-    void (* enter)(struct Node* node, size_t index, size_t count);
-    void (* leave)(struct Node* node, size_t index, size_t count);
+    void (* node)(struct Node* node);
+    void (* enter)(struct Node* node);
+    void (* leave)(struct Node* node);
 } EVERY_PRINTERS(DO, SEP), * selected_printer;
 #undef DO
 #undef SEP
 
-struct Node* node_alloc(struct Node* parent, char* path);
+struct Node* node_alloc(struct Node* parent, size_t index, char* path);
 void def_free(struct Node* node);
 void dir_free(struct Node* node);
 void lnk_free(struct Node* node);
-void def_print(struct Node* node, struct Printer* pr, size_t index, size_t count);
-void dir_print(struct Node* node, struct Printer* pr, size_t index, size_t count);
-void lnk_print(struct Node* node, struct Printer* pr, size_t index, size_t count);
+void def_print(struct Node* node, struct Printer* pr);
+void dir_print(struct Node* node, struct Printer* pr);
+void lnk_print(struct Node* node, struct Printer* pr);
 void lnk_resolve(struct Node* node);
 void dir_unfold(struct Node* node);
 void dir_fold(struct Node* node);

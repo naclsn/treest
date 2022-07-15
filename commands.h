@@ -1,9 +1,18 @@
 #ifdef TREEST_COMMAND
 #error This file should not be included outside treest.c
 #endif // TREEST_COMMAND
-#define TREEST_COMMAND(x) do_command(x)
+#define TREEST_COMMAND(__x) {       \
+    unsigned char user;             \
+    do {                            \
+        if (read(0, &user, 1) < 0)  \
+            die("read");            \
+    } while (!command_map[user]);   \
+    command_map[user](user);        \
+}
 
 #include "./treest.h"
+
+static void (* command_map[128])();
 
 void toggle_gflag(char flag) {
     switch (flag) {
@@ -11,17 +20,71 @@ void toggle_gflag(char flag) {
     }
 }
 
+static void c_quit() {
+    exit(0);
+}
+
+static void c_cquit() {
+    exit(1);
+}
+
+static void c_previous() {
+    struct Node* p = cursor->parent;
+    if (p) {
+        if (Type_LNK == p->type) p = p->as.link.tail;
+        if (p && 0 < cursor->index)
+            cursor = p->as.dir.children[cursor->index - 1];
+    }
+}
+
+static void c_next() {
+    struct Node* p = cursor->parent;
+    if (p) {
+        if (Type_LNK == p->type) p = p->as.link.tail;
+        if (p && cursor->index < p->count - 1)
+            cursor = p->as.dir.children[cursor->index + 1];
+    }
+}
+
+static void c_child() {
+    struct Node* d = cursor;
+    if (Type_LNK == d->type) d = d->as.link.tail;
+    if (d && Type_DIR == d->type) {
+        dir_unfold(d);
+        if (d->as.dir.children[0]) cursor = d->as.dir.children[0];
+    }
+}
+
+static void c_parent() {
+    struct Node* p = cursor->parent;
+    if (p) cursor = p;
+}
+
+static void (* command_map[128])() = {
+    [  3]=c_quit,         // ^C (ETX)
+    [  4]=c_quit,         // ^D (EOT)
+    ['h']=c_parent,
+    ['j']=c_next,
+    ['k']=c_previous,
+    ['l']=c_child,
+    ['Q']=c_cquit,
+    ['q']=c_quit,
+};
+
+/*
 static void do_command(char x) {
     switch (x) {
-        case 'C': break; // (prompt) go to and fold by path
-        case 'O': break; // (prompt) go to and unfold by path
         case 'o': break; // (prompt) unfold by path
         case 'c': break; // (prompt) fold by path
+        case 'O': break; // (prompt) go to and unfold by path
+        case 'C': break; // (prompt) go to and fold by path
 
-        case 'k': break; // previous
-        case 'j': break; // next
-        case 'l': break; // unfold
-        case 'h': break; // fold
+        case 'k': break; // go to previous
+        case 'j': break; // go to next
+        case 'l': break; // unfold and go to 1st child if any
+        case 'h': break; // go to parent
+        case 'L': break; // unfold
+        case 'H': break; // fold
 
         case '0': break; // fold all
 
@@ -51,3 +114,4 @@ static void do_command(char x) {
         case 'Q': exit(1);
     }
 }
+*/

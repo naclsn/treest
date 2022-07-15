@@ -36,10 +36,12 @@ void ascii_begin() {
 void ascii_end() {
 }
 
-void ascii_node(struct Node* node, size_t index, size_t count) {
+void ascii_node(struct Node* node) {
     for (int k = state.depth-1; -1 < k; k--)
         putstr(state.indents & (1<<k) ? INDENT_LAST : INDENT);
-    putstr(count-1 == index ? BRANCH_LAST : BRANCH);
+    putstr(((node->parent ? node->parent->count : 1)-1 == node->index) ? BRANCH_LAST : BRANCH);
+
+    if (node == cursor) putstr("> ");
 
 show_name: // when a link, jumps back here with node moved
     putstr(node->name);
@@ -64,16 +66,16 @@ show_name: // when a link, jumps back here with node moved
         }
     }
 
-    putchar('\r');
+    if (is_tty) putchar('\r');
     putchar('\n');
 }
 
-void ascii_enter(struct Node* _UNUSED(node), size_t index, size_t count) {
+void ascii_enter(struct Node* node) {
     state.depth++;
-    state.indents = state.indents << 1 | (count-1 == index);
+    state.indents = state.indents << 1 | ((node->parent ? node->parent->count : 1)-1 == node->index);
 }
 
-void ascii_leave(struct Node* _UNUSED(node), size_t _UNUSED(index), size_t _UNUSED(count)) {
+void ascii_leave(struct Node* _UNUSED(node)) {
     state.depth--;
     state.indents = state.indents >> 1;
 }

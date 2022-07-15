@@ -14,15 +14,21 @@ void fancy_end() {
     fprintf(stderr, "fancy_end()\n");
 }
 
-void fancy_node(struct Node* node, size_t index, size_t count) {
+void fancy_node(struct Node* node) {
+    size_t index = node->index;
+    size_t count = node->parent ? node->parent->count : 1;
     fprintf(stderr, "fancy_node(<%s>, %zu, %zu)\n", node->path, index, count);
 }
 
-void fancy_enter(struct Node* node, size_t index, size_t count) {
+void fancy_enter(struct Node* node) {
+    size_t index = node->index;
+    size_t count = node->parent ? node->parent->count : 1;
     fprintf(stderr, "fancy_enter(<%s>, %zu, %zu)\n", node->path, index, count);
 }
 
-void fancy_leave(struct Node* node, size_t index, size_t count) {
+void fancy_leave(struct Node* node) {
+    size_t index = node->index;
+    size_t count = node->parent ? node->parent->count : 1;
     fprintf(stderr, "fancy_leave(<%s>, %zu, %zu)\n", node->path, index, count);
 }
 

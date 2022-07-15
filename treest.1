@@ -26,6 +26,7 @@ Use the specified printer.
 .SH PRINTERS
 .PP
 The flags available depend on the printer used.
+Unknown flags are silently ignored.
 The default printer is "\fBascii\fR"
 .TP
 \fBascii\fR
@@ -37,7 +38,7 @@ blablabla
 .SH COMMANDS
 .PP
 The following commands are always available.
-Note that from any prompt or pending state, \fBESC\fR should bring it back to normal mode.
+Note that from any prompt or pending state, \fB'^['\fR (\fBESC\fR) should bring it back to normal mode.
 blablabla
 
 .SH AUTHOR

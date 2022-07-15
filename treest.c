@@ -1,7 +1,7 @@
 #include "./treest.h"
 #include "./commands.h"
 
-struct Node* node_alloc(struct Node* parent, char* path) {
+struct Node* node_alloc(struct Node* parent, size_t index, char* path) {
     char* name = strrchr(path, '/')+1;
 
     struct stat sb;
@@ -15,6 +15,7 @@ struct Node* node_alloc(struct Node* parent, char* path) {
         .name=name,
         .type=type,
         .parent=parent,
+        .index=index
     };
     memcpy(niw, &fill, sizeof(struct Node));
 
@@ -34,7 +35,7 @@ void def_free(struct Node* node) {
 }
 
 void dir_free(struct Node* node) {
-    for (size_t k = 0; k < node->as.dir.children_count; k++) {
+    for (size_t k = 0; k < node->count; k++) {
         struct Node* child = node->as.dir.children[k];
         switch (child->type) {
             case Type_DIR: dir_free(child); break;
@@ -42,8 +43,9 @@ void dir_free(struct Node* node) {
             default:       def_free(child); break;
         }
         free(child);
+        node->as.dir.children[k] = NULL;
     }
-    node->as.dir.children_count = 0;
+    node->count = 0;
     free(node->as.dir.children);
     node->as.dir.children = NULL;
 }
@@ -57,48 +59,47 @@ void lnk_free(struct Node* node) {
         default:       def_free(child); break;
     }
     free(node->as.link.to);
+    node->as.link.to = NULL;
+    node->as.link.tail = NULL;
 }
 
-void def_print(struct Node* node, struct Printer* pr, size_t index, size_t count) {
-    pr->node(node, index, count);
+void def_print(struct Node* node, struct Printer* pr) {
+    pr->node(node);
 }
 
-void dir_print(struct Node* node, struct Printer* pr, size_t index, size_t count) {
-    pr->node(node, index, count);
+void dir_print(struct Node* node, struct Printer* pr) {
+    pr->node(node);
     struct Dir dir = node->as.dir;
     if (dir.unfolded) {
-        pr->enter(node, index, count);
-        size_t total = dir.children_count;
-        for (size_t k = 0; k < total; k++) {
+        pr->enter(node);
+        for (size_t k = 0; k < node->count; k++) {
             struct Node* child = dir.children[k];
             switch (child->type) {
-                case Type_DIR: dir_print(child, pr, k, total); break;
-                case Type_LNK: lnk_print(child, pr, k, total); break;
-                default:       def_print(child, pr, k, total); break;
+                case Type_DIR: dir_print(child, pr); break;
+                case Type_LNK: lnk_print(child, pr); break;
+                default:       def_print(child, pr); break;
             }
-
         }
-        pr->leave(node, index, count);
+        pr->leave(node);
     }
 }
 
-void lnk_print(struct Node* node, struct Printer* pr, size_t index, size_t count) {
-    pr->node(node, index, count);
-    while (Type_LNK == node->type) node = node->as.link.to;
+void lnk_print(struct Node* node, struct Printer* pr) {
+    pr->node(node);
+    if (Type_LNK == node->type) node = node->as.link.tail;
     if (node && Type_DIR == node->as.link.to->type) {
         struct Dir dir = node->as.link.to->as.dir;
         if (dir.unfolded) {
-            pr->enter(node, index, count);
-            size_t total = dir.children_count;
-            for (size_t k = 0; k < total; k++) {
+            pr->enter(node);
+            for (size_t k = 0; k < node->count; k++) {
                 struct Node* child = dir.children[k];
                 switch (child->type) {
-                    case Type_DIR: dir_print(child, pr, k, total); break;
-                    case Type_LNK: lnk_print(child, pr, k, total); break;
-                    default:       def_print(child, pr, k, total); break;
+                    case Type_DIR: dir_print(child, pr); break;
+                    case Type_LNK: lnk_print(child, pr); break;
+                    default:       def_print(child, pr); break;
                 }
             }
-            pr->leave(node, index, count);
+            pr->leave(node);
         }
     }
 }
@@ -141,12 +142,15 @@ void lnk_resolve(struct Node* node) {
 
     char* path = strdup(fullpath);
 
-    struct Node* niw = node_alloc(node->parent, path);
+    struct Node* niw = node_alloc(node->parent, node->index, path);
     node->as.link.to = niw;
+    node->as.link.tail = Type_LNK == niw->type
+        ? niw->as.link.tail
+        : niw;
 }
 
 void dir_unfold(struct Node* node) {
-    while (Type_LNK == node->type) node = node->as.link.to;
+    if (Type_LNK == node->type) node = node->as.link.tail;
     if (!node || Type_DIR != node->type) return;
 
     node->as.dir.unfolded = true;
@@ -165,7 +169,7 @@ void dir_unfold(struct Node* node) {
             || ('.' == ent->d_name[1] && '\0' == ent->d_name[2])))
                 continue;
 
-            if (cap <= node->as.dir.children_count) {
+            if (cap <= node->count) {
                 cap*= 2;
                 node->as.dir.children = realloc(node->as.dir.children, cap * sizeof(struct Node*));
             }
@@ -184,8 +188,8 @@ void dir_unfold(struct Node* node) {
             if ('/' != name[-1]) *name++ = '/';
             strcpy(name, ent->d_name);
 
-            struct Node* niw = node_alloc(node, path);
-            node->as.dir.children[node->as.dir.children_count++] = niw;
+            struct Node* niw = node_alloc(node, node->count, path);
+            node->as.dir.children[node->count++] = niw;
         }
         closedir(dir);
     }
@@ -286,15 +290,15 @@ int main(int argc, char* argv[]) {
     root.type = Type_DIR;
     dir_unfold(&root);
 
+    cursor = &root;
+
     term_raw_mode();
-    char user;
 
     while (1) {
         selected_printer->begin();
-        dir_print(&root, selected_printer, 0, 1);
+        dir_print(&root, selected_printer);
         selected_printer->end();
 
-        if (read(0, &user, 1) < 0) die("read");
         TREEST_COMMAND(user);
     }
 }
