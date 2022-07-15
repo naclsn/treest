@@ -1,7 +1,7 @@
 #include "./treest.h"
 #include "./commands.h"
 
-#pragma region node methods (free and print)
+//#region node methods (free and print)
 
 void def_free(struct Node* node) {
     free(node->path);
@@ -34,14 +34,14 @@ void lnk_free(struct Node* node) {
 }
 
 void def_print(struct Node* node, struct Printer* pr, size_t index, size_t count) {
-    pr->node(pr, node, index, count);
+    pr->node(node, index, count);
 }
 
 void dir_print(struct Node* node, struct Printer* pr, size_t index, size_t count) {
-    pr->node(pr, node, index, count);
+    pr->node(node, index, count);
     struct Dir dir = node->as.dir;
     if (dir.unfolded) {
-        pr->enter(pr, node, index, count);
+        pr->enter(node, index, count);
         size_t total = dir.children_count;
         for (size_t k = 0; k < total; k++) {
             struct Node* child = dir.children[k];
@@ -52,16 +52,16 @@ void dir_print(struct Node* node, struct Printer* pr, size_t index, size_t count
             }
 
         }
-        pr->leave(pr, node, index, count);
+        pr->leave(node, index, count);
     }
 }
 
 void lnk_print(struct Node* node, struct Printer* pr, size_t index, size_t count) {
-    pr->node(pr, node, index, count);
+    pr->node(node, index, count);
     if (Type_DIR == node->as.link.to->type) {
         struct Dir dir = node->as.link.to->as.dir;
         if (dir.unfolded) {
-            pr->enter(pr, node, index, count);
+            pr->enter(node, index, count);
             size_t total = dir.children_count;
             for (size_t k = 0; k < total; k++) {
                 struct Node* child = dir.children[k];
@@ -71,14 +71,14 @@ void lnk_print(struct Node* node, struct Printer* pr, size_t index, size_t count
                     default:       def_print(child, pr, k, total); break;
                 }
             }
-            pr->leave(pr, node, index, count);
+            pr->leave(node, index, count);
         }
     }
 }
 
-#pragma endregion
+//#endregion
 
-#pragma region directory fold/unfold
+//#region directory fold/unfold
 
 void dir_unfold(struct Node* node) {
     node->as.dir.unfolded = true;
@@ -92,8 +92,9 @@ void dir_unfold(struct Node* node) {
     DIR *dir = opendir(node->path);
     if (dir) {
         struct dirent *ent;
-        while (ent = readdir(dir)) {
-            if ('.' == ent->d_name[0] && ('\0' == ent->d_name[1] || '.' == ent->d_name[1] && '\0' == ent->d_name[2]))
+        while ((ent = readdir(dir))) {
+            if ('.' == ent->d_name[0] && ('\0' == ent->d_name[1]
+            || ('.' == ent->d_name[1] && '\0' == ent->d_name[2])))
                 continue;
 
             if (cap <= node->as.dir.children_count) {
@@ -148,9 +149,9 @@ void dir_fold(struct Node* node) {
     node->as.dir.unfolded = false;
 }
 
-#pragma endregion
+//#endregion
 
-#pragma region cfmakeraw: 1960 magic shit
+//#region cfmakeraw: 1960 magic shit
 
 static struct termios orig_termios;
 
@@ -161,10 +162,7 @@ static void term_restore() {
 static void term_raw_mode() {
     if (!(is_tty = isatty(STDOUT_FILENO))) return;
 
-    if (tcgetattr(STDOUT_FILENO, &orig_termios) < 0) {
-        perror("tcgetattr");
-        exit(errno);
-    }
+    if (tcgetattr(STDOUT_FILENO, &orig_termios) < 0) die("tcgetattr");
 
     atexit(term_restore);
 
@@ -175,13 +173,10 @@ static void term_raw_mode() {
     raw.c_cflag &= ~(CSIZE | PARENB);
     raw.c_cflag |= (CS8);
 
-    if (tcsetattr(STDOUT_FILENO, TCSAFLUSH, &raw) < 0) {
-        perror("tcsetattr");
-        exit(errno);
-    }
+    if (tcsetattr(STDOUT_FILENO, TCSAFLUSH, &raw) < 0) die("tcsetattr");
 }
 
-#pragma endregion
+//#endregion
 
 char* opts(int argc, char* argv[]) {
     char delay_toggle_flags[256] = {0};
@@ -225,12 +220,12 @@ char* opts(int argc, char* argv[]) {
     }
 
     while (delay_toggle_flags != flag--)
-        selected_printer->toggle(selected_printer, *flag);
+        selected_printer->toggle(*flag);
 
     return selected_path;
 }
 
-void main(int argc, char* argv[]) {
+int main(int argc, char* argv[]) {
     prog = argv[0];
     argv++;
     argc--;
@@ -240,31 +235,25 @@ void main(int argc, char* argv[]) {
     }
 
     char* arg_path = opts(argc, argv);
-
-    getcwd(cwd, _MAX_PATH);
+    if (!getcwd(cwd, _MAX_PATH)) die("getcwd");
     if (!arg_path) arg_path = cwd;
-
     char path[_MAX_PATH];
-    if (NULL == realpath(arg_path, path)) {
-        perror(arg_path);
-        exit(errno);
-    }
+    if (NULL == realpath(arg_path, path)) die(arg_path);
 
     root.path = path;
     root.name = basename(path);
     root.type = Type_DIR;
-
     dir_unfold(&root);
 
     term_raw_mode();
     char user;
 
     while (1) {
-        selected_printer->begin(selected_printer);
+        selected_printer->begin();
         dir_print(&root, selected_printer, 0, 1);
-        selected_printer->end(selected_printer);
+        selected_printer->end();
 
-        read(0, &user, 1);
+        if (read(0, &user, 1) < 0) die("read");
         TREEST_COMMAND(user);
     }
 }

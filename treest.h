@@ -12,9 +12,14 @@
 #include <termios.h>
 #include <unistd.h>
 
-#define EVERY_PRINTERS(__do, __sep) \
-    __do(ascii_printer, "ascii") __sep \
+#define EVERY_PRINTERS(__do, __sep)     \
+    __do(ascii_printer, "ascii") __sep  \
     __do(fancy_printer, "fancy")
+
+#define die(__c) {  \
+    perror(__c);    \
+    exit(errno);    \
+}
 
 #ifndef PATH_MAX
 #define _MAX_PATH 4096
@@ -24,10 +29,21 @@
 #define _MAX_PATH 4096
 #endif
 
+#ifdef _UNUSED
+#elif defined(__GNUC__)
+#define _UNUSED(x) UNUSED_ ## x __attribute__((__unused__))
+#elif defined(__LCLINT__)
+#define _UNUSED(x) /*@unused@*/ UNUSED_ ## x
+#else
+#define _UNUSED(x) UNUSED_ ## x
+#endif
+
 char* prog;
 char cwd[_MAX_PATH];
 bool is_tty;
-struct {} gflags;
+struct {
+    bool placeholder;
+} gflags;
 void toggle_gflag(char flag);
 
 struct Node {
@@ -50,7 +66,7 @@ struct Node {
         struct Dir {
             bool unfolded;
             struct Node** children;
-            int children_count;
+            size_t children_count;
         } dir;
         struct Link {
             struct Node* to;
@@ -62,12 +78,12 @@ struct Node {
 #define DO(ident, name) ident
 #define SEP ,
 struct Printer {
-    void (* toggle)(struct Printer* self, char flag);
-    void (* begin)(struct Printer* self);
-    void (* end)(struct Printer* self);
-    void (* node)(struct Printer* self, struct Node* node, size_t index, size_t count);
-    void (* enter)(struct Printer* self, struct Node* node, size_t index, size_t count);
-    void (* leave)(struct Printer* self, struct Node* node, size_t index, size_t count);
+    void (* toggle)(char flag);
+    void (* begin)();
+    void (* end)();
+    void (* node)(struct Node* node, size_t index, size_t count);
+    void (* enter)(struct Node* node, size_t index, size_t count);
+    void (* leave)(struct Node* node, size_t index, size_t count);
 } EVERY_PRINTERS(DO, SEP), * selected_printer;
 #undef DO
 #undef SEP

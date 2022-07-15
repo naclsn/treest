@@ -2,28 +2,28 @@
 
 /// (TODO) fancy terminal printer
 
-void fancy_toggle(struct Printer* self, char flag) {
-    write(STDERR_FILENO, "fancy_toggle\n", 13);
+void fancy_toggle(char flag) {
+    fprintf(stderr, "fancy_toggle('%c')\n", flag);
 }
 
-void fancy_begin(struct Printer* self) {
-    write(STDERR_FILENO, "fancy_begin\n", 12);
+void fancy_begin() {
+    fprintf(stderr, "fancy_begin()\n");
 }
 
-void fancy_end(struct Printer* self) {
-    write(STDERR_FILENO, "fancy_end\n", 10);
+void fancy_end() {
+    fprintf(stderr, "fancy_end()\n");
 }
 
-void fancy_node(struct Printer* self, struct Node* node, size_t index, size_t count) {
-    write(STDERR_FILENO, "fancy_node\n", 11);
+void fancy_node(struct Node* node, size_t index, size_t count) {
+    fprintf(stderr, "fancy_node(<%s>, %zu, %zu)\n", node->path, index, count);
 }
 
-void fancy_enter(struct Printer* self, struct Node* node, size_t index, size_t count) {
-    write(STDERR_FILENO, "fancy_enter\n", 12);
+void fancy_enter(struct Node* node, size_t index, size_t count) {
+    fprintf(stderr, "fancy_enter(<%s>, %zu, %zu)\n", node->path, index, count);
 }
 
-void fancy_leave(struct Printer* self, struct Node* node, size_t index, size_t count) {
-    write(STDERR_FILENO, "fancy_leave\n", 12);
+void fancy_leave(struct Node* node, size_t index, size_t count) {
+    fprintf(stderr, "fancy_leave(<%s>, %zu, %zu)\n", node->path, index, count);
 }
 
 struct Printer fancy_printer = {

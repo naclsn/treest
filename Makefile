@@ -2,7 +2,7 @@ PREFIX    = /usr/local
 MANPREFIX = $(PREFIX)/share/man
 DESTDIR   = 
 
-#CFLAGS += -Wall -Wextra -Werror -pedantic -O2
+CFLAGS += -Wall -Wextra -Werror -pedantic -O2
 
 PROG = treest
 SRCS = $(wildcard *.[ch])
