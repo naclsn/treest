@@ -14,18 +14,65 @@
 
 static void (* command_map[128])();
 
+static ssize_t prompt(const char* c, char* dest, ssize_t size);
+static char prompt1(const char* c);
+
+static struct Node* locate(const char* path);
+
 void toggle_gflag(char flag) {
     switch (flag) {
-        case 'a': break; // Filter entries starting with '.'
+        case 'a': die("TODO"); break; // Filter entries starting with '.'
     }
 }
 
+static ssize_t prompt(const char* c, char* dest, ssize_t size) {
+    ssize_t r = 0;
+    char last;
+    if (write(STDERR_FILENO, c, strlen(c)) < 0) die("write");
+    if (write(STDERR_FILENO, ": ", 2) < 0) die("write");
+    do {
+        if (read(STDIN_FILENO, dest, 1) < 0) die("read");
+        last = *dest;
+        if (3 == last || 4 == last || 7 == last || 27 == last)
+            return 0;
+        if (write(STDERR_FILENO, dest, 1) < 0) die("write");
+        if ('\b' == last) {
+            if (write(STDERR_FILENO, " \b", 2) < 0) die("write");
+            r--; dest--;
+            continue;
+        }
+        r++; dest++;
+    } while (r < size && '\r' != last && '\n' != last);
+    if (write(STDERR_FILENO, "\r\n", 2) < 0) die("write");
+    *--dest = '\0';
+    return r-1;
+}
+
+static char prompt1(const char* c) {
+    char r;
+    if (write(STDERR_FILENO, c, strlen(c)) < 0) die("write");
+    if (write(STDERR_FILENO, ": ", 2) < 0) die("write");
+    if (read(STDIN_FILENO, &r, 1) < 0) die("read");
+    if (write(STDERR_FILENO, "\r\n", 2) < 0) die("write");
+    return r;
+}
+
+static struct Node* locate(const char* path) {
+    printf("TODO: locate(\"%s\")\r\n", path);
+    return NULL;
+}
+
 static void c_quit() {
-    exit(0);
+    exit(EXIT_SUCCESS);
 }
 
 static void c_cquit() {
-    exit(1);
+    exit(EXIT_FAILURE);
+}
+
+static void c_toggle() {
+    char x = prompt1("toggle");
+    selected_printer->toggle(x);
 }
 
 static void c_previous() {
@@ -60,31 +107,95 @@ static void c_parent() {
     if (p) cursor = p;
 }
 
+static void c_unfold() {
+    struct Node* d = cursor;
+    if (Type_LNK == d->type) d = d->as.link.tail;
+    if (d && Type_DIR == d->type) dir_unfold(d);
+}
+
+static void c_fold() {
+    if (Type_DIR == cursor->type) dir_fold(cursor);
+}
+
+static void c_foldall() {
+    // TODO: better (doesn't close all)
+    while (cursor != &root) {
+        c_fold();
+        c_parent();
+    }
+}
+
+static void c_promptunfold() {
+    char c[_MAX_PATH] = {0};
+    if (!prompt("unfold-path", c, _MAX_PATH)) return;
+    struct Node* found = locate(c);
+    if (found) {
+        struct Node* pre = cursor;
+        cursor = found;
+        c_unfold();
+        cursor = pre;
+    }
+}
+
+static void c_promptfold() {
+    char c[_MAX_PATH] = {0};
+    if (!prompt("fold-path", c, _MAX_PATH)) return;
+    struct Node* found = locate(c);
+    if (found) {
+        struct Node* pre = cursor;
+        cursor = found;
+        c_fold();
+        cursor = pre;
+    }
+}
+
+static void c_promptgounfold() {
+    char c[_MAX_PATH] = {0};
+    if (!prompt("gounfold-path", c, _MAX_PATH)) return;
+    struct Node* found = locate(c);
+    if (found) {
+        cursor = found;
+        c_unfold();
+    }
+}
+
+static void c_promptgofold() {
+    char c[_MAX_PATH] = {0};
+    if (!prompt("gofold-path", c, _MAX_PATH)) return;
+    struct Node* found = locate(c);
+    if (found) {
+        cursor = found;
+        c_fold();
+    }
+}
+
+// REM: please remember to `LC_ALL=C sort`
 static void (* command_map[128])() = {
     [  3]=c_quit,         // ^C (ETX)
     [  4]=c_quit,         // ^D (EOT)
+    ['-']=c_toggle,
+    ['0']=c_foldall,
+    ['C']=c_promptfold,
+    ['H']=c_fold,
+    ['L']=c_unfold,
+    ['O']=c_promptunfold,
+    ['Q']=c_cquit,
+    ['c']=c_promptgofold,
     ['h']=c_parent,
     ['j']=c_next,
     ['k']=c_previous,
     ['l']=c_child,
-    ['Q']=c_cquit,
+    ['o']=c_promptgounfold,
     ['q']=c_quit,
 };
 
 /*
 static void do_command(char x) {
     switch (x) {
-        case 'o': break; // (prompt) unfold by path
-        case 'c': break; // (prompt) fold by path
-        case 'O': break; // (prompt) go to and unfold by path
-        case 'C': break; // (prompt) go to and fold by path
-
-        case 'k': break; // go to previous
-        case 'j': break; // go to next
-        case 'l': break; // unfold and go to 1st child if any
-        case 'h': break; // go to parent
-        case 'L': break; // unfold
-        case 'H': break; // fold
+        case 'O': break; // (prompt) unfold by path
+        case 'C': break; // (prompt) fold by path
+        case 'o': break; // (prompt) go to and unfold by path
+        case 'c': break; // (prompt) go to and fold by path
 
         case '0': break; // fold all
 
