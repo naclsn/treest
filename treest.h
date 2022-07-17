@@ -38,15 +38,15 @@
 #define _UNUSED(x) UNUSED_ ## x
 #endif
 
-char* prog;
-char cwd[_MAX_PATH];
-bool is_tty;
-struct {
+extern char* prog;
+extern char cwd[_MAX_PATH];
+extern bool is_tty;
+extern struct GFlags {
     bool placeholder;
 } gflags;
-void toggle_gflag(char flag);
+extern void toggle_gflag(char flag);
 
-struct Node {
+extern struct Node {
     char* path;
     char* name;
     enum Type {
@@ -77,7 +77,7 @@ struct Node {
 
 #define DO(ident, name) ident
 #define SEP ,
-struct Printer {
+extern struct Printer {
     void (* toggle)(char flag);
     void (* begin)();
     void (* end)();

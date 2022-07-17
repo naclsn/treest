@@ -1,6 +1,13 @@
 #include "./treest.h"
 #include "./commands.h"
 
+char* prog;
+char cwd[_MAX_PATH];
+bool is_tty;
+struct GFlags gflags;
+struct Node root, * cursor;
+struct Printer* selected_printer;
+
 struct Node* node_alloc(struct Node* parent, size_t index, char* path) {
     char* name = strrchr(path, '/')+1;
 

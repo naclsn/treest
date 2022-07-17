@@ -51,7 +51,7 @@ static void c_child() {
     if (Type_LNK == d->type) d = d->as.link.tail;
     if (d && Type_DIR == d->type) {
         dir_unfold(d);
-        if (d->as.dir.children[0]) cursor = d->as.dir.children[0];
+        if (d->count) cursor = d->as.dir.children[0];
     }
 }
 
