@@ -38,7 +38,12 @@ struct Node* node_alloc(struct Node* parent, size_t index, char* path) {
 }
 
 void def_free(struct Node* node) {
+    if (node == cursor)
+        cursor = node->parent
+            ? node->parent
+            : &root;
     free(node->path);
+    node->path = NULL;
 }
 
 void dir_free(struct Node* node) {

@@ -12,6 +12,9 @@
 
 #include "./treest.h"
 
+#define putstr(__c) if (write(STDERR_FILENO, __c, strlen(__c)) < 0) die("write")
+#define putln() putstr("\r\n")
+
 static void (* command_map[128])();
 
 static ssize_t prompt(const char* c, char* dest, ssize_t size);
@@ -28,36 +31,40 @@ void toggle_gflag(char flag) {
 static ssize_t prompt(const char* c, char* dest, ssize_t size) {
     ssize_t r = 0;
     char last;
-    if (write(STDERR_FILENO, c, strlen(c)) < 0) die("write");
-    if (write(STDERR_FILENO, ": ", 2) < 0) die("write");
+    putstr(c);
+    putstr(": ");
     do {
         if (read(STDIN_FILENO, dest, 1) < 0) die("read");
         last = *dest;
         if (3 == last || 4 == last || 7 == last || 27 == last)
             return 0;
-        if (write(STDERR_FILENO, dest, 1) < 0) die("write");
+        putstr(dest);
         if ('\b' == last) {
-            if (write(STDERR_FILENO, " \b", 2) < 0) die("write");
+            putstr(" \b");
             r--; dest--;
             continue;
         }
         r++; dest++;
     } while (r < size && '\r' != last && '\n' != last);
-    if (write(STDERR_FILENO, "\r\n", 2) < 0) die("write");
+    putln();
     *--dest = '\0';
     return r-1;
 }
 
 static char prompt1(const char* c) {
     char r;
-    if (write(STDERR_FILENO, c, strlen(c)) < 0) die("write");
-    if (write(STDERR_FILENO, ": ", 2) < 0) die("write");
+    putstr(c);
+    putstr(": ");
     if (read(STDIN_FILENO, &r, 1) < 0) die("read");
-    if (write(STDERR_FILENO, "\r\n", 2) < 0) die("write");
+    putln();
     return r;
 }
 
 static struct Node* locate(const char* path) {
+    if ('/' != *path) {
+        putstr("! absolute path must start with a /\r\n");
+        return NULL;
+    }
     printf("TODO: locate(\"%s\")\r\n", path);
     return NULL;
 }
