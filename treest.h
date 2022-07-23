@@ -44,7 +44,7 @@ extern bool is_tty;
 extern struct GFlags {
     bool placeholder;
 } gflags;
-extern void toggle_gflag(char flag);
+extern bool toggle_gflag(char flag);
 
 extern struct Node {
     char* path;
@@ -78,7 +78,7 @@ extern struct Node {
 #define DO(ident, name) ident
 #define SEP ,
 extern struct Printer {
-    void (* toggle)(char flag);
+    bool (* toggle)(char flag);
     void (* begin)();
     void (* end)();
     void (* node)(struct Node* node);

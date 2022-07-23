@@ -1,13 +1,11 @@
 #ifdef TREEST_COMMAND
 #error This file should not be included outside treest.c
 #endif // TREEST_COMMAND
-#define TREEST_COMMAND(__x) {       \
-    unsigned char user;             \
-    do {                            \
-        if (read(0, &user, 1) < 0)  \
-            die("read");            \
-    } while (!command_map[user]);   \
-    command_map[user](user);        \
+#define TREEST_COMMAND(__x) {                                 \
+    unsigned char user;                                       \
+    do {                                                      \
+        if (read(0, &user, 1) < 0) die("read");               \
+    } while (!command_map[user] || !command_map[user](user)); \
 }
 
 #include "./treest.h"
@@ -15,17 +13,18 @@
 #define putstr(__c) if (write(STDERR_FILENO, __c, strlen(__c)) < 0) die("write")
 #define putln() putstr("\r\n")
 
-static void (* command_map[128])();
+static bool (* command_map[128])();
 
 static ssize_t prompt(const char* c, char* dest, ssize_t size);
 static char prompt1(const char* c);
 
 static struct Node* locate(const char* path);
 
-void toggle_gflag(char flag) {
+bool toggle_gflag(char flag) {
     switch (flag) {
-        case 'a': die("TODO"); break; // Filter entries starting with '.'
+        case 'a': die("TODO"); return true; // Filter entries starting with '.'
     }
+    return false;
 }
 
 static ssize_t prompt(const char* c, char* dest, ssize_t size) {
@@ -65,119 +64,214 @@ static struct Node* locate(const char* path) {
         putstr("! absolute path must start with a /\r\n");
         return NULL;
     }
-    printf("TODO: locate(\"%s\")\r\n", path);
-    return NULL;
+
+    ssize_t rlen = strlen(root.path);
+    if (0 != memcmp(root.path, path, rlen)) {
+        putstr("! unrelated root\r\n");
+        return NULL;
+    }
+
+    const char* cast = path + rlen;
+    const char* head;
+    bool istail = false;
+    bool isfail = false;
+    struct Node* cd = &root;
+    do {
+        head = cast+1;
+        if (!(cast = strchr(head, '/'))) {
+            cast = head + strlen(head);
+            istail = true;
+        }
+
+        if (head == cast) continue;
+
+        if ('.' == *head) {
+            if ('/' == *(head+1) || '\0' == *(head+1)) continue;
+            if ('.' == *(head+1) && ('/' == *(head+2) || '\0' == *(head+2))) {
+                if (&root == cd) {
+                    putstr("! '..' goes above root\r\n");
+                    isfail = true;
+                    break;
+                }
+                cd = cd->parent;
+                continue;
+            }
+        }
+
+        if (Type_DIR != cd->type) {
+            putstr("! path element is not a directory\r\n");
+            isfail = true;
+            break;
+        }
+
+        dir_unfold(cd);
+        bool found = false;
+        for (size_t k = 0; k < cd->count; k++) {
+            struct Node* it = cd->as.dir.children[k];
+            if (0 == memcmp(it->name, head, cast-head)) {
+                found = true;
+                cd = Type_LNK == it->type && it->as.link.tail
+                    ? it->as.link.tail
+                    : it;
+                break;
+            }
+        }
+
+        if (!found) {
+            putstr("! path not found\r\n");
+            isfail = true;
+            break;
+        }
+    } while (!istail && *head);
+
+    if (isfail) {
+        die("TODO: re-fold (cd, cd->parent, cd->parent->parent, ...)");
+        return NULL;
+    }
+    return cd;
 }
 
-static void c_quit() {
+static bool c_quit() {
     exit(EXIT_SUCCESS);
+    return false;
 }
 
-static void c_cquit() {
+static bool c_cquit() {
     exit(EXIT_FAILURE);
+    return false;
 }
 
-static void c_toggle() {
+static bool c_toggle() {
     char x = prompt1("toggle");
-    selected_printer->toggle(x);
+    return selected_printer->toggle(x);
+    return false;
 }
 
-static void c_previous() {
+static bool c_previous() {
     struct Node* p = cursor->parent;
     if (p) {
         if (Type_LNK == p->type) p = p->as.link.tail;
-        if (p && 0 < cursor->index)
+        if (p && 0 < cursor->index) {
             cursor = p->as.dir.children[cursor->index - 1];
+            return true;
+        }
     }
+    return false;
 }
 
-static void c_next() {
+static bool c_next() {
     struct Node* p = cursor->parent;
     if (p) {
         if (Type_LNK == p->type) p = p->as.link.tail;
-        if (p && cursor->index < p->count - 1)
+        if (p && cursor->index < p->count - 1) {
             cursor = p->as.dir.children[cursor->index + 1];
+            return true;
+        }
     }
+    return false;
 }
 
-static void c_child() {
+static bool c_child() {
     struct Node* d = cursor;
     if (Type_LNK == d->type) d = d->as.link.tail;
     if (d && Type_DIR == d->type) {
         dir_unfold(d);
         if (d->count) cursor = d->as.dir.children[0];
+        return true;
     }
+    return false;
 }
 
-static void c_parent() {
+static bool c_parent() {
     struct Node* p = cursor->parent;
-    if (p) cursor = p;
+    if (p) {
+        cursor = p;
+        return true;
+    }
+    return false;
 }
 
-static void c_unfold() {
+static bool c_unfold() {
     struct Node* d = cursor;
     if (Type_LNK == d->type) d = d->as.link.tail;
-    if (d && Type_DIR == d->type) dir_unfold(d);
+    if (d && Type_DIR == d->type) {
+        dir_unfold(d);
+        return true;
+    }
+    return false;
 }
 
-static void c_fold() {
-    if (Type_DIR == cursor->type) dir_fold(cursor);
+static bool c_fold() {
+    if (Type_DIR == cursor->type) {
+        dir_fold(cursor);
+        return true;
+    }
+    return false;
 }
 
-static void c_foldall() {
+static bool c_foldall() {
     // TODO: better (doesn't close all)
     while (cursor != &root) {
         c_fold();
         c_parent();
     }
+    return true;
 }
 
-static void c_promptunfold() {
+static bool c_promptunfold() {
     char c[_MAX_PATH] = {0};
-    if (!prompt("unfold-path", c, _MAX_PATH)) return;
+    if (!prompt("unfold-path", c, _MAX_PATH)) return false;
     struct Node* found = locate(c);
     if (found) {
         struct Node* pre = cursor;
         cursor = found;
         c_unfold();
         cursor = pre;
+        return true;
     }
+    return false;
 }
 
-static void c_promptfold() {
+static bool c_promptfold() {
     char c[_MAX_PATH] = {0};
-    if (!prompt("fold-path", c, _MAX_PATH)) return;
+    if (!prompt("fold-path", c, _MAX_PATH)) return false;
     struct Node* found = locate(c);
     if (found) {
         struct Node* pre = cursor;
         cursor = found;
         c_fold();
         cursor = pre;
+        return true;
     }
+    return false;
 }
 
-static void c_promptgounfold() {
+static bool c_promptgounfold() {
     char c[_MAX_PATH] = {0};
-    if (!prompt("gounfold-path", c, _MAX_PATH)) return;
+    if (!prompt("gounfold-path", c, _MAX_PATH)) return false;
     struct Node* found = locate(c);
     if (found) {
         cursor = found;
         c_unfold();
+        return true;
     }
+    return false;
 }
 
-static void c_promptgofold() {
+static bool c_promptgofold() {
     char c[_MAX_PATH] = {0};
-    if (!prompt("gofold-path", c, _MAX_PATH)) return;
+    if (!prompt("gofold-path", c, _MAX_PATH)) return false;
     struct Node* found = locate(c);
     if (found) {
         cursor = found;
         c_fold();
+        return true;
     }
+    return false;
 }
 
 // REM: please remember to `LC_ALL=C sort`
-static void (* command_map[128])() = {
+static bool (* command_map[128])() = {
     [  3]=c_quit,         // ^C (ETX)
     [  4]=c_quit,         // ^D (EOT)
     ['-']=c_toggle,

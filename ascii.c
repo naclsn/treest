@@ -21,15 +21,15 @@ static struct {
     bool classify;
 } flags;
 
-void ascii_toggle(char flag) {
+bool ascii_toggle(char flag) {
     switch (flag) {
-        case 'F': TOGGLE(flags.classify); break;
-        default: toggle_gflag(flag);
+        case 'F': TOGGLE(flags.classify); return true;
     }
+    return toggle_gflag(flag);
 }
 
 void ascii_begin() {
-    state.depth = 0;
+    state.depth = -1;
     state.indents = 0;
 }
 
@@ -37,9 +37,11 @@ void ascii_end() {
 }
 
 void ascii_node(struct Node* node) {
-    for (int k = state.depth-1; -1 < k; k--)
-        putstr(state.indents & (1<<k) ? INDENT_LAST : INDENT);
-    putstr(((node->parent ? node->parent->count : 1)-1 == node->index) ? BRANCH_LAST : BRANCH);
+    if (&root != node) {
+        for (int k = state.depth-1; -1 < k; k--)
+            putstr(state.indents & (1<<k) ? INDENT_LAST : INDENT);
+        putstr(((node->parent ? node->parent->count : 1)-1 == node->index) ? BRANCH_LAST : BRANCH);
+    }
 
     if (node == cursor) putstr("> ");
 

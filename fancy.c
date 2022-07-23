@@ -2,7 +2,6 @@
 
 /// fancy terminal printer
 
-// #define _CL "\e[H\e[2J\e[3J"
 #define _CL "\x1b[H\x1b[2J\x1b[3J"
 
 #define _SP "\xc2\xa0"
@@ -21,7 +20,6 @@ static void apply_ls_colors(struct Node* node);
 static void apply_decorations(struct Node* node);
 
 #define TOGGLE(flag) flag = !(flag)
-// TODO: this is dumb; should use existing buffering
 #define putstr(__c) { if (write(STDOUT_FILENO, __c, strlen(__c)) < 0) die("write"); }
 
 static struct {
@@ -64,20 +62,22 @@ static struct {
 static struct {
     bool classify;
     bool colors;
+    bool join;
 } flags;
 
-void fancy_toggle(char flag) {
+bool fancy_toggle(char flag) {
     switch (flag) {
-        case 'F': TOGGLE(flags.classify); break;
-        case 'c': TOGGLE(flags.colors); break;
-        default: toggle_gflag(flag);
+        case 'F': TOGGLE(flags.classify); return true;
+        case 'c': TOGGLE(flags.colors); return true;
+        case 'j': TOGGLE(flags.join); return true;
     }
+    return toggle_gflag(flag);
 }
 
 void fancy_begin() {
     if (!state.ls_colors.loaded)
         read_ls_colors();
-    state.depth = 0;
+    state.depth = -1;
     state.indents = 0;
     putstr(_CL);
 }
@@ -86,9 +86,11 @@ void fancy_end() {
 }
 
 void fancy_node(struct Node* node) {
-    for (int k = state.depth-1; -1 < k; k--)
-        putstr(state.indents & (1<<k) ? INDENT_LAST : INDENT);
-    putstr(((node->parent ? node->parent->count : 1)-1 == node->index) ? BRANCH_LAST : BRANCH);
+    if (&root != node && !(flags.join && 1 == node->parent->count)) {
+        for (int k = state.depth-1; -1 < k; k--)
+            putstr(state.indents & (1<<k) ? INDENT_LAST : INDENT);
+        putstr(((node->parent ? node->parent->count : 1)-1 == node->index) ? BRANCH_LAST : BRANCH);
+    }
 
     // TODO: idk
     if (node == cursor) {
@@ -113,8 +115,12 @@ void fancy_node(struct Node* node) {
     if (flags.classify)
         apply_decorations(node);
 
-    if (is_tty) putchar('\r');
-    putchar('\n');
+    if (flags.join && Type_DIR == node->type && 1 == node->count && node->as.dir.unfolded) {
+        if (!flags.classify) putchar('/');
+    } else {
+        if (is_tty) putchar('\r');
+        putchar('\n');
+    }
 }
 
 void fancy_enter(struct Node* node) {
