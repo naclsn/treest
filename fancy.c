@@ -2,7 +2,8 @@
 
 /// fancy terminal printer
 
-#define _CL "\x1b[H\x1b[2J\x1b[3J"
+#define _CL "\x1b[H\x1b[2J\x1b[3J\x1b[?25l"
+#define _LC "\x1b[?25h"
 
 #define _SP "\xc2\xa0"
 #define _HZ "\xe2\x94\x80"
@@ -41,6 +42,11 @@ static struct {
         // char* mi; // missing (??)
         char* ex; // executable
         char* sel; // (added) selected
+        struct LS_COLORS_ExtEntry {
+            char* it;
+            char* val;
+        }** ext; // globs on file extensions (typ. '*.tar=xyz')
+        size_t ext_count;
     } ls_colors;
 } state = {
     .ls_colors = {
@@ -83,6 +89,7 @@ void fancy_begin() {
 }
 
 void fancy_end() {
+    putstr(_LC);
 }
 
 void fancy_node(struct Node* node) {
@@ -92,7 +99,6 @@ void fancy_node(struct Node* node) {
         putstr(((node->parent ? node->parent->count : 1)-1 == node->index) ? BRANCH_LAST : BRANCH);
     }
 
-    // TODO: idk
     if (node == cursor) {
         if (flags.colors) {
             putstr("\x1b[");
@@ -134,29 +140,58 @@ void fancy_leave(struct Node* _UNUSED(node)) {
 }
 
 static void read_ls_colors() {
-    char* var = getenv("LS_COLORS");
+    char* tail = getenv("LS_COLORS");
     state.ls_colors.loaded = true;
-    if (!var) return;
-    var = state.ls_colors.LS_COLORS = strdup(var);
-    // TODO: by extension
+    if (!tail) return;
+
+    size_t ext_cap = 0;
+
+    tail = state.ls_colors.LS_COLORS = strdup(tail);
     char* head;
-    while ((head = strchr(var, ':'))) {
+    while ((head = strchr(tail, ':'))) {
         *head = '\0';
-        char* eq = strchr(head, '=');
-        if (2 == eq++-head) {
-                 if (0 == strcmp("rs", head)) state.ls_colors.rs = eq;
-            else if (0 == strcmp("di", head)) state.ls_colors.di = eq;
-            else if (0 == strcmp("fi", head)) state.ls_colors.fi = eq;
-            else if (0 == strcmp("ln", head)) state.ls_colors.ln = eq;
-            else if (0 == strcmp("pi", head)) state.ls_colors.pi = eq;
-            else if (0 == strcmp("so", head)) state.ls_colors.so = eq;
-            else if (0 == strcmp("bd", head)) state.ls_colors.bd = eq;
-            else if (0 == strcmp("cd", head)) state.ls_colors.cd = eq;
-            else if (0 == strcmp("or", head)) state.ls_colors.or = eq;
-            // else if (0 == strcmp("mi", head)) state.ls_colors.mi = eq;
-            else if (0 == strcmp("ex", head)) state.ls_colors.ex = eq;
+        char* val = strchr(tail, '=');
+        if (!val) continue;
+        *val++ = '\0';
+
+        if (2+1 == val-tail) {
+                 if (0 == strcmp("rs", tail)) state.ls_colors.rs = val;
+            else if (0 == strcmp("di", tail)) state.ls_colors.di = val;
+            else if (0 == strcmp("fi", tail)) state.ls_colors.fi = val;
+            else if (0 == strcmp("ln", tail)) state.ls_colors.ln = val;
+            else if (0 == strcmp("pi", tail)) state.ls_colors.pi = val;
+            else if (0 == strcmp("so", tail)) state.ls_colors.so = val;
+            else if (0 == strcmp("bd", tail)) state.ls_colors.bd = val;
+            else if (0 == strcmp("cd", tail)) state.ls_colors.cd = val;
+            else if (0 == strcmp("or", tail)) state.ls_colors.or = val;
+            // else if (0 == strcmp("mi", tail)) state.ls_colors.mi = val;
+            else if (0 == strcmp("ex", tail)) state.ls_colors.ex = val;
+        } else if (0 == strcmp("sel", tail)) state.ls_colors.sel = val;
+
+        else if ('*' == tail[0] && '.' == tail[1]) {
+            tail+= 2;
+            struct LS_COLORS_ExtEntry* niw = malloc(sizeof(struct LS_COLORS_ExtEntry));
+            niw->it = tail;
+            niw->val = val;
+
+            if (0 == state.ls_colors.ext_count) {
+                ext_cap = 8;
+                state.ls_colors.ext = malloc(ext_cap * sizeof(struct LS_COLORS_ExtEntry*));
+            } else if (ext_cap <= state.ls_colors.ext_count) {
+                ext_cap*= 2;
+                state.ls_colors.ext = realloc(state.ls_colors.ext, ext_cap * sizeof(struct LS_COLORS_ExtEntry*));
+            }
+
+            int k = 0;
+            for (k = state.ls_colors.ext_count; 0 < k; k--) {
+                if (strcmp(state.ls_colors.ext[k-1]->it, niw->it) < 0) break;
+                state.ls_colors.ext[k] = state.ls_colors.ext[k-1];
+            }
+            state.ls_colors.ext[k] = niw;
+            state.ls_colors.ext_count++;
         }
-        var = head+1;
+
+        tail = head+1;
     }
 }
 

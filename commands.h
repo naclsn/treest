@@ -35,14 +35,27 @@ static ssize_t prompt(const char* c, char* dest, ssize_t size) {
     do {
         if (read(STDIN_FILENO, dest, 1) < 0) die("read");
         last = *dest;
-        if (3 == last || 4 == last || 7 == last || 27 == last)
+        if (3 == last || 4 == last || 7 == last || 27 == last) {
+            putstr("- aborted");
+            putln();
             return 0;
-        putstr(dest);
-        if ('\b' == last) {
-            putstr(" \b");
-            r--; dest--;
+        }
+        if ('\b' == last || 127 == last) {
+            if (0 < r) {
+                putstr("\b \b");
+                r--; *dest-- = '\0';
+            }
             continue;
         }
+        if (23 == last) {
+            while (0 < r) {
+                putstr("\b \b");
+                r--; *dest-- = '\0';
+                if (' ' == *(dest-1)) break;
+            }
+            continue;
+        }
+        putstr(dest);
         r++; dest++;
     } while (r < size && '\r' != last && '\n' != last);
     putln();

@@ -136,7 +136,7 @@ void lnk_resolve(struct Node* node) {
             if ('.' == *(copy+1)) {
                 paste--;
                 if (fullpath == paste) {
-                    // TODO: handle beyond root as broken link
+                    // TODO: handle beyond root as broken symlink
                     errno = ENOTDIR;
                     die(relpath);
                 }
