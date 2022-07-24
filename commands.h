@@ -55,11 +55,12 @@ static ssize_t prompt(const char* c, char* dest, ssize_t size) {
             }
             continue;
         }
+        if ('\r' == last || '\n' == last) break;
         putstr(dest);
         r++; dest++;
-    } while (r < size && '\r' != last && '\n' != last);
+    } while (r < size);
     putln();
-    *--dest = '\0';
+    *dest = '\0';
     return r-1;
 }
 
@@ -87,8 +88,7 @@ static struct Node* locate(const char* path) {
     const char* cast = path + rlen;
     const char* head;
     bool istail = false;
-    bool isfail = false;
-    struct Node* cd = &root;
+    struct Node* curr = &root;
     do {
         head = cast+1;
         if (!(cast = strchr(head, '/'))) {
@@ -101,29 +101,30 @@ static struct Node* locate(const char* path) {
         if ('.' == *head) {
             if ('/' == *(head+1) || '\0' == *(head+1)) continue;
             if ('.' == *(head+1) && ('/' == *(head+2) || '\0' == *(head+2))) {
-                if (&root == cd) {
+                if (&root == curr) {
                     putstr("! '..' goes above root\r\n");
-                    isfail = true;
-                    break;
+                    return NULL;
                 }
-                cd = cd->parent;
+                curr = curr->parent;
                 continue;
             }
         }
 
-        if (Type_DIR != cd->type) {
+        if (Type_DIR != curr->type) {
             putstr("! path element is not a directory\r\n");
-            isfail = true;
-            break;
+            return NULL;
         }
 
-        dir_unfold(cd);
+        if (!curr->as.dir.unfolded) {
+            dir_unfold(curr);
+            dir_fold(curr);
+        }
         bool found = false;
-        for (size_t k = 0; k < cd->count; k++) {
-            struct Node* it = cd->as.dir.children[k];
+        for (size_t k = 0; k < curr->count; k++) {
+            struct Node* it = curr->as.dir.children[k];
             if (0 == memcmp(it->name, head, cast-head)) {
                 found = true;
-                cd = Type_LNK == it->type && it->as.link.tail
+                curr = Type_LNK == it->type && it->as.link.tail
                     ? it->as.link.tail
                     : it;
                 break;
@@ -132,16 +133,17 @@ static struct Node* locate(const char* path) {
 
         if (!found) {
             putstr("! path not found\r\n");
-            isfail = true;
-            break;
+            return NULL;
         }
     } while (!istail && *head);
 
-    if (isfail) {
-        die("TODO: re-fold (cd, cd->parent, cd->parent->parent, ...)");
-        return NULL;
+    struct Node* up = curr;
+    while (up != &root) {
+        up = up->parent;
+        dir_unfold(up);
     }
-    return cd;
+
+    return curr;
 }
 
 static bool c_quit() {
@@ -222,12 +224,18 @@ static bool c_fold() {
     return false;
 }
 
-static bool c_foldall() {
-    // TODO: better (doesn't close all)
-    while (cursor != &root) {
-        c_fold();
-        c_parent();
+static void _recurse_foldall(struct Node* curr) {
+    for (size_t k = 0; k < curr->count; k++) {
+        struct Node* it = curr->as.dir.children[k];
+        if (Type_LNK == it->type) it = it->as.link.tail;
+        if (Type_DIR == it->type) _recurse_foldall(it);
     }
+    dir_fold(curr);
+}
+static bool c_foldall() {
+    _recurse_foldall(&root);
+    dir_unfold(&root);
+    cursor = &root;
     return true;
 }
 

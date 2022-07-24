@@ -42,11 +42,12 @@ static struct {
         // char* mi; // missing (??)
         char* ex; // executable
         char* sel; // (added) selected
-        struct LS_COLORS_ExtEntry {
-            char* it;
+        struct LS_COLORS_KVEntry {
+            char* key;
             char* val;
-        }** ext; // globs on file extensions (typ. '*.tar=xyz')
-        size_t ext_count;
+        }** ext, ** exa;
+        size_t ext_count; // globs on file extensions (typ. '*.tar=xyz:')
+        size_t exa_count; // maches on exact file name (typ. 'Makefile=xyz:')
     } ls_colors;
 } state = {
     .ls_colors = {
@@ -122,10 +123,10 @@ void fancy_node(struct Node* node) {
         apply_decorations(node);
 
     if (flags.join && Type_DIR == node->type && 1 == node->count && node->as.dir.unfolded) {
-        if (!flags.classify) putchar('/');
+        if (!flags.classify) putstr("/");
     } else {
-        if (is_tty) putchar('\r');
-        putchar('\n');
+        if (is_tty) putstr("\r");
+        putstr("\n");
     }
 }
 
@@ -139,12 +140,31 @@ void fancy_leave(struct Node* _UNUSED(node)) {
     state.indents = state.indents >> 1;
 }
 
+static void _sorted_insert(struct LS_COLORS_KVEntry* entry, struct LS_COLORS_KVEntry*** into, size_t* count, size_t* cap) {
+    if (0 == *count) {
+        *cap = 8;
+        *into = malloc(*cap * sizeof(struct LS_COLORS_KVEntry*));
+    } else if (*cap <= *count) {
+        *cap*= 2;
+        *into = realloc(*into, *cap * sizeof(struct LS_COLORS_KVEntry*));
+    }
+
+    int k = 0;
+    for (k = *count; 0 < k; k--) {
+        if (strcmp((*into)[k-1]->key, entry->key) < 0) break;
+        (*into)[k] = (*into)[k-1];
+    }
+    (*into)[k] = entry;
+    (*count)++;
+}
+
 static void read_ls_colors() {
     char* tail = getenv("LS_COLORS");
     state.ls_colors.loaded = true;
     if (!tail) return;
 
     size_t ext_cap = 0;
+    size_t exa_cap = 0;
 
     tail = state.ls_colors.LS_COLORS = strdup(tail);
     char* head;
@@ -170,51 +190,81 @@ static void read_ls_colors() {
 
         else if ('*' == tail[0] && '.' == tail[1]) {
             tail+= 2;
-            struct LS_COLORS_ExtEntry* niw = malloc(sizeof(struct LS_COLORS_ExtEntry));
-            niw->it = tail;
+            struct LS_COLORS_KVEntry* niw = malloc(sizeof(struct LS_COLORS_KVEntry));
+            niw->key = tail;
             niw->val = val;
+            _sorted_insert(niw, &state.ls_colors.ext, &state.ls_colors.ext_count, &ext_cap);
+        }
 
-            if (0 == state.ls_colors.ext_count) {
-                ext_cap = 8;
-                state.ls_colors.ext = malloc(ext_cap * sizeof(struct LS_COLORS_ExtEntry*));
-            } else if (ext_cap <= state.ls_colors.ext_count) {
-                ext_cap*= 2;
-                state.ls_colors.ext = realloc(state.ls_colors.ext, ext_cap * sizeof(struct LS_COLORS_ExtEntry*));
-            }
-
-            int k = 0;
-            for (k = state.ls_colors.ext_count; 0 < k; k--) {
-                if (strcmp(state.ls_colors.ext[k-1]->it, niw->it) < 0) break;
-                state.ls_colors.ext[k] = state.ls_colors.ext[k-1];
-            }
-            state.ls_colors.ext[k] = niw;
-            state.ls_colors.ext_count++;
+        else {
+            if ('*' == *tail) tail++;
+            struct LS_COLORS_KVEntry* niw = malloc(sizeof(struct LS_COLORS_KVEntry));
+            niw->key = tail;
+            niw->val = val;
+            _sorted_insert(niw, &state.ls_colors.exa, &state.ls_colors.exa_count, &exa_cap);
         }
 
         tail = head+1;
     }
 }
 
+static struct LS_COLORS_KVEntry* _binary_search(const char* needle, struct LS_COLORS_KVEntry** hay, size_t a, size_t b) {
+    size_t c = (a + b) / 2;
+    int cmp = strcmp(needle, hay[c]->key);
+
+    if (0 == cmp) return hay[c];
+
+    if (a == b) return NULL;
+    if (a+1 == b) return 0 == strcmp(needle, hay[c+1]->key) ? hay[c+1] : NULL;
+
+    if (cmp < 0) return _binary_search(needle, hay, a, c-1);
+    if (0 < cmp) return _binary_search(needle, hay, c+1, b);
+
+    return NULL;
+}
+
 static void apply_ls_colors(struct Node* node) {
-    char* col;
-    // TODO: by extension
-    switch (node->type) {
-        case Type_DIR:  col = state.ls_colors.di; break;
-        case Type_REG:  col = state.ls_colors.fi; break;
-        case Type_LNK:  col = node->as.link.to // XXX
-                                ? state.ls_colors.ln
-                                : state.ls_colors.or;
-                            break;
-        case Type_FIFO: col = state.ls_colors.pi; break;
-        case Type_SOCK: col = state.ls_colors.so; break;
-        case Type_BLK:  col = state.ls_colors.bd; break;
-        case Type_CHR:  col = state.ls_colors.cd; break;
-        case Type_EXEC: col = state.ls_colors.ex; break;
-        default:        col = "";                 break;
+    char* col = NULL;
+
+    if (0 < state.ls_colors.exa_count) {
+        struct LS_COLORS_KVEntry* found = _binary_search(node->name, state.ls_colors.exa, 0, state.ls_colors.exa_count-1);
+        if (found) col = found->val;
     }
-    putstr("\x1b[");
-    putstr(col);
-    putstr("m");
+
+    if (!col && 0 < state.ls_colors.ext_count) {
+        char* ext = node->name;
+        while ((ext = strchr(ext, '.'))) {
+            ext++;
+            struct LS_COLORS_KVEntry* found = _binary_search(ext, state.ls_colors.ext, 0, state.ls_colors.ext_count-1);
+            if (found) {
+                col = found->val;
+                break;
+            }
+        }
+    }
+
+    if (!col) {
+        switch (node->type) {
+            case Type_DIR:  col = state.ls_colors.di; break;
+            case Type_REG:  col = state.ls_colors.fi; break;
+            case Type_LNK:  col = node->as.link.to // XXX
+                                    ? state.ls_colors.ln
+                                    : state.ls_colors.or;
+                                break;
+            case Type_FIFO: col = state.ls_colors.pi; break;
+            case Type_SOCK: col = state.ls_colors.so; break;
+            case Type_BLK:  col = state.ls_colors.bd; break;
+            case Type_CHR:  col = state.ls_colors.cd; break;
+            case Type_EXEC: col = state.ls_colors.ex; break;
+            default:        col = "09;31";            break;
+        }
+    }
+
+    if (col) {
+        putstr("\x1b[");
+        putstr(col);
+        putstr("m");
+    }
 }
 
 static void apply_decorations(struct Node* node) {
