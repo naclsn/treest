@@ -21,6 +21,12 @@ static struct {
     bool classify;
 } flags;
 
+void ascii_init() {
+}
+
+void ascii_del() {
+}
+
 bool ascii_toggle(char flag) {
     switch (flag) {
         case 'F': TOGGLE(flags.classify); return true;
@@ -83,6 +89,8 @@ void ascii_leave(struct Node* _UNUSED(node)) {
 }
 
 struct Printer ascii_printer = {
+    .init=ascii_init,
+    .del=ascii_del,
     .toggle=ascii_toggle,
     .begin=ascii_begin,
     .end=ascii_end,

@@ -1,5 +1,5 @@
 #ifndef TREEST_VERSION
-#define TREEST_VERSION "0.0.2"
+#define TREEST_VERSION "0.0.6"
 
 #include <dirent.h>
 #include <errno.h>
@@ -78,6 +78,8 @@ extern struct Node {
 #define DO(ident, name) ident
 #define SEP ,
 extern struct Printer {
+    void (* init)();
+    void (* del)();
     bool (* toggle)(char flag);
     void (* begin)();
     void (* end)();
@@ -89,14 +91,15 @@ extern struct Printer {
 #undef SEP
 
 struct Node* node_alloc(struct Node* parent, size_t index, char* path);
-void def_free(struct Node* node);
+void node_free(struct Node* node);
 void dir_free(struct Node* node);
 void lnk_free(struct Node* node);
-void def_print(struct Node* node, struct Printer* pr);
+void node_print(struct Node* node, struct Printer* pr);
 void dir_print(struct Node* node, struct Printer* pr);
 void lnk_print(struct Node* node, struct Printer* pr);
 void lnk_resolve(struct Node* node);
 void dir_unfold(struct Node* node);
 void dir_fold(struct Node* node);
+void dir_reload(struct Node* node);
 
 #endif // TREEST_VERSION

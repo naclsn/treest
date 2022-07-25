@@ -37,24 +37,24 @@ struct Node* node_alloc(struct Node* parent, size_t index, char* path) {
     return niw;
 }
 
-void def_free(struct Node* node) {
+void node_free(struct Node* node) {
     if (node == cursor)
         cursor = node->parent
             ? node->parent
             : &root;
+    switch (node->type) {
+        case Type_DIR: dir_free(node); break;
+        case Type_LNK: lnk_free(node); break;
+        default: ;
+    }
     free(node->path);
     node->path = NULL;
 }
 
 void dir_free(struct Node* node) {
     for (size_t k = 0; k < node->count; k++) {
-        struct Node* child = node->as.dir.children[k];
-        switch (child->type) {
-            case Type_DIR: dir_free(child); break;
-            case Type_LNK: lnk_free(child); break;
-            default:       def_free(child); break;
-        }
-        free(child);
+        node_free(node->as.dir.children[k]);
+        free(node->as.dir.children[k]);
         node->as.dir.children[k] = NULL;
     }
     node->count = 0;
@@ -63,57 +63,35 @@ void dir_free(struct Node* node) {
 }
 
 void lnk_free(struct Node* node) {
-    free(node->path);
-    struct Node* child = node->as.link.to;
-    switch (child->type) {
-        case Type_DIR: dir_free(child); break;
-        case Type_LNK: lnk_free(child); break;
-        default:       def_free(child); break;
-    }
+    node_free(node->as.link.to);
     free(node->as.link.to);
     node->as.link.to = NULL;
     node->as.link.tail = NULL;
 }
 
-void def_print(struct Node* node, struct Printer* pr) {
+void node_print(struct Node* node, struct Printer* pr) {
     pr->node(node);
+    switch (node->type) {
+        case Type_DIR: dir_print(node, pr); break;
+        case Type_LNK: lnk_print(node, pr); break;
+        default: ;
+    }
 }
 
 void dir_print(struct Node* node, struct Printer* pr) {
-    pr->node(node);
     struct Dir dir = node->as.dir;
     if (dir.unfolded) {
         pr->enter(node);
-        for (size_t k = 0; k < node->count; k++) {
-            struct Node* child = dir.children[k];
-            switch (child->type) {
-                case Type_DIR: dir_print(child, pr); break;
-                case Type_LNK: lnk_print(child, pr); break;
-                default:       def_print(child, pr); break;
-            }
-        }
+        for (size_t k = 0; k < node->count; k++)
+            node_print(dir.children[k], pr);
         pr->leave(node);
     }
 }
 
 void lnk_print(struct Node* node, struct Printer* pr) {
-    pr->node(node);
     if (Type_LNK == node->type) node = node->as.link.tail;
-    if (node && Type_DIR == node->as.link.to->type) {
-        struct Dir dir = node->as.link.to->as.dir;
-        if (dir.unfolded) {
-            pr->enter(node);
-            for (size_t k = 0; k < node->count; k++) {
-                struct Node* child = dir.children[k];
-                switch (child->type) {
-                    case Type_DIR: dir_print(child, pr); break;
-                    case Type_LNK: lnk_print(child, pr); break;
-                    default:       def_print(child, pr); break;
-                }
-            }
-            pr->leave(node);
-        }
-    }
+    if (node && Type_DIR == node->as.link.to->type)
+        dir_print(node->as.link.to, pr);
 }
 
 void lnk_resolve(struct Node* node) {
@@ -186,13 +164,7 @@ void dir_unfold(struct Node* node) {
                 node->as.dir.children = realloc(node->as.dir.children, cap * sizeof(struct Node*));
             }
 
-            size_t path_len = parent_path_len+2 +
-                #ifdef _DIRENT_HAVE_D_NAMLEN
-                    ent->d_namlen
-                #else
-                    strlen(ent->d_name)
-                #endif
-            ;
+            size_t path_len = parent_path_len+2 + strlen(ent->d_name);
             char* path = malloc(path_len);
             strcpy(path, node->path);
 
@@ -208,7 +180,18 @@ void dir_unfold(struct Node* node) {
 }
 
 void dir_fold(struct Node* node) {
+    if (Type_LNK == node->type) node = node->as.link.tail;
+    if (!node || Type_DIR != node->type) return;
+
     node->as.dir.unfolded = false;
+}
+
+void dir_reload(struct Node* node) {
+    if (Type_LNK == node->type) node = node->as.link.tail;
+    if (!node || Type_DIR != node->type) return;
+
+    //dir_free();
+    die("TODO: dir_reload");
 }
 
 // cfmakeraw: 1960 magic shit
@@ -235,14 +218,14 @@ static void term_raw_mode() {
     if (tcsetattr(STDOUT_FILENO, TCSAFLUSH, &raw) < 0) die("tcsetattr");
 }
 
-char* opts(int argc, char* argv[]) {
+char* opts(unsigned argc, char* argv[]) {
     char delay_toggle_flags[256] = {0};
     char* flag = &delay_toggle_flags[0];
 
     selected_printer = &ascii_printer;
     char* selected_path = NULL;
 
-    for (int k = 0; k < argc; k++) {
+    for (unsigned k = 0; k < argc; k++) {
         if (0 == strcmp("--version", argv[k])) {
             puts(TREEST_VERSION);
             exit(0);
@@ -306,9 +289,11 @@ int main(int argc, char* argv[]) {
 
     term_raw_mode();
 
+    selected_printer->init();
+
     while (1) {
         selected_printer->begin();
-        dir_print(&root, selected_printer);
+        node_print(&root, selected_printer);
         selected_printer->end();
 
         TREEST_COMMAND(user);

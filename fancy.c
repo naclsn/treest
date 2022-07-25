@@ -28,7 +28,6 @@ static struct {
     unsigned indents;
     struct {
         char* LS_COLORS;
-        bool loaded;
         // only the following are handled
         char* rs; // (reset)
         char* di; // directory
@@ -41,7 +40,7 @@ static struct {
         char* or; // orphan (broken link)
         // char* mi; // missing (??)
         char* ex; // executable
-        char* sel; // (added) selected
+        char* sel; // selected (cursor)
         struct LS_COLORS_KVEntry {
             char* key;
             char* val;
@@ -72,6 +71,18 @@ static struct {
     bool join;
 } flags;
 
+void fancy_init() {
+    read_ls_colors();
+}
+
+void fancy_del() {
+    for (size_t k = 0; k < state.ls_colors.ext_count; k++) free(state.ls_colors.ext[k]);
+    for (size_t k = 0; k < state.ls_colors.exa_count; k++) free(state.ls_colors.exa[k]);
+    free(state.ls_colors.ext);
+    free(state.ls_colors.exa);
+    free(state.ls_colors.LS_COLORS);
+}
+
 bool fancy_toggle(char flag) {
     switch (flag) {
         case 'F': TOGGLE(flags.classify); return true;
@@ -82,8 +93,6 @@ bool fancy_toggle(char flag) {
 }
 
 void fancy_begin() {
-    if (!state.ls_colors.loaded)
-        read_ls_colors();
     state.depth = -1;
     state.indents = 0;
     putstr(_CL);
@@ -149,7 +158,7 @@ static void _sorted_insert(struct LS_COLORS_KVEntry* entry, struct LS_COLORS_KVE
         *into = realloc(*into, *cap * sizeof(struct LS_COLORS_KVEntry*));
     }
 
-    int k = 0;
+    size_t k = 0;
     for (k = *count; 0 < k; k--) {
         if (strcmp((*into)[k-1]->key, entry->key) < 0) break;
         (*into)[k] = (*into)[k-1];
@@ -159,8 +168,9 @@ static void _sorted_insert(struct LS_COLORS_KVEntry* entry, struct LS_COLORS_KVE
 }
 
 static void read_ls_colors() {
+    if (state.ls_colors.LS_COLORS) return;
+
     char* tail = getenv("LS_COLORS");
-    state.ls_colors.loaded = true;
     if (!tail) return;
 
     size_t ext_cap = 0;
@@ -290,6 +300,8 @@ static void apply_decorations(struct Node* node) {
 }
 
 struct Printer fancy_printer = {
+    .init=fancy_init,
+    .del=fancy_del,
     .toggle=fancy_toggle,
     .begin=fancy_begin,
     .end=fancy_end,

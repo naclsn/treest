@@ -13,6 +13,9 @@
 #define putstr(__c) if (write(STDERR_FILENO, __c, strlen(__c)) < 0) die("write")
 #define putln() putstr("\r\n")
 
+#undef CTRL
+#define CTRL(x) ( (~x&64) | (~x&64)>>1 | (x&31) )
+
 static bool (* command_map[128])();
 
 static ssize_t prompt(const char* c, char* dest, ssize_t size);
@@ -35,19 +38,19 @@ static ssize_t prompt(const char* c, char* dest, ssize_t size) {
     do {
         if (read(STDIN_FILENO, dest, 1) < 0) die("read");
         last = *dest;
-        if (3 == last || 4 == last || 7 == last || 27 == last) {
+        if (CTRL('C') == last || CTRL('D') == last || CTRL('G') == last || CTRL('[') == last) {
             putstr("- aborted");
             putln();
             return 0;
         }
-        if ('\b' == last || 127 == last) {
+        if (CTRL('H') == last || CTRL('?') == last) {
             if (0 < r) {
                 putstr("\b \b");
                 r--; *dest-- = '\0';
             }
             continue;
         }
-        if (23 == last) {
+        if (CTRL('W') == last) {
             while (0 < r) {
                 putstr("\b \b");
                 r--; *dest-- = '\0';
@@ -55,7 +58,7 @@ static ssize_t prompt(const char* c, char* dest, ssize_t size) {
             }
             continue;
         }
-        if ('\r' == last || '\n' == last) break;
+        if (CTRL('J') == last || CTRL('M') == last) break;
         putstr(dest);
         r++; dest++;
     } while (r < size);
@@ -69,6 +72,13 @@ static char prompt1(const char* c) {
     putstr(c);
     putstr(": ");
     if (read(STDIN_FILENO, &r, 1) < 0) die("read");
+    if (CTRL('C') == r || CTRL('D') == r || CTRL('G') == r || CTRL('J') == r || CTRL('M') == r || CTRL('[') == r) {
+        putstr("- aborted");
+        putln();
+        return 0;
+    }
+    char w[2] = {r};
+    putstr(w);
     putln();
     return r;
 }
@@ -158,8 +168,7 @@ static bool c_cquit() {
 
 static bool c_toggle() {
     char x = prompt1("toggle");
-    return selected_printer->toggle(x);
-    return false;
+    return x && selected_printer->toggle(x);
 }
 
 static bool c_previous() {
@@ -314,37 +323,15 @@ static bool (* command_map[128])() = {
 /*
 static void do_command(char x) {
     switch (x) {
-        case 'O': break; // (prompt) unfold by path
-        case 'C': break; // (prompt) fold by path
-        case 'o': break; // (prompt) go to and unfold by path
-        case 'c': break; // (prompt) go to and fold by path
-
-        case '0': break; // fold all
-
         case '^': break; // (prompt) go to basename starting with
         case '$': break; // (prompt) go to basename ending with
-        case '/': break; // (prompt) go to basename containing
-
-        case '-': break; // (prompt-1) toggle flag
+        case '/': break; // (prompt) go to basename matching
 
         case '?': break; // help? (prompt-1?)
 
         case  5: // ^E (mouse down)
         case 25: // ^Y (mouse up)
             break;
-
-        case 10: // ^J
-        case 13: // ^M (return)
-            break;
-
-        case  3: // ^C
-        case  4: // ^D
-        case  7: // ^G
-
-        //case 27: // ^[ // note to self: shall escape from any prompt/pending
-
-        case 'q': exit(0);
-        case 'Q': exit(1);
     }
 }
 */
