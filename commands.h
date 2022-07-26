@@ -300,10 +300,15 @@ static bool c_promptgofold() {
     return false;
 }
 
-// REM: please remember to `LC_ALL=C sort`
+static bool c_spawn() {
+    return false;
+}
+
+// REM: `LC_ALL=C sort`
 static bool (* command_map[128])() = {
-    [  3]=c_quit,         // ^C (ETX)
-    [  4]=c_quit,         // ^D (EOT)
+    [CTRL('C')]=c_quit,
+    [CTRL('D')]=c_quit,
+    ['!']=c_spawn,
     ['-']=c_toggle,
     ['0']=c_foldall,
     ['C']=c_promptfold,
@@ -328,6 +333,8 @@ static void do_command(char x) {
         case '/': break; // (prompt) go to basename matching
 
         case '?': break; // help? (prompt-1?)
+
+        case '!': break; // (prompt) spawn (fork-exec-wait)
 
         case  5: // ^E (mouse down)
         case 25: // ^Y (mouse up)

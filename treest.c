@@ -38,10 +38,6 @@ struct Node* node_alloc(struct Node* parent, size_t index, char* path) {
 }
 
 void node_free(struct Node* node) {
-    if (node == cursor)
-        cursor = node->parent
-            ? node->parent
-            : &root;
     switch (node->type) {
         case Type_DIR: dir_free(node); break;
         case Type_LNK: lnk_free(node); break;
@@ -49,6 +45,11 @@ void node_free(struct Node* node) {
     }
     free(node->path);
     node->path = NULL;
+    node->name = NULL;
+    if (node == cursor)
+        cursor = node->parent
+            ? node->parent
+            : &root;
 }
 
 void dir_free(struct Node* node) {
@@ -60,6 +61,7 @@ void dir_free(struct Node* node) {
     node->count = 0;
     free(node->as.dir.children);
     node->as.dir.children = NULL;
+    node->as.dir.unfolded = false;
 }
 
 void lnk_free(struct Node* node) {
@@ -190,8 +192,9 @@ void dir_reload(struct Node* node) {
     if (Type_LNK == node->type) node = node->as.link.tail;
     if (!node || Type_DIR != node->type) return;
 
-    //dir_free();
-    die("TODO: dir_reload");
+    bool unfolded = node->as.dir.unfolded;
+    dir_free(node);
+    if (unfolded) dir_unfold(node);
 }
 
 // cfmakeraw: 1960 magic shit

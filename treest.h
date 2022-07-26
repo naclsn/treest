@@ -1,5 +1,5 @@
-#ifndef TREEST_VERSION
-#define TREEST_VERSION "0.0.6"
+#ifndef TREEST_SAD
+#define TREEST_SAD
 
 #include <dirent.h>
 #include <errno.h>
@@ -102,4 +102,4 @@ void dir_unfold(struct Node* node);
 void dir_fold(struct Node* node);
 void dir_reload(struct Node* node);
 
-#endif // TREEST_VERSION
+#endif // TREEST_SAD
