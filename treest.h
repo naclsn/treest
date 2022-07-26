@@ -1,6 +1,9 @@
 #ifndef TREEST_SAD
 #define TREEST_SAD
 
+#undef _DEFAULT_SOURCE
+#define _DEFAULT_SOURCE 1
+
 #include <dirent.h>
 #include <errno.h>
 #include <libgen.h>

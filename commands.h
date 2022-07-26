@@ -64,7 +64,7 @@ static ssize_t prompt(const char* c, char* dest, ssize_t size) {
     } while (r < size);
     putln();
     *dest = '\0';
-    return r-1;
+    return r;
 }
 
 static char prompt1(const char* c) {
@@ -301,7 +301,42 @@ static bool c_promptgofold() {
 }
 
 static bool c_spawn() {
-    return false;
+    char c[_MAX_PATH] = {0};
+    ssize_t clen = prompt("shell-pipeline", c, _MAX_PATH);
+    if (0 == clen) return false;
+
+    // (TODO: manually)
+
+    size_t nlen = strlen(cursor->path);
+    char* com = malloc(clen * sizeof(char));
+    char* into = com;
+
+    char* head = c;
+    char* tail;
+    while ((tail = strstr(head, "{}"))) {
+        memcpy(into, head, tail-head);
+        into+= tail-head;
+
+        clen+= nlen;
+        char* pcom = com;
+        com = realloc(com, clen * sizeof(char));
+        into+= com - pcom;
+
+        strcpy(into, cursor->path);
+        into+= strlen(cursor->path);
+
+        head = tail+2;
+    }
+    strcpy(into, head);
+
+    // TODO: not raw
+
+    int _usl = system(com);
+    if (read(STDIN_FILENO, &_usl, 1) < 0) die("read");
+
+    // TODO: raw again
+
+    return true;
 }
 
 // REM: `LC_ALL=C sort`
