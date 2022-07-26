@@ -1,11 +1,11 @@
 #ifdef TREEST_COMMAND
 #error This file should not be included outside treest.c
 #endif // TREEST_COMMAND
-#define TREEST_COMMAND(__x) {                                 \
-    unsigned char user;                                       \
-    do {                                                      \
-        if (read(0, &user, 1) < 0) die("read");               \
-    } while (!command_map[user] || !command_map[user](user)); \
+#define TREEST_COMMAND(__x) {                              \
+    unsigned char user;                                    \
+    do {                                                   \
+        if (read(STDIN_FILENO, &user, 1) < 0) die("read"); \
+    } while (!command_map[user] || !command_map[user]());  \
 }
 
 #include "./treest.h"
@@ -15,8 +15,6 @@
 
 #undef CTRL
 #define CTRL(x) ( (~x&64) | (~x&64)>>1 | (x&31) )
-
-static bool (* command_map[128])();
 
 static ssize_t prompt(const char* c, char* dest, ssize_t size);
 static char prompt1(const char* c);
@@ -156,22 +154,22 @@ static struct Node* locate(const char* path) {
     return curr;
 }
 
-static bool c_quit() {
+static bool c_quit(void) {
     exit(EXIT_SUCCESS);
     return false;
 }
 
-static bool c_cquit() {
+static bool c_cquit(void) {
     exit(EXIT_FAILURE);
     return false;
 }
 
-static bool c_toggle() {
+static bool c_toggle(void) {
     char x = prompt1("toggle");
     return x && selected_printer->toggle(x);
 }
 
-static bool c_previous() {
+static bool c_previous(void) {
     struct Node* p = cursor->parent;
     if (p) {
         if (Type_LNK == p->type) p = p->as.link.tail;
@@ -183,7 +181,7 @@ static bool c_previous() {
     return false;
 }
 
-static bool c_next() {
+static bool c_next(void) {
     struct Node* p = cursor->parent;
     if (p) {
         if (Type_LNK == p->type) p = p->as.link.tail;
@@ -195,7 +193,7 @@ static bool c_next() {
     return false;
 }
 
-static bool c_child() {
+static bool c_child(void) {
     struct Node* d = cursor;
     if (Type_LNK == d->type) d = d->as.link.tail;
     if (d && Type_DIR == d->type) {
@@ -206,7 +204,7 @@ static bool c_child() {
     return false;
 }
 
-static bool c_parent() {
+static bool c_parent(void) {
     struct Node* p = cursor->parent;
     if (p) {
         cursor = p;
@@ -215,7 +213,7 @@ static bool c_parent() {
     return false;
 }
 
-static bool c_unfold() {
+static bool c_unfold(void) {
     struct Node* d = cursor;
     if (Type_LNK == d->type) d = d->as.link.tail;
     if (d && Type_DIR == d->type) {
@@ -225,7 +223,7 @@ static bool c_unfold() {
     return false;
 }
 
-static bool c_fold() {
+static bool c_fold(void) {
     if (Type_DIR == cursor->type) {
         dir_fold(cursor);
         return true;
@@ -241,14 +239,14 @@ static void _recurse_foldall(struct Node* curr) {
     }
     dir_fold(curr);
 }
-static bool c_foldall() {
+static bool c_foldall(void) {
     _recurse_foldall(&root);
     dir_unfold(&root);
     cursor = &root;
     return true;
 }
 
-static bool c_promptunfold() {
+static bool c_promptunfold(void) {
     char c[_MAX_PATH] = {0};
     if (!prompt("unfold-path", c, _MAX_PATH)) return false;
     struct Node* found = locate(c);
@@ -262,7 +260,7 @@ static bool c_promptunfold() {
     return false;
 }
 
-static bool c_promptfold() {
+static bool c_promptfold(void) {
     char c[_MAX_PATH] = {0};
     if (!prompt("fold-path", c, _MAX_PATH)) return false;
     struct Node* found = locate(c);
@@ -276,7 +274,7 @@ static bool c_promptfold() {
     return false;
 }
 
-static bool c_promptgounfold() {
+static bool c_promptgounfold(void) {
     char c[_MAX_PATH] = {0};
     if (!prompt("gounfold-path", c, _MAX_PATH)) return false;
     struct Node* found = locate(c);
@@ -288,7 +286,7 @@ static bool c_promptgounfold() {
     return false;
 }
 
-static bool c_promptgofold() {
+static bool c_promptgofold(void) {
     char c[_MAX_PATH] = {0};
     if (!prompt("gofold-path", c, _MAX_PATH)) return false;
     struct Node* found = locate(c);
@@ -300,7 +298,7 @@ static bool c_promptgofold() {
     return false;
 }
 
-static bool c_spawn() {
+static bool c_shell(void) {
     char c[_MAX_PATH] = {0};
     ssize_t clen = prompt("shell-pipeline", c, _MAX_PATH);
     if (0 == clen) return false;
@@ -339,13 +337,20 @@ static bool c_spawn() {
     return true;
 }
 
+static bool c_longoption(void) {
+    char c[128] = {0};
+    if (!prompt("longoption", c, _MAX_PATH)) return false;
+    return selected_printer->longoption(c);
+}
+
 // REM: `LC_ALL=C sort`
-static bool (* command_map[128])() = {
+bool (* command_map[128])(void) = {
     [CTRL('C')]=c_quit,
     [CTRL('D')]=c_quit,
-    ['!']=c_spawn,
+    ['!']=c_shell,
     ['-']=c_toggle,
     ['0']=c_foldall,
+    [':']=c_longoption,
     ['C']=c_promptfold,
     ['H']=c_fold,
     ['L']=c_unfold,

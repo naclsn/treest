@@ -200,11 +200,11 @@ void dir_reload(struct Node* node) {
 // cfmakeraw: 1960 magic shit
 static struct termios orig_termios;
 
-static void term_restore() {
+static void term_restore(void) {
     tcsetattr(STDOUT_FILENO, TCSAFLUSH, &orig_termios);
 }
 
-static void term_raw_mode() {
+static void term_raw_mode(void) {
     if (!(is_tty = isatty(STDOUT_FILENO))) return;
 
     if (tcgetattr(STDOUT_FILENO, &orig_termios) < 0) die("tcgetattr");
@@ -229,10 +229,7 @@ char* opts(unsigned argc, char* argv[]) {
     char* selected_path = NULL;
 
     for (unsigned k = 0; k < argc; k++) {
-        if (0 == strcmp("--version", argv[k])) {
-            puts(TREEST_VERSION);
-            exit(0);
-        } else if (0 == memcmp("--printer=", argv[k], 10)) {
+        if (0 == memcmp("--printer=", argv[k], 10)) {
             char* arg = argv[k] + 10;
             #define DO(ident, name) if (0 == strcmp(name, arg)) selected_printer = &(ident);
             #define SEP else
@@ -250,8 +247,10 @@ char* opts(unsigned argc, char* argv[]) {
                         selected_path = argv[k+1];
                         break;
                     }
-                    printf("Unknown argument '%s'\n", argv[k]);
-                    exit(2);
+                    if (!selected_printer->longoption(argv[k]+2)) {
+                        printf("Unknown argument '%s'\n", argv[k]);
+                        exit(2);
+                    }
                 }
                 strcpy(flag, argv[k]+1);
                 flag+= strlen(argv[k]+1);
@@ -272,9 +271,14 @@ int main(int argc, char* argv[]) {
     prog = argv[0];
     argv++;
     argc--;
-    if (1 == argc && (0 == strcmp("-h", argv[0]) || 0 == strcmp("--help", argv[0]))) {
-        printf("Usage: %s [--printer=name] [-flags] [[--] root]\n", prog);
-        exit(2);
+    if (1 == argc) {
+        if (0 == strcmp("--help", argv[0])) {
+            printf("Usage: %s [--printer=NAME] [--LONGOPTIONS] [-FLAGS] [[--] ROOT]\n", prog);
+            exit(2);
+        } else if (0 == strcmp("--version", argv[0])) {
+            puts(TREEST_VERSION);
+            exit(0);
+        }
     }
 
     char* arg_path = opts(argc, argv);

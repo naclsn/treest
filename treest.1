@@ -5,16 +5,17 @@ treest \- stateful tree view
 
 .SH SYNOPSIS
 .B treest
-[--printer=\fINAME\fR] [-\fIFLAGS\fR] [[--] \fIROOT\fR]
+[--printer=\fINAME\fR] [--\fILONGOPTIONS\fR] [-\fIFLAGS\fR] [[--] \fIROOT\fR]
 
 .SH DESCRIPTION
 .PP
 Print a tree-like representation of a directory to standard output.
 Take interactive commands from standard input.
+When supported and standard output is a TTY, it is set to raw mode.
 
 .SH OPTIONS
 .TP
-\fB\-h, \-\-help
+\fB\-\-help
 Show the quick help.
 .TP
 \fB\-\-version
@@ -22,6 +23,9 @@ Print the version successfully.
 .TP
 \fB\-\-printer=\fINAME\fR
 Use the specified printer.
+.TP
+\fB\-\-\fILONGOPTIONS\fR
+Other options are forwarded to the last specified printer.
 
 .SH PRINTERS
 .PP
@@ -37,8 +41,8 @@ blablabla
 
 .SH COMMANDS
 .PP
-The following commands are always available.
-Note that from any prompt or pending state, \fB'^['\fR (\fBESC\fR) should bring it back to normal mode.
+The following commands should be available.
+Note that from any prompt or pending state, \fB'^['\fR (\fBESC\fR) should bring it back to "normal mode".
 blablabla
 
 .SH AUTHOR

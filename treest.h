@@ -48,6 +48,7 @@ extern struct GFlags {
     bool placeholder;
 } gflags;
 extern bool toggle_gflag(char flag);
+extern bool (* command_map[128])(void);
 
 extern struct Node {
     char* path;
@@ -81,11 +82,12 @@ extern struct Node {
 #define DO(ident, name) ident
 #define SEP ,
 extern struct Printer {
-    void (* init)();
-    void (* del)();
+    void (* init)(void);
+    void (* del)(void);
     bool (* toggle)(char flag);
-    void (* begin)();
-    void (* end)();
+    bool (* longoption)(const char* c);
+    void (* begin)(void);
+    void (* end)(void);
     void (* node)(struct Node* node);
     void (* enter)(struct Node* node);
     void (* leave)(struct Node* node);

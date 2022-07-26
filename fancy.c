@@ -16,7 +16,7 @@ static const char* const INDENT_LAST = _SP _SP _SP " ";
 static const char* const BRANCH      = _TE _HZ _HZ " ";
 static const char* const BRANCH_LAST = _AN _HZ _HZ " ";
 
-static void read_ls_colors();
+static void read_ls_colors(void);
 static void apply_ls_colors(struct Node* node);
 static void apply_decorations(struct Node* node);
 
@@ -71,11 +71,11 @@ static struct {
     bool join;
 } flags;
 
-void fancy_init() {
+void fancy_init(void) {
     read_ls_colors();
 }
 
-void fancy_del() {
+void fancy_del(void) {
     for (size_t k = 0; k < state.ls_colors.ext_count; k++) free(state.ls_colors.ext[k]);
     for (size_t k = 0; k < state.ls_colors.exa_count; k++) free(state.ls_colors.exa[k]);
     free(state.ls_colors.ext);
@@ -92,13 +92,17 @@ bool fancy_toggle(char flag) {
     return toggle_gflag(flag);
 }
 
-void fancy_begin() {
+bool fancy_longoption(const char* _UNUSED(c)) {
+    return false;
+}
+
+void fancy_begin(void) {
     state.depth = -1;
     state.indents = 0;
     putstr(_CL);
 }
 
-void fancy_end() {
+void fancy_end(void) {
     putstr(_LC);
 }
 
@@ -167,7 +171,7 @@ static void _sorted_insert(struct LS_COLORS_KVEntry* entry, struct LS_COLORS_KVE
     (*count)++;
 }
 
-static void read_ls_colors() {
+static void read_ls_colors(void) {
     if (state.ls_colors.LS_COLORS) return;
 
     char* tail = getenv("LS_COLORS");
@@ -303,6 +307,7 @@ struct Printer fancy_printer = {
     .init=fancy_init,
     .del=fancy_del,
     .toggle=fancy_toggle,
+    .longoption=fancy_longoption,
     .begin=fancy_begin,
     .end=fancy_end,
     .node=fancy_node,

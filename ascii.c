@@ -21,10 +21,10 @@ static struct {
     bool classify;
 } flags;
 
-void ascii_init() {
+void ascii_init(void) {
 }
 
-void ascii_del() {
+void ascii_del(void) {
 }
 
 bool ascii_toggle(char flag) {
@@ -34,12 +34,16 @@ bool ascii_toggle(char flag) {
     return toggle_gflag(flag);
 }
 
-void ascii_begin() {
+bool ascii_longoption(const char* _UNUSED(c)) {
+    return false;
+}
+
+void ascii_begin(void) {
     state.depth = -1;
     state.indents = 0;
 }
 
-void ascii_end() {
+void ascii_end(void) {
 }
 
 void ascii_node(struct Node* node) {
@@ -92,6 +96,7 @@ struct Printer ascii_printer = {
     .init=ascii_init,
     .del=ascii_del,
     .toggle=ascii_toggle,
+    .longoption=ascii_longoption,
     .begin=ascii_begin,
     .end=ascii_end,
     .node=ascii_node,
