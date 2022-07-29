@@ -106,5 +106,7 @@ void lnk_resolve(struct Node* node);
 void dir_unfold(struct Node* node);
 void dir_fold(struct Node* node);
 void dir_reload(struct Node* node);
+void term_restore(void);
+void term_raw_mode(void);
 
 #endif // TREEST_SAD

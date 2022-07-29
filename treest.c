@@ -197,20 +197,24 @@ void dir_reload(struct Node* node) {
     if (unfolded) dir_unfold(node);
 }
 
-// cfmakeraw: 1960 magic shit
 static struct termios orig_termios;
+static bool atexit_set = false;
 
-static void term_restore(void) {
-    tcsetattr(STDOUT_FILENO, TCSAFLUSH, &orig_termios);
+void term_restore(void) {
+    if (!is_tty) return;
+
+    if (tcsetattr(STDOUT_FILENO, TCSAFLUSH, &orig_termios) < 0) die("tcresattr");
 }
 
-static void term_raw_mode(void) {
-    if (!(is_tty = isatty(STDOUT_FILENO))) return;
+void term_raw_mode(void) {
+    if (!is_tty) return;
 
-    if (tcgetattr(STDOUT_FILENO, &orig_termios) < 0) die("tcgetattr");
+    if (!atexit_set) {
+        if (tcgetattr(STDOUT_FILENO, &orig_termios) < 0) die("tcgetattr");
+        if (0 != atexit(term_restore)) die("atexit");
+    }
 
-    atexit(term_restore);
-
+    // cfmakeraw: 1960 magic shit
     struct termios raw = orig_termios;
     raw.c_iflag &= ~(IGNBRK | BRKINT | PARMRK | ISTRIP | INLCR | IGNCR | ICRNL | IXON);
     raw.c_oflag &= ~(OPOST);
@@ -294,7 +298,7 @@ int main(int argc, char* argv[]) {
 
     cursor = &root;
 
-    term_raw_mode();
+    if ((is_tty = isatty(STDOUT_FILENO))) term_raw_mode();
 
     selected_printer->init();
 

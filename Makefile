@@ -2,7 +2,7 @@ PREFIX    ?= /usr/local
 MANPREFIX ?= $(PREFIX)/share/man
 DESTDIR   ?= 
 
-CFLAGS += -Wall -Wextra -Werror -pedantic -O2
+CFLAGS += -std=c99 -Wall -Wextra -Werror -pedantic -O2
 VERSION = 0.0.6
 
 PROG = treest
