@@ -4,6 +4,7 @@
 char* prog;
 char cwd[_MAX_PATH];
 bool is_tty;
+bool is_raw;
 struct GFlags gflags;
 struct Node root, * cursor;
 struct Printer* selected_printer;
@@ -204,6 +205,7 @@ void term_restore(void) {
     if (!is_tty) return;
 
     if (tcsetattr(STDOUT_FILENO, TCSAFLUSH, &orig_termios) < 0) die("tcresattr");
+    is_raw = false;
 }
 
 void term_raw_mode(void) {
@@ -223,6 +225,7 @@ void term_raw_mode(void) {
     raw.c_cflag |= (CS8);
 
     if (tcsetattr(STDOUT_FILENO, TCSAFLUSH, &raw) < 0) die("tcsetattr");
+    is_raw = true;
 }
 
 char* opts(unsigned argc, char* argv[]) {
@@ -251,7 +254,7 @@ char* opts(unsigned argc, char* argv[]) {
                         selected_path = argv[k+1];
                         break;
                     }
-                    if (!selected_printer->longoption(argv[k]+2)) {
+                    if (!selected_printer->command(argv[k]+2)) {
                         printf("Unknown argument '%s'\n", argv[k]);
                         exit(2);
                     }

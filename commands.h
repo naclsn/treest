@@ -11,7 +11,7 @@
 #include "./treest.h"
 
 #define putstr(__c) if (write(STDERR_FILENO, __c, strlen(__c)) < 0) die("write")
-#define putln() putstr("\r\n")
+#define putln() putstr(is_raw ? "\r\n" : "\n")
 
 #undef CTRL
 #define CTRL(x) ( (~x&64) | (~x&64)>>1 | (x&31) )
@@ -152,6 +152,37 @@ static struct Node* locate(const char* path) {
     }
 
     return curr;
+}
+
+static char* quote(char* text) {
+    size_t cap = 64;
+    size_t len = 0;
+    char* ab = malloc(cap * sizeof(char));
+
+    ab[len++] = '\'';
+
+    char* cast = text;
+    while (NULL != (cast = strchr(text, '\''))) {
+        size_t add = cast-text;
+        if (cap < len+add+4) {
+            cap*= 2;
+            ab = realloc(ab, cap * sizeof(char));
+        }
+        memcpy(ab+len, text, add);
+        len+= add;
+        memcpy(ab+len, "'\\''", 4);
+        len+= 4;
+        text = cast+1;
+    }
+    size_t left = strlen(text);
+    if (cap < len+left+2) ab = realloc(ab, (len+left+2) * sizeof(char));
+    memcpy(ab+len, text, left);
+    len+= left;
+
+    ab[len++] = '\'';
+    ab[len] = '\0';
+
+    return ab;
 }
 
 static bool c_quit(void) {
@@ -298,14 +329,25 @@ static bool c_promptgofold(void) {
     return false;
 }
 
+static bool c_command(void) {
+    char c[128] = {0};
+    if (!prompt("command", c, 128)) return false;
+    return selected_printer->command(c);
+}
+
 static bool c_shell(void) {
+    if (0 == system(NULL)) {
+        putstr("! no shell available");
+        return false;
+    }
+
     char c[_MAX_PATH] = {0};
-    ssize_t clen = prompt("shell-pipeline", c, _MAX_PATH);
+    ssize_t clen = prompt("shell-command", c, _MAX_PATH);
     if (0 == clen) return false;
 
-    // (TODO: manually)
+    char* quoted = quote(cursor->path);
+    size_t nlen = strlen(quoted);
 
-    size_t nlen = strlen(cursor->path);
     char* com = malloc(clen * sizeof(char));
     char* into = com;
 
@@ -320,27 +362,72 @@ static bool c_shell(void) {
         com = realloc(com, clen * sizeof(char));
         into+= com - pcom;
 
-        strcpy(into, cursor->path);
-        into+= strlen(cursor->path);
+        strcpy(into, quoted);
+        into+= nlen;
 
         head = tail+2;
     }
     strcpy(into, head);
 
-    // TODO: not raw
+    term_restore();
+    int _usl = system(com); // YYY
+    term_raw_mode();
 
-    int _usl = system(com);
+    putstr("! done");
     if (read(STDIN_FILENO, &_usl, 1) < 0) die("read");
-
-    // TODO: raw again
 
     return true;
 }
 
-static bool c_longoption(void) {
-    char c[128] = {0};
-    if (!prompt("longoption", c, _MAX_PATH)) return false;
-    return selected_printer->longoption(c);
+static bool c_pipe(void) {
+    if (0 == system(NULL)) {
+        putstr("! no shell available");
+        return false;
+    }
+
+    char c[_MAX_PATH] = {0};
+    ssize_t clen = prompt("pipe-command", c, _MAX_PATH);
+    if (0 == clen) return false;
+
+    char* quoted = quote(cursor->path);
+    size_t nlen = strlen(quoted);
+
+    clen+= nlen+1;
+
+    char* com = malloc(clen * sizeof(char));
+    char* into = com;
+
+    char* head = c;
+    char* tail;
+    while ((tail = strstr(head, "{}"))) {
+        memcpy(into, head, tail-head);
+        into+= tail-head;
+
+        clen+= nlen;
+        char* pcom = com;
+        com = realloc(com, clen * sizeof(char));
+        into+= com - pcom;
+
+        strcpy(into, quoted);
+        into+= nlen;
+
+        head = tail+2;
+    }
+    strcpy(into, head);
+
+    into+= strlen(head);
+    *into++ = '<';
+    strcpy(into, quoted);
+    *(into+nlen) = '\0';
+
+    term_restore();
+    int _usl = system(com); // YYY
+    term_raw_mode();
+
+    putstr("! done");
+    if (read(STDIN_FILENO, &_usl, 1) < 0) die("read");
+
+    return true;
 }
 
 // REM: `LC_ALL=C sort`
@@ -350,7 +437,7 @@ bool (* command_map[128])(void) = {
     ['!']=c_shell,
     ['-']=c_toggle,
     ['0']=c_foldall,
-    [':']=c_longoption,
+    [':']=c_command,
     ['C']=c_promptfold,
     ['H']=c_fold,
     ['L']=c_unfold,
@@ -363,6 +450,7 @@ bool (* command_map[128])(void) = {
     ['l']=c_child,
     ['o']=c_promptgounfold,
     ['q']=c_quit,
+    ['|']=c_pipe,
 };
 
 /*

@@ -92,7 +92,7 @@ bool fancy_toggle(char flag) {
     return toggle_gflag(flag);
 }
 
-bool fancy_longoption(const char* _UNUSED(c)) {
+bool fancy_command(const char* _UNUSED(c)) {
     return false;
 }
 
@@ -307,7 +307,7 @@ struct Printer fancy_printer = {
     .init=fancy_init,
     .del=fancy_del,
     .toggle=fancy_toggle,
-    .longoption=fancy_longoption,
+    .command=fancy_command,
     .begin=fancy_begin,
     .end=fancy_end,
     .node=fancy_node,

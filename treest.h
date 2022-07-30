@@ -44,6 +44,7 @@
 extern char* prog;
 extern char cwd[_MAX_PATH];
 extern bool is_tty;
+extern bool is_raw;
 extern struct GFlags {
     bool placeholder;
 } gflags;
@@ -79,21 +80,23 @@ extern struct Node {
     size_t count;
 } root, * cursor;
 
-#define DO(ident, name) ident
-#define SEP ,
 extern struct Printer {
     void (* init)(void);
     void (* del)(void);
     bool (* toggle)(char flag);
-    bool (* longoption)(const char* c);
+    bool (* command)(const char* c);
     void (* begin)(void);
     void (* end)(void);
     void (* node)(struct Node* node);
     void (* enter)(struct Node* node);
     void (* leave)(struct Node* node);
-} EVERY_PRINTERS(DO, SEP), * selected_printer;
+}
+#define DO(ident, name) ident
+#define SEP ,
+EVERY_PRINTERS(DO, SEP)
 #undef DO
 #undef SEP
+, * selected_printer;
 
 struct Node* node_alloc(struct Node* parent, size_t index, char* path);
 void node_free(struct Node* node);

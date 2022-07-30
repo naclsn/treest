@@ -34,7 +34,7 @@ bool ascii_toggle(char flag) {
     return toggle_gflag(flag);
 }
 
-bool ascii_longoption(const char* _UNUSED(c)) {
+bool ascii_command(const char* _UNUSED(c)) {
     return false;
 }
 
@@ -96,7 +96,7 @@ struct Printer ascii_printer = {
     .init=ascii_init,
     .del=ascii_del,
     .toggle=ascii_toggle,
-    .longoption=ascii_longoption,
+    .command=ascii_command,
     .begin=ascii_begin,
     .end=ascii_end,
     .node=ascii_node,
