@@ -304,6 +304,7 @@ static void apply_decorations(struct Node* node) {
 }
 
 struct Printer fancy_printer = {
+    .name="fancy",
     .init=fancy_init,
     .del=fancy_del,
     .toggle=fancy_toggle,

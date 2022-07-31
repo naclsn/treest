@@ -31,7 +31,7 @@ struct Node* node_alloc(struct Node* parent, size_t index, char* path) {
         if (sb.st_mode & S_IXUSR)
             niw->type = Type_EXEC;
     } else if (Type_LNK == type) {
-        // TODO: handle ELOOP as broken symlinks
+        // TODO: handle looping symlinks as broken
         lnk_resolve(niw);
     }
 
@@ -117,9 +117,8 @@ void lnk_resolve(struct Node* node) {
             if ('.' == *(copy+1)) {
                 paste--;
                 if (fullpath == paste) {
-                    // TODO: handle beyond root as broken symlink
-                    errno = ENOTDIR;
-                    die(relpath);
+                    node->as.link.to = node->as.link.tail = NULL;
+                    return;
                 }
                 while ('/' != *--paste);
                 paste++;
@@ -158,9 +157,11 @@ void dir_unfold(struct Node* node) {
     if (dir) {
         struct dirent *ent;
         while ((ent = readdir(dir))) {
-            if ('.' == ent->d_name[0] && ('\0' == ent->d_name[1]
-            || ('.' == ent->d_name[1] && '\0' == ent->d_name[2])))
-                continue;
+            if ('.' == ent->d_name[0] && (
+                '\0' == ent->d_name[1]
+                || ('.' == ent->d_name[1] && '\0' == ent->d_name[2])
+                || !gflags.almost_all
+            )) continue;
 
             if (cap <= node->count) {
                 cap*= 2;
@@ -192,6 +193,8 @@ void dir_fold(struct Node* node) {
 void dir_reload(struct Node* node) {
     if (Type_LNK == node->type) node = node->as.link.tail;
     if (!node || Type_DIR != node->type) return;
+
+    // TODO: for each child, if is dir then somehow recurse the reloading
 
     bool unfolded = node->as.dir.unfolded;
     dir_free(node);
@@ -228,17 +231,14 @@ void term_raw_mode(void) {
     is_raw = true;
 }
 
-char* opts(unsigned argc, char* argv[]) {
-    char delay_toggle_flags[256] = {0};
-    char* flag = &delay_toggle_flags[0];
-
+char* opts(int argc, char* argv[]) {
     selected_printer = &ascii_printer;
     char* selected_path = NULL;
 
-    for (unsigned k = 0; k < argc; k++) {
+    for (int k = 0; k < argc; k++) {
         if (0 == memcmp("--printer=", argv[k], 10)) {
             char* arg = argv[k] + 10;
-            #define DO(ident, name) if (0 == strcmp(name, arg)) selected_printer = &(ident);
+            #define DO(it) if (0 == strcmp(it.name, arg)) selected_printer = &it;
             #define SEP else
             EVERY_PRINTERS(DO, SEP)
             #undef DO
@@ -255,21 +255,22 @@ char* opts(unsigned argc, char* argv[]) {
                         break;
                     }
                     if (!selected_printer->command(argv[k]+2)) {
-                        printf("Unknown argument '%s'\n", argv[k]);
+                        printf("Unknown command for '%s': '%s'\n", selected_printer->name, argv[k]+2);
                         exit(2);
                     }
                 }
-                strcpy(flag, argv[k]+1);
-                flag+= strlen(argv[k]+1);
+                char* flag = argv[k];
+                while (*++flag) {
+                    if ('+' == *flag) for (int k = 0; k < 128; k++)
+                        selected_printer->toggle(k);
+                    else selected_printer->toggle(*flag);
+                }
             } else {
                 selected_path = argv[k];
                 break;
             }
         }
     }
-
-    while (delay_toggle_flags != flag--)
-        selected_printer->toggle(*flag);
 
     return selected_path;
 }

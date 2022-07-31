@@ -25,6 +25,7 @@ Must be the only argument.
 .TP
 \fB\-\-printer=\fINAME\fR
 Use the specified printer.
+When given, should be the first argument.
 .TP
 \fB\-\-\fILONGOPTIONS\fR
 Other options are forwarded to the last specified printer.
@@ -33,7 +34,12 @@ Other options are forwarded to the last specified printer.
 .PP
 The flags available depend on the printer used.
 Unknown flags are silently ignored.
-The default printer is "\fBascii\fR"
+The default printer is "\fBascii\fR".
+
+`+` (Only at invoke time, regardless of the selected printer) unceremoniously
+and inefficiently toggle every possible flags, essentially reversing the
+effect of every following flags.
+
 .TP
 \fBascii\fR
 blablabla
@@ -44,7 +50,8 @@ blablabla
 .SH COMMANDS
 .PP
 The following commands should be available.
-Note that from any prompt or pending state, \fB'^['\fR (\fBESC\fR) should bring it back to "normal mode".
+Note that from any prompt or pending state, \fB'^['\fR (\fBESC\fR) should bring
+it back to "normal mode" (except when using \fIreadline\fR with a tty input).
 blablabla
 
 .SH AUTHOR

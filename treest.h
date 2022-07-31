@@ -15,9 +15,9 @@
 #include <termios.h>
 #include <unistd.h>
 
-#define EVERY_PRINTERS(__do, __sep)     \
-    __do(ascii_printer, "ascii") __sep  \
-    __do(fancy_printer, "fancy")
+#define EVERY_PRINTERS(__do, __sep)  \
+    __do(ascii_printer) __sep        \
+    __do(fancy_printer)
 
 #define die(__c) {  \
     perror(__c);    \
@@ -46,7 +46,7 @@ extern char cwd[_MAX_PATH];
 extern bool is_tty;
 extern bool is_raw;
 extern struct GFlags {
-    bool placeholder;
+    bool almost_all;
 } gflags;
 extern bool toggle_gflag(char flag);
 extern bool (* command_map[128])(void);
@@ -81,6 +81,7 @@ extern struct Node {
 } root, * cursor;
 
 extern struct Printer {
+    char* name;
     void (* init)(void);
     void (* del)(void);
     bool (* toggle)(char flag);
@@ -91,7 +92,7 @@ extern struct Printer {
     void (* enter)(struct Node* node);
     void (* leave)(struct Node* node);
 }
-#define DO(ident, name) ident
+#define DO(it) it
 #define SEP ,
 EVERY_PRINTERS(DO, SEP)
 #undef DO

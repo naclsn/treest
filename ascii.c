@@ -93,6 +93,7 @@ void ascii_leave(struct Node* _UNUSED(node)) {
 }
 
 struct Printer ascii_printer = {
+    .name="ascii",
     .init=ascii_init,
     .del=ascii_del,
     .toggle=ascii_toggle,
