@@ -153,7 +153,7 @@ static struct Node* locate(const char* path) {
             }
         }
 
-        if (Type_DIR != curr->type) {
+        if (Type_DIR != curr->type && (Type_LNK != curr->type || !curr->as.link.tail || Type_DIR != curr->as.link.tail->type)) {
             putstr("! path element is not a directory");
             putln();
             return NULL;
@@ -277,7 +277,7 @@ static bool c_child(void) {
     struct Node* d = cursor;
     if (Type_LNK == d->type) d = d->as.link.tail;
     if (d && Type_DIR == d->type) {
-        dir_unfold(d);
+        dir_unfold(cursor);
         if (d->count) cursor = d->as.dir.children[0];
         return true;
     }
@@ -297,14 +297,14 @@ static bool c_unfold(void) {
     struct Node* d = cursor;
     if (Type_LNK == d->type) d = d->as.link.tail;
     if (d && Type_DIR == d->type) {
-        dir_unfold(d);
+        dir_unfold(cursor);
         return true;
     }
     return false;
 }
 
 static bool c_fold(void) {
-    if (Type_DIR == cursor->type) {
+    if (Type_DIR == cursor->type || Type_LNK == cursor->type) {
         dir_fold(cursor);
         return true;
     }

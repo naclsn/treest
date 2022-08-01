@@ -4,7 +4,6 @@
 * putstr -> buffering
 * const when should
 * recursive reload
-* fix/test symlinks: problem when going back to parent
 * clean/update man page (and README.md)
 * pipe-command shows no output?
 

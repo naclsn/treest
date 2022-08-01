@@ -156,6 +156,7 @@ void lnk_resolve(struct Node* node) {
 }
 
 void dir_unfold(struct Node* node) {
+    struct Node* parent = node;
     if (Type_LNK == node->type) node = node->as.link.tail;
     if (!node || Type_DIR != node->type) return;
 
@@ -190,7 +191,7 @@ void dir_unfold(struct Node* node) {
             if ('/' != name[-1]) *name++ = '/';
             strcpy(name, ent->d_name);
 
-            struct Node* niw = node_alloc(node, node->count, path);
+            struct Node* niw = node_alloc(parent, node->count, path);
             if (niw) node->as.dir.children[node->count++] = niw;
         }
         closedir(dir);
