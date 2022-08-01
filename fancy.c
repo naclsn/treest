@@ -113,6 +113,9 @@ void fancy_node(struct Node* node) {
         putstr(((node->parent ? node->parent->count : 1)-1 == node->index) ? BRANCH_LAST : BRANCH);
     }
 
+    if (flags.colors)
+        apply_ls_colors(node);
+
     if (node == cursor) {
         if (flags.colors) {
             putstr("\x1b[");
@@ -120,9 +123,6 @@ void fancy_node(struct Node* node) {
             putstr("m");
         } else putstr("> ");
     }
-
-    if (flags.colors)
-        apply_ls_colors(node);
 
     putstr(node->name);
 
