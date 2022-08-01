@@ -13,9 +13,8 @@ struct Node* node_alloc(struct Node* parent, size_t index, char* path) {
     char* name = strrchr(path, '/')+1;
 
     struct stat sb;
-    enum Type type = stat(path, &sb) < 0
-        ? Type_UNKNOWN
-        : S_IFMT & sb.st_mode;
+    if (lstat(path, &sb) < 0) return NULL;
+    enum Type type = S_IFMT & sb.st_mode;
 
     struct Node* niw = malloc(sizeof(struct Node));
     struct Node fill = {
@@ -66,8 +65,10 @@ void dir_free(struct Node* node) {
 }
 
 void lnk_free(struct Node* node) {
+    free(node->as.link.readpath);
     node_free(node->as.link.to);
     free(node->as.link.to);
+    node->as.link.readpath = NULL;
     node->as.link.to = NULL;
     node->as.link.tail = NULL;
 }
@@ -92,23 +93,34 @@ void dir_print(struct Node* node, struct Printer* pr) {
 }
 
 void lnk_print(struct Node* node, struct Printer* pr) {
-    if (Type_LNK == node->type) node = node->as.link.tail;
-    if (node && Type_DIR == node->as.link.to->type)
-        dir_print(node->as.link.to, pr);
+    if (node->as.link.tail && Type_DIR == node->as.link.tail->type)
+        dir_print(node->as.link.tail, pr);
 }
 
 void lnk_resolve(struct Node* node) {
-    char relpath[_MAX_PATH];
-    relpath[readlink(node->path, relpath, _MAX_PATH-1)+1] = '\0';
+    char readpath[_MAX_PATH];
+    ssize_t len = readlink(node->path, readpath, _MAX_PATH-1);
+    if (len < 0) {
+        node->as.link.readpath = strdup(strerror(errno));
+        node->as.link.to = node->as.link.tail = NULL;
+        return;
+    }
+    readpath[len] = '\0';
+
+    char* savedpath = strdup(readpath);
 
     char fullpath[_MAX_PATH];
     char* paste;
     char* copy;
-    if ('/' == relpath[0]) {
-        paste = copy = strcpy(fullpath, relpath)+1;
+    if ('/' == readpath[0]) {
+        paste = copy = strcpy(fullpath, readpath)+1;
     } else {
-        paste = strcpy(fullpath, node->path) + strlen(node->path);
-        copy = relpath;
+        char* basedir = node->path;
+        size_t lendir = strlen(basedir);
+        while ('/' != basedir[lendir-1]) lendir--;
+        paste = memcpy(fullpath, basedir, lendir);
+        paste+= lendir;
+        copy = readpath;
     }
 
     if ('/' != paste[-1]) *paste++ = '/';
@@ -123,6 +135,7 @@ void lnk_resolve(struct Node* node) {
                 while ('/' != *--paste);
                 paste++;
             } else if ('/' == *(copy+1)) copy++;
+            else *paste++ = *copy;
         } else if ('/' == *copy) {
             *paste++ = '/';
             while ('/' == *(copy+1)) copy++;
@@ -135,8 +148,9 @@ void lnk_resolve(struct Node* node) {
     char* path = strdup(fullpath);
 
     struct Node* niw = node_alloc(node->parent, node->index, path);
+    node->as.link.readpath = savedpath;
     node->as.link.to = niw;
-    node->as.link.tail = Type_LNK == niw->type
+    node->as.link.tail = niw && Type_LNK == niw->type
         ? niw->as.link.tail
         : niw;
 }
@@ -163,7 +177,7 @@ void dir_unfold(struct Node* node) {
                 || !gflags.almost_all
             )) continue;
 
-            if (cap <= node->count) {
+            if (cap < node->count) {
                 cap*= 2;
                 node->as.dir.children = realloc(node->as.dir.children, cap * sizeof(struct Node*));
             }
@@ -177,10 +191,11 @@ void dir_unfold(struct Node* node) {
             strcpy(name, ent->d_name);
 
             struct Node* niw = node_alloc(node, node->count, path);
-            node->as.dir.children[node->count++] = niw;
+            if (niw) node->as.dir.children[node->count++] = niw;
         }
         closedir(dir);
     }
+    // TODO: realloc to free space (reduce the list to only its content)
 }
 
 void dir_fold(struct Node* node) {

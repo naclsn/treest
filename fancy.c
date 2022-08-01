@@ -285,7 +285,21 @@ static void apply_decorations(struct Node* node) {
     switch (node->type) {
         case Type_LNK:
             putstr("@ -> ");
-            putstr(node->as.link.to->name);
+            if (node->as.link.tail) {
+                if (flags.colors)
+                    apply_ls_colors(node->as.link.tail);
+
+                putstr(node->as.link.tail->name);
+
+                if (flags.colors) {
+                    putstr("\x1b[");
+                    putstr(state.ls_colors.rs)
+                    putstr("m");
+                }
+
+                if (flags.classify)
+                    apply_decorations(node->as.link.tail);
+            } else putstr(node->as.link.readpath);
             break;
 
         case Type_DIR:

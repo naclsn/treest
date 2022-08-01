@@ -71,6 +71,7 @@ extern struct Node {
             struct Node** children;
         } dir;
         struct Link {
+            char* readpath;
             struct Node* to;
             struct Node* tail;
         } link;

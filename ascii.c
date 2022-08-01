@@ -55,15 +55,19 @@ void ascii_node(struct Node* node) {
 
     if (node == cursor) putstr("> ");
 
-show_name: // when a link, jumps back here with node moved
+show_name: // when decorating a link, jumps back here with node moved
     putstr(node->name);
 
     if (flags.classify) {
         switch (node->type) {
             case Type_LNK:
                 putstr("@ -> ");
-                node = node->as.link.to;
-                goto show_name;
+                if (node->as.link.to) {
+                    node = node->as.link.to;
+                    goto show_name;
+                }
+                putstr(node->as.link.readpath);
+                break;
 
             case Type_DIR:
                 putchar('/');

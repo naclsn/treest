@@ -315,7 +315,7 @@ static void _recurse_foldall(struct Node* curr) {
     for (size_t k = 0; k < curr->count; k++) {
         struct Node* it = curr->as.dir.children[k];
         if (Type_LNK == it->type) it = it->as.link.tail;
-        if (Type_DIR == it->type) _recurse_foldall(it);
+        if (it && Type_DIR == it->type) _recurse_foldall(it);
     }
     dir_fold(curr);
 }
