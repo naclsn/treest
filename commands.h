@@ -20,8 +20,8 @@
 
 bool toggle_gflag(char flag) {
     switch (flag) {
-        //case 'a':
         case 'A':
+        case 'a':
             TOGGLE(gflags.almost_all);
             dir_reload(&root);
             return true;
@@ -293,6 +293,82 @@ static bool c_parent(void) {
     return false;
 }
 
+static bool c_firstchild(void) {
+    struct Node* p = cursor->parent;
+    if (p) {
+        if (Type_LNK == p->type) p = p->as.link.tail;
+        cursor = p->as.dir.children[0];
+        return true;
+    }
+    return false;
+}
+
+static bool c_lastchild(void) {
+    struct Node* p = cursor->parent;
+    if (p) {
+        if (Type_LNK == p->type) p = p->as.link.tail;
+        cursor = p->as.dir.children[p->count-1];
+        return true;
+    }
+    return false;
+}
+
+static bool c_findstartswith(void) {
+    char* c = prompt("find-startswith");
+    if (!c) return false;
+    size_t len = strlen(c);
+    struct Node* p = cursor->parent;
+    if (p) {
+        if (Type_LNK == p->type) p = p->as.link.tail;
+        // TODO: start at cursor->index+1 and wrap past the end
+        for (size_t k = 0; k < p->count; k++)
+            if (0 == memcmp(c, p->as.dir.children[k]->name, len)) {
+                free(c);
+                cursor = p->as.dir.children[k];
+                return true;
+            }
+    }
+    free(c);
+    return false;
+}
+
+static bool c_findendswith(void) {
+    char* c = prompt("find-endswith");
+    if (!c) return false;
+    size_t len = strlen(c);
+    struct Node* p = cursor->parent;
+    if (p) {
+        if (Type_LNK == p->type) p = p->as.link.tail;
+        // TODO: start at cursor->index+1 and wrap past the end
+        for (size_t k = 0; k < p->count; k++)
+            if (0 == memcmp(c, p->as.dir.children[k]->name+strlen(p->as.dir.children[k]->name)-len, len)) {
+                free(c);
+                cursor = p->as.dir.children[k];
+                return true;
+            }
+    }
+    free(c);
+    return false;
+}
+
+static bool c_findcontains(void) {
+    char* c = prompt("find-contains");
+    if (!c) return false;
+    struct Node* p = cursor->parent;
+    if (p) {
+        if (Type_LNK == p->type) p = p->as.link.tail;
+        // TODO: start at cursor->index+1 and wrap past the end
+        for (size_t k = 0; k < p->count; k++)
+            if (NULL != strstr(p->as.dir.children[k]->name, c)) {
+                free(c);
+                cursor = p->as.dir.children[k];
+                return true;
+            }
+    }
+    free(c);
+    return false;
+}
+
 static bool c_unfold(void) {
     struct Node* d = cursor;
     if (Type_LNK == d->type) d = d->as.link.tail;
@@ -495,6 +571,7 @@ bool (* command_map[128])(void) = {
     [CTRL('D')]=c_quit,
     [CTRL('L')]=c_refresh,
     ['!']=c_shell,
+    ['$']=c_findendswith,
     ['-']=c_toggle,
     ['0']=c_foldall,
     [':']=c_command,
@@ -503,34 +580,16 @@ bool (* command_map[128])(void) = {
     ['L']=c_unfold,
     ['O']=c_promptunfold,
     ['Q']=c_cquit,
+    ['[']=c_firstchild,
+    [']']=c_lastchild,
+    ['^']=c_findstartswith,
     ['c']=c_promptgofold,
     ['h']=c_parent,
     ['j']=c_next,
     ['k']=c_previous,
     ['l']=c_child,
     ['o']=c_promptgounfold,
+    ['/']=c_findcontains,
     ['q']=c_quit,
     ['|']=c_pipe,
 };
-
-/*
-static void do_command(char x) {
-    switch (x) {
-        case '^': break; // (prompt) go to basename starting with
-        case '$': break; // (prompt) go to basename ending with
-        case '/': break; // (prompt) go to basename matching
-
-        case '?': break; // help? (prompt-1?)
-
-        // TODO(fancy command override):
-        //     deal properly with tree getting bigger
-        //     than view (^E/^Y, ^N/^P, ^D/^U, ^F/^B)
-
-        // https://stackoverflow.com/questions/51909557/mouse-events-in-terminal-emulator
-        // but yeah, idk...
-        case  5: // ^E (mouse down)
-        case 25: // ^Y (mouse up)
-            break;
-    }
-}
-*/

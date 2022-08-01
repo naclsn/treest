@@ -6,6 +6,7 @@
 * recursive reload
 * clean/update man page (and README.md)
 * pipe-command shows no output?
+* `'?'` and a static help for each command
 
 ## commands
 * moving to root without folding
@@ -24,7 +25,8 @@
 ---
 ## fancy
 ### misc
-* scrolling and window heigh detection (and signal?)
+* scrolling (^E/^Y, ^N/^P, ^D/^U, ^F/^B) and window heigh detection (and signal?)
+* see https://stackoverflow.com/questions/51909557/mouse-events-in-terminal-emulator
 
 ### flags
 * (`-b` escape non graphic -- maybe)
