@@ -320,8 +320,13 @@ static bool c_findstartswith(void) {
     struct Node* p = cursor->parent;
     if (p) {
         if (Type_LNK == p->type) p = p->as.link.tail;
-        // TODO: start at cursor->index+1 and wrap past the end
-        for (size_t k = 0; k < p->count; k++)
+        for (size_t k = cursor->index+1; k < p->count; k++)
+            if (0 == memcmp(c, p->as.dir.children[k]->name, len)) {
+                free(c);
+                cursor = p->as.dir.children[k];
+                return true;
+            }
+        for (size_t k = 0; k < cursor->index-1; k++)
             if (0 == memcmp(c, p->as.dir.children[k]->name, len)) {
                 free(c);
                 cursor = p->as.dir.children[k];
@@ -339,8 +344,13 @@ static bool c_findendswith(void) {
     struct Node* p = cursor->parent;
     if (p) {
         if (Type_LNK == p->type) p = p->as.link.tail;
-        // TODO: start at cursor->index+1 and wrap past the end
-        for (size_t k = 0; k < p->count; k++)
+        for (size_t k = cursor->index+1; k < p->count; k++)
+            if (0 == memcmp(c, p->as.dir.children[k]->name+strlen(p->as.dir.children[k]->name)-len, len)) {
+                free(c);
+                cursor = p->as.dir.children[k];
+                return true;
+            }
+        for (size_t k = 0; k < cursor->index-1; k++)
             if (0 == memcmp(c, p->as.dir.children[k]->name+strlen(p->as.dir.children[k]->name)-len, len)) {
                 free(c);
                 cursor = p->as.dir.children[k];
@@ -357,8 +367,13 @@ static bool c_findcontains(void) {
     struct Node* p = cursor->parent;
     if (p) {
         if (Type_LNK == p->type) p = p->as.link.tail;
-        // TODO: start at cursor->index+1 and wrap past the end
-        for (size_t k = 0; k < p->count; k++)
+        for (size_t k = cursor->index+1; k < p->count; k++)
+            if (NULL != strstr(p->as.dir.children[k]->name, c)) {
+                free(c);
+                cursor = p->as.dir.children[k];
+                return true;
+            }
+        for (size_t k = 0; k < cursor->index-1; k++)
             if (NULL != strstr(p->as.dir.children[k]->name, c)) {
                 free(c);
                 cursor = p->as.dir.children[k];

@@ -9,9 +9,11 @@
 * `'?'` and a static help for each command
 
 ## commands
-* moving to root without folding
-* reloading (not refreshing, proper reload) of dir at cursor
-* (and why not reloading of root without moving cursor)
+* `'`'` move to root
+* `'~'` reload rec at root, keep cursor (or move parent until existing)
+* `^R` reload rec at cursor
+* `'='` fold rec at cursor (same as `'0'` now but at cursor)
+* `'#'` prompt ignore
 
 ## gflags
 * `-I` ignore=PATTERN

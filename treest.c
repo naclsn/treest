@@ -117,7 +117,7 @@ void lnk_resolve(struct Node* node) {
     } else {
         char* basedir = node->path;
         size_t lendir = strlen(basedir);
-        while ('/' != basedir[lendir-1]) lendir--;
+        while ('/' != basedir[lendir-1]) lendir--; // YYY: strrchr
         paste = memcpy(fullpath, basedir, lendir);
         paste+= lendir;
         copy = readpath;
@@ -132,17 +132,17 @@ void lnk_resolve(struct Node* node) {
                     node->as.link.to = node->as.link.tail = NULL;
                     return;
                 }
-                while ('/' != *--paste);
+                while ('/' != *--paste); // YYY: strrchr
                 paste++;
             } else if ('/' == *(copy+1)) copy++;
             else *paste++ = *copy;
         } else if ('/' == *copy) {
             *paste++ = '/';
-            while ('/' == *(copy+1)) copy++;
+            while ('/' == *(copy+1)) copy++; // YYY: strchr
         } else *paste++ = *copy;
     } while (*copy++);
     paste--;
-    while ('/' == *(paste-1)) paste--;
+    while ('/' == *(paste-1)) paste--; // YYY: strrchr
     *paste = '\0';
 
     char* path = strdup(fullpath);
@@ -322,7 +322,7 @@ int main(int argc, char* argv[]) {
 
     selected_printer->init();
 
-    while (1) {
+    while (true) {
         selected_printer->begin();
         node_print(&root, selected_printer);
         selected_printer->end();
