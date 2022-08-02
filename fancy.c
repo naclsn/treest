@@ -308,6 +308,14 @@ static void apply_decorations(struct Node* node) {
                 putstr(" (/)");
             break;
 
+        case Type_FIFO:
+            putstr("|");
+            break;
+
+        case Type_SOCK:
+            putstr("=");
+            break;
+
         case Type_EXEC:
             putstr("*");
             break;

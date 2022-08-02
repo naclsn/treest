@@ -232,6 +232,11 @@ static bool c_cquit(void) {
     return false;
 }
 
+static bool c_ignore(void) {
+    free(prompt("ignore"));
+    return false;
+}
+
 static bool c_toggle(void) {
     char x = prompt1("toggle");
     if (x) {
@@ -308,6 +313,26 @@ static bool c_lastchild(void) {
     if (p) {
         if (Type_LNK == p->type) p = p->as.link.tail;
         cursor = p->as.dir.children[p->count-1];
+        return true;
+    }
+    return false;
+}
+
+static bool c_goroot(void) {
+    cursor = &root;
+    return true;
+}
+
+static bool c_reloadroot(void) {
+    dir_reload(&root);
+    return true;
+}
+
+static bool c_reload(void) {
+    struct Node* d = cursor;
+    if (Type_LNK == d->type) d = d->as.link.tail;
+    if (d && Type_DIR == d->type) {
+        dir_reload(d);
         return true;
     }
     return false;
@@ -402,19 +427,22 @@ static bool c_fold(void) {
     return false;
 }
 
-static void _recurse_foldall(struct Node* curr) {
+static void _recurse_foldrec(struct Node* curr) {
     for (size_t k = 0; k < curr->count; k++) {
         struct Node* it = curr->as.dir.children[k];
         if (Type_LNK == it->type) it = it->as.link.tail;
-        if (it && Type_DIR == it->type) _recurse_foldall(it);
+        if (it && Type_DIR == it->type) _recurse_foldrec(it);
     }
     dir_fold(curr);
 }
-static bool c_foldall(void) {
-    _recurse_foldall(&root);
-    dir_unfold(&root);
-    cursor = &root;
-    return true;
+static bool c_foldrec(void) {
+    struct Node* d = cursor;
+    if (Type_LNK == d->type) d = d->as.link.tail;
+    if (d && Type_DIR == d->type) {
+        _recurse_foldrec(d);
+        return true;
+    }
+    return false;
 }
 
 static bool c_promptunfold(void) {
@@ -524,6 +552,7 @@ static bool c_shell(void) {
     putstr("! done");
     if (read(STDIN_FILENO, &_usl, 1) < 0) die("read");
 
+    dir_reload(&root);
     return true;
 }
 
@@ -577,6 +606,7 @@ static bool c_pipe(void) {
     putstr("! done");
     if (read(STDIN_FILENO, &_usl, 1) < 0) die("read");
 
+    dir_reload(&root);
     return true;
 }
 
@@ -584,12 +614,15 @@ static bool c_pipe(void) {
 bool (* command_map[128])(void) = {
     [CTRL('C')]=c_quit,
     [CTRL('D')]=c_quit,
+    [CTRL('R')]=c_reload,
     [CTRL('L')]=c_refresh,
     ['!']=c_shell,
+    ['#']=c_ignore,
     ['$']=c_findendswith,
     ['-']=c_toggle,
-    ['0']=c_foldall,
+    ['/']=c_findcontains,
     [':']=c_command,
+    ['=']=c_foldrec,
     ['C']=c_promptfold,
     ['H']=c_fold,
     ['L']=c_unfold,
@@ -598,13 +631,14 @@ bool (* command_map[128])(void) = {
     ['[']=c_firstchild,
     [']']=c_lastchild,
     ['^']=c_findstartswith,
+    ['`']=c_goroot,
+    ['~']=c_reloadroot,
     ['c']=c_promptgofold,
     ['h']=c_parent,
     ['j']=c_next,
     ['k']=c_previous,
     ['l']=c_child,
     ['o']=c_promptgounfold,
-    ['/']=c_findcontains,
     ['q']=c_quit,
     ['|']=c_pipe,
 };

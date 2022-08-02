@@ -73,6 +73,14 @@ show_name: // when decorating a link, jumps back here with node moved
                 putchar('/');
                 break;
 
+            case Type_FIFO:
+                putchar('|');
+                break;
+
+            case Type_SOCK:
+                putchar('=');
+                break;
+
             case Type_EXEC:
                 putchar('*');
                 break;

@@ -3,17 +3,10 @@
 * malloc -> may_malloc (or with MAYP/MAYN)
 * putstr -> buffering
 * const when should
-* recursive reload
 * clean/update man page (and README.md)
 * pipe-command shows no output?
 * `'?'` and a static help for each command
-
-## commands
-* `'`'` move to root
-* `'~'` reload rec at root, keep cursor (or move parent until existing)
-* `^R` reload rec at cursor
-* `'='` fold rec at cursor (same as `'0'` now but at cursor)
-* `'#'` prompt ignore
+* aliases? (eg like noremap, using a leader key like `' '`)
 
 ## gflags
 * `-I` ignore=PATTERN

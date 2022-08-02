@@ -206,15 +206,87 @@ void dir_fold(struct Node* node) {
     node->as.dir.unfolded = false;
 }
 
+static void _recurse_dir_reload(struct Node* old, struct Node* niw) {
+    if (Type_LNK == old->type) old = old->as.link.tail;
+    if (!old || Type_DIR != old->type) return;
+
+    if (Type_LNK == niw->type) niw = niw->as.link.tail;
+    if (!niw || Type_DIR != niw->type) return;
+
+    bool found_cursor = false;
+    bool moved_cursor = false;
+
+    // YYY: search could be better (maybe) by assuming little change in order
+    //   - starting from max(old->index, niw->count-1)
+    //   - if niw->count < old->count, go backward; else forward
+    //   - reorder the conditions inside to have less strcmp avg case
+    // from nlogn (always) to n (best) and n^2 (worst -- how often?)
+    //
+    // should it be 'optimized'? somewhat yes, because a use
+    // case could be to 'watch' (ie. reload at interval)
+    // hence reload should not be an intensive operation
+    for (size_t i = 0; i < old->count; i++) {
+        struct Node* old_child = old->as.dir.children[i];
+
+        if (cursor == old_child) found_cursor = true;
+
+        for (size_t j = 0; j < niw->count; j++) {
+            struct Node* niw_child = niw->as.dir.children[j];
+
+            if (0 == strcmp(old_child->name, niw_child->name)) {
+                if (cursor == old_child) {
+                    cursor = niw_child;
+                    moved_cursor = true;
+                }
+
+                struct Node* d = Type_LNK == old_child->type
+                    ? old_child->as.link.tail
+                    : old_child;
+                if (d && Type_DIR == d->type && d->as.dir.unfolded) {
+                    dir_unfold(niw_child);
+                    _recurse_dir_reload(old_child, niw_child);
+                }
+
+                break;
+            } // if found
+        } // for in niw
+    } // for in old
+
+    if (found_cursor && !moved_cursor) cursor = niw;
+}
 void dir_reload(struct Node* node) {
-    if (Type_LNK == node->type) node = node->as.link.tail;
-    if (!node || Type_DIR != node->type) return;
+    bool is_root = &root == node;
 
-    // TODO: for each child, if is dir then somehow recurse the reloading
+    if (is_root) {
+        node = malloc(sizeof(struct Node));
+        memcpy(node, &root, sizeof(struct Node));
+    }
 
-    bool unfolded = node->as.dir.unfolded;
-    dir_free(node);
-    if (unfolded) dir_unfold(node);
+    struct Node* niw = node_alloc(node->parent, node->index, strdup(node->path));
+
+    if (is_root) {
+        if (!niw) die("Cannot access root anymore");
+        if (Type_DIR != niw->type) {
+            errno = ENOTDIR;
+            die(node->path);
+        }
+        memcpy(&root, niw, sizeof(struct Node));
+        niw = &root;
+    } else {
+        if (!niw) {
+            node->parent->count--;
+            for (size_t k = node->index; k < node->parent->count; k++) {
+                node->parent->as.dir.children[k] = node->parent->as.dir.children[k+1];
+                node->parent->as.dir.children[k]->index--;
+            }
+            node_free(node);
+            return;
+        } else node->parent->as.dir.children[node->index] = niw;
+    }
+
+    if (node->as.dir.unfolded) dir_unfold(niw);
+    _recurse_dir_reload(node, niw);
+    node_free(node);
 }
 
 static struct termios orig_termios;
@@ -223,7 +295,7 @@ static bool atexit_set = false;
 void term_restore(void) {
     if (!is_tty) return;
 
-    if (tcsetattr(STDOUT_FILENO, TCSAFLUSH, &orig_termios) < 0) die("tcresattr");
+    if (tcsetattr(STDOUT_FILENO, TCSAFLUSH, &orig_termios) < 0) die("tcrstattr");
     is_raw = false;
 }
 
@@ -308,11 +380,17 @@ int main(int argc, char* argv[]) {
     char* arg_path = opts(argc, argv);
     if (!getcwd(cwd, _MAX_PATH)) die("getcwd");
     if (!arg_path) arg_path = cwd;
-    char path[_MAX_PATH];
-    if (NULL == realpath(arg_path, path)) die(arg_path);
+    char* path;
+    if (!(path = realpath(arg_path, NULL))) die(arg_path);
+    struct stat sb;
+    if (lstat(path, &sb) < 0) die(path);
+    if (!S_ISDIR(sb.st_mode)) {
+        errno = ENOTDIR;
+        die(path);
+    }
 
     root.path = path;
-    root.name = basename(path);
+    root.name = strrchr(path, '/')+1;
     root.type = Type_DIR;
     dir_unfold(&root);
 
