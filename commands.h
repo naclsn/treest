@@ -1,11 +1,11 @@
 #ifdef TREEST_COMMAND
 #error This file should not be included outside treest.c
 #endif // TREEST_COMMAND
-#define TREEST_COMMAND(__x) {                                            \
-    unsigned char user;                                                  \
-    do {                                                                 \
-        if (read(STDIN_FILENO, &user, 1) < 0) die("read");               \
-    } while (127 < user || !command_map[user] || !command_map[user]());  \
+#define TREEST_COMMAND(__x) {                                                \
+    unsigned char user;                                                      \
+    do {                                                                     \
+        if (read(STDIN_FILENO, &user, 1) < 0) die("read");                   \
+    } while (127 < user || !command_map[user].f || !command_map[user].f());  \
 }
 
 #include "./treest.h"
@@ -224,12 +224,12 @@ static char* quote(char* text) {
 
 static bool c_quit(void) {
     exit(EXIT_SUCCESS);
-    return false;
 }
 
 static bool c_cquit(void) {
+    char c = prompt1("exit-code");
+    if (c) exit(c);
     exit(EXIT_FAILURE);
-    return false;
 }
 
 static bool c_ignore(void) {
@@ -610,35 +610,47 @@ static bool c_pipe(void) {
     return true;
 }
 
+static bool c_help(void);
+
 // REM: `LC_ALL=C sort`
-bool (* command_map[128])(void) = {
-    [CTRL('C')]=c_quit,
-    [CTRL('D')]=c_quit,
-    [CTRL('R')]=c_reload,
-    [CTRL('L')]=c_refresh,
-    ['!']=c_shell,
-    ['#']=c_ignore,
-    ['$']=c_findendswith,
-    ['-']=c_toggle,
-    ['/']=c_findcontains,
-    [':']=c_command,
-    ['=']=c_foldrec,
-    ['C']=c_promptfold,
-    ['H']=c_fold,
-    ['L']=c_unfold,
-    ['O']=c_promptunfold,
-    ['Q']=c_cquit,
-    ['[']=c_firstchild,
-    [']']=c_lastchild,
-    ['^']=c_findstartswith,
-    ['`']=c_goroot,
-    ['~']=c_reloadroot,
-    ['c']=c_promptgofold,
-    ['h']=c_parent,
-    ['j']=c_next,
-    ['k']=c_previous,
-    ['l']=c_child,
-    ['o']=c_promptgounfold,
-    ['q']=c_quit,
-    ['|']=c_pipe,
+struct Command command_map[128] = {
+    [CTRL('C')]={c_quit,           "quit"},
+    [CTRL('D')]={c_quit,           "quit"},
+    [CTRL('R')]={c_reload,         "reload the directory at the cursor"},
+    [CTRL('L')]={c_refresh,        "refresh the view"},
+    ['!']      ={c_shell,          "execute a shell command"},
+    ['#']      ={c_ignore,         "(comment) ignore input until the end of line"},
+    ['$']      ={c_findendswith,   "find the next file which name ends with"},
+    ['-']      ={c_toggle,         "toggle a flag"},
+    ['/']      ={c_findcontains,   "find the next file which name contains"},
+    [':']      ={c_command,        "execut a printer command"},
+    ['=']      ={c_foldrec,        "fold recursively at the cursor"},
+    ['?']      ={c_help,           "enter ? then a key combination to find out about the associated command"},
+    ['C']      ={c_promptfold,     "fold at the given path"},
+    ['H']      ={c_fold,           "fold at the cursor"},
+    ['L']      ={c_unfold,         "unfold at the cursor"},
+    ['O']      ={c_promptunfold,   "unfold at the given path"},
+    ['Q']      ={c_cquit,          "quit with an exit code (by default indicating failure)"},
+    ['[']      ={c_firstchild,     "go to the parent's first child"},
+    [']']      ={c_lastchild,      "go to the parent's last child"},
+    ['^']      ={c_findstartswith, "find the next file which name starts with"},
+    ['`']      ={c_goroot,         "go to the root"},
+    ['c']      ={c_promptgofold,   "go to and fold at the given path"}, // XXX: ?
+    ['h']      ={c_parent,         "go to the parent directory"},
+    ['j']      ={c_next,           "go to the next file"},
+    ['k']      ={c_previous,       "go to the previous file"},
+    ['l']      ={c_child,          "go to the directory's first child (unfold if needed)"},
+    ['o']      ={c_promptgounfold, "go to and unfold at the given path"},
+    ['q']      ={c_quit,           "quit"},
+    ['|']      ={c_pipe,           "pipe content into a shell command"},
+    ['~']      ={c_reloadroot,     "reload at the root (read the whole tree from file system)"},
 };
+
+static bool c_help(void) {
+    unsigned char c = prompt1("help-command");
+    if (c < 128 && command_map[c].h) {
+        putstr(command_map[c].h);
+    } else putstr("! not a command");
+    putln();
+    return false;
+}

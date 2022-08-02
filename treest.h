@@ -49,7 +49,10 @@ extern struct GFlags {
     bool almost_all;
 } gflags;
 extern bool toggle_gflag(char flag);
-extern bool (* command_map[128])(void);
+extern struct Command {
+    bool (* f)(void);
+    char* h;
+} command_map[128];
 
 extern struct Node {
     char* path;

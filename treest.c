@@ -333,7 +333,7 @@ char* opts(int argc, char* argv[]) {
             #undef SEP
             else {
                 printf("No such printer: '%s'\n", arg);
-                exit(3);
+                exit(EXIT_FAILURE);
             }
         } else {
             if ('-' == argv[k][0]) {
@@ -344,7 +344,7 @@ char* opts(int argc, char* argv[]) {
                     }
                     if (!selected_printer->command(argv[k]+2)) {
                         printf("Unknown command for '%s': '%s'\n", selected_printer->name, argv[k]+2);
-                        exit(2);
+                        exit(EXIT_FAILURE);
                     }
                 }
                 char* flag = argv[k];
@@ -370,10 +370,10 @@ int main(int argc, char* argv[]) {
     if (1 == argc) {
         if (0 == strcmp("--help", argv[0])) {
             printf("Usage: %s [--printer=NAME] [--LONGOPTIONS] [-FLAGS] [[--] ROOT]\n", prog);
-            exit(2);
+            exit(EXIT_FAILURE);
         } else if (0 == strcmp("--version", argv[0])) {
             puts(TREEST_VERSION);
-            exit(0);
+            exit(EXIT_SUCCESS);
         }
     }
 
