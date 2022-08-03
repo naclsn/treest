@@ -403,6 +403,6 @@ int main(int argc, char* argv[]) {
         node_print(&root, selected_printer);
         selected_printer->end();
 
-        TREEST_COMMAND(user);
+        TREEST_COMMAND();
     }
 }

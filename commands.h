@@ -1,18 +1,11 @@
 #ifdef TREEST_COMMAND
 #error This file should not be included outside treest.c
 #endif // TREEST_COMMAND
-#define TREEST_COMMAND(__x) {                                      \
-    unsigned char user;                                            \
-    do {                                                           \
-        do {                                                       \
-            if (read(STDIN_FILENO, &user, 1) < 0) die("read");     \
-        } while (127 < user);                                      \
-        if (aliases_map[user]) {                                   \
-            for (unsigned char* it = aliases_map[user]; *it; it++) \
-                if (commands_map[*it].f) commands_map[*it].f();    \
-            break;                                                 \
-        }                                                          \
-    } while (!commands_map[user].f || !commands_map[user].f());    \
+#define TREEST_COMMAND() {                                  \
+    unsigned char user;                                     \
+    do {                                                    \
+        if (read(STDIN_FILENO, &user, 1) < 0) die("read");  \
+    } while (!run_command(user));                           \
 }
 
 #include "./treest.h"
@@ -33,6 +26,19 @@ bool toggle_gflag(char flag) {
             return true;
     }
     return false;
+}
+
+bool run_command(char user) {
+    unsigned char c = user;
+    if (127 < c) return false;
+    if (aliases_map[c]) {
+        bool r = false;
+        for (unsigned char* it = aliases_map[c]; *it; it++)
+            if (*it < 128 && commands_map[*it].f)
+                r = commands_map[*it].f();
+        return r;
+    }
+    return commands_map[c].f && commands_map[c].f();
 }
 
 static char* prompt_raw(const char* c) {
@@ -692,10 +698,62 @@ static bool c_pipe(void) {
     return true;
 }
 
+static bool c_if(void) {
+    unsigned char a = prompt1("if-command");
+    if (!a) return false;
+    bool r = false;
+    if (run_command(a)) {
+        aliases_map['"'] = (unsigned char*)prompt("then-commands");
+        r = run_command('"');
+        free(aliases_map['"']);
+        aliases_map['"'] = NULL;
+    }
+    return r;
+}
+
+static bool c_ifnot(void) {
+    unsigned char a = prompt1("ifnot-command");
+    if (!a) return false;
+    bool r = false;
+    if (!run_command(a)) {
+        aliases_map['"'] = (unsigned char*)prompt("then-commands");
+        r = run_command('"');
+        free(aliases_map['"']);
+        aliases_map['"'] = NULL;
+    }
+    return r;
+}
+
+static bool c_while(void) {
+    unsigned char a = prompt1("while-command");
+    if (!a) return false;
+    bool r = false;
+    while (run_command(a)) {
+        aliases_map['"'] = (unsigned char*)prompt("do-commands");
+        r = run_command('"');
+        free(aliases_map['"']);
+        aliases_map['"'] = NULL;
+    }
+    return r;
+}
+
+static bool c_whilenot(void) {
+    unsigned char a = prompt1("whilenot-command");
+    if (!a) return false;
+    bool r = false;
+    while (!run_command(a)) {
+        aliases_map['"'] = (unsigned char*)prompt("do-commands");
+        r = run_command('"');
+        free(aliases_map['"']);
+        aliases_map['"'] = NULL;
+    }
+    return r;
+}
+
 static bool c_alias(void) {
     unsigned char a = prompt1("alias-name");
     if (!a) return false;
-    if (127 < a) {
+    if (127 < a || '"' == a) {
         putstr("! not a valid alias name");
         putln();
         return false;
@@ -709,6 +767,7 @@ static bool c_alias(void) {
 static bool c_help(void) {
     unsigned char c = prompt1("help-command");
     if (c < 128 && commands_map[c].h) {
+        // YYY: deal with long lines?
         putstr(commands_map[c].h);
     } else putstr("! not a command");
     putln();
@@ -724,12 +783,15 @@ struct Command commands_map[128] = {
     [CTRL('P')]={c_visibleprevious,      "go to the previous visible node"},
     [CTRL('R')]={c_reload,               "reload the directory at the cursor"},
     ['!']      ={c_shell,                "execute a shell command"},
-    ['"']      ={c_alias,                "create an alias from a name (single character) and a chain of commands"},
+    ['"']      ={c_alias,                "create (or remove) an alias from a name (single character) and a chain of commands"},
     ['#']      ={c_ignore,               "(comment) ignore input until the end of line"},
     ['$']      ={c_findendswith,         "find the next node which name ends with"},
+    ['(']      ={c_if,                   "run commands if"},
+    [')']      ={c_ifnot,                "run commands ifnot"},
     ['-']      ={c_toggle,               "toggle a flag"},
     ['/']      ={c_findcontains,         "find the next node which name contains"},
     [':']      ={c_command,              "execute a printer command"},
+    [';']      ={c_refresh,              "refresh the view"},
     ['=']      ={c_foldrec,              "fold recursively at the cursor"},
     ['?']      ={c_help,                 "enter ? then a key combination to find out about the associated command"},
     ['C']      ={c_promptfold,           "fold at the given path"},
@@ -750,7 +812,9 @@ struct Command commands_map[128] = {
     ['n']      ={c_findnext,             "continue search forward"},
     ['o']      ={c_promptgounfold,       "go to and unfold at the given path"},
     ['q']      ={c_quit,                 "quit"},
+    ['{']      ={c_while,                "run commands while"},
     ['|']      ={c_pipe,                 "pipe content into a shell command"},
+    ['}']      ={c_whilenot,             "run commands whilenot"},
     ['~']      ={c_reloadroot,           "reload at the root (read the whole tree from file system)"},
 };
 unsigned char* aliases_map[128] = {0};

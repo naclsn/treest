@@ -45,15 +45,18 @@ extern char* prog;
 extern char cwd[_MAX_PATH];
 extern bool is_tty;
 extern bool is_raw;
+
 extern struct GFlags {
     bool almost_all;
 } gflags;
 extern bool toggle_gflag(char flag);
+
 extern struct Command {
     bool (* f)(void);
     char* h;
 } commands_map[128];
 extern unsigned char* aliases_map[128];
+extern bool run_command(char user);
 
 extern struct Node {
     char* path;
