@@ -23,7 +23,6 @@ bool toggle_gflag(char flag) {
         case 'A':
         case 'a':
             TOGGLE(gflags.almost_all);
-            dir_reload(&root);
             return true;
     }
     return false;
@@ -244,7 +243,7 @@ static bool c_toggle(void) {
         if (!r) {
             putstr("! no such flag");
             putln();
-        }
+        } else dir_reload(&root);
         return r;
     }
     return false;
@@ -501,6 +500,7 @@ static bool c_promptgofold(void) {
     return false;
 }
 
+// XXX: remove (also in treest.c#opts)
 static bool c_command(void) {
     char* c = prompt("command");
     if (!c) return false;

@@ -5,40 +5,36 @@ treest \- stateful tree view
 
 .SH SYNOPSIS
 .B treest
-[--printer=\fINAME\fR] [--\fILONGOPTIONS\fR] [-\fIFLAGS\fR] [[--] \fIROOT\fR]
+[--printer=\fINAME\fR] [--\fILONGOPTIONS\fR] [-\fIFLAGS\fR]
+[[--] \fIROOT\fR]
 
 .SH DESCRIPTION
 .PP
-Print a tree-like representation of a directory to standard output.
-Take interactive commands from standard input.
-When supported and standard output is a TTY, it is set to raw mode.
+Print a tree-like representation of a directory to standard
+output. Take interactive commands from standard input. When
+supported and standard output is a TTY, it is set to raw
+mode.
 
 .SH OPTIONS
 .TP
 \fB\-\-help
-Show the quick help.
-Must be the only argument.
+Show the quick help.  Must be the only argument.
 .TP
 \fB\-\-version
-Print the version successfully.
-Must be the only argument.
+Print the version successfully.  Must be the only argument.
 .TP
 \fB\-\-printer=\fINAME\fR
-Use the specified printer.
-When given, should be the first argument.
+Use the specified printer.  When given, should be the first
+argument.
 .TP
 \fB\-\-\fILONGOPTIONS\fR
 Other options are forwarded to the last specified printer.
 
 .SH PRINTERS
 .PP
-The flags available depend on the printer used.
-Unknown flags are silently ignored.
-The default printer is "\fBascii\fR".
-
-`+` (Only at invoke time, regardless of the selected printer) unceremoniously
-and inefficiently toggle every possible flags, essentially reversing the
-effect of every following flags.
+The flags available depend on the printer used.  Unknown
+flags are silently ignored.  The default printer is
+"\fBascii\fR".
 
 .TP
 \fBascii\fR
@@ -49,9 +45,10 @@ blablabla
 
 .SH COMMANDS
 .PP
-The following commands should be available.
-Note that from any prompt or pending state, \fB'^['\fR (\fBESC\fR) should bring
-it back to "normal mode" (except when using \fIreadline\fR with a tty input).
+The following commands should be available. Note that
+from any prompt or pending state, \fB'^['\fR (\fBESC\fR)
+should bring it back to "normal mode" (except when using
+\fIreadline\fR with a tty input).
 blablabla
 
 .SH AUTHOR

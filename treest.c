@@ -348,11 +348,7 @@ char* opts(int argc, char* argv[]) {
                     }
                 }
                 char* flag = argv[k];
-                while (*++flag) {
-                    if ('+' == *flag) for (int k = 0; k < 128; k++)
-                        selected_printer->toggle(k);
-                    else selected_printer->toggle(*flag);
-                }
+                while (*++flag) selected_printer->toggle(*flag);
             } else {
                 selected_path = argv[k];
                 break;

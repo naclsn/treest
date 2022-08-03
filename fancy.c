@@ -258,13 +258,18 @@ static void apply_ls_colors(struct Node* node) {
     }
 
     if (!col) {
+    fill_color: // if the LC_COLOR for ln is "target", jumps back here with node moved
         switch (node->type) {
             case Type_DIR:  col = state.ls_colors.di; break;
             case Type_REG:  col = state.ls_colors.fi; break;
-            case Type_LNK:  col = node->as.link.to // XXX
-                                    ? state.ls_colors.ln
-                                    : state.ls_colors.or;
-                                break;
+            case Type_LNK:
+                if (node->as.link.tail) {
+                    if (0 == strcmp("target", state.ls_colors.ln)) {
+                        node = node->as.link.tail;
+                        goto fill_color;
+                    } else col = state.ls_colors.ln;
+                } else col = state.ls_colors.or;
+                break;
             case Type_FIFO: col = state.ls_colors.pi; break;
             case Type_SOCK: col = state.ls_colors.so; break;
             case Type_BLK:  col = state.ls_colors.bd; break;
