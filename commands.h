@@ -280,6 +280,8 @@ static bool c_fold(void) {
 static bool c_previous(void) {
     struct Node* p = cursor->parent;
     if (!p) return false;
+    if (Type_LNK == p->type) p = p->as.link.tail;
+    if (!p || Type_DIR != p->type) return false;
     if (0 == cursor->index) return false;
     cursor = p->as.dir.children[cursor->index-1];
     return true;
@@ -288,6 +290,8 @@ static bool c_previous(void) {
 static bool c_next(void) {
     struct Node* p = cursor->parent;
     if (!p) return false;
+    if (Type_LNK == p->type) p = p->as.link.tail;
+    if (!p || Type_DIR != p->type) return false;
     if (p->count-1 == cursor->index) return false;
     cursor = p->as.dir.children[cursor->index+1];
     return true;
@@ -295,16 +299,18 @@ static bool c_next(void) {
 
 static bool c_child(void) {
     if (!c_unfold()) return false;
-    if (0 == cursor->count) return false;
-    cursor = Type_DIR == cursor->type
-        ? cursor->as.dir.children[0]
-        : cursor->as.link.tail->as.dir.children[0];
+    struct Node* d = cursor;
+    if (Type_LNK == d->type) d = d->as.link.tail;
+    if (0 == d->count) return false;
+    cursor = d->as.dir.children[0];
     return true;
 }
 
 static bool c_firstchild(void) {
     struct Node* p = cursor->parent;
     if (!p) return false;
+    if (Type_LNK == p->type) p = p->as.link.tail;
+    if (!p || Type_DIR != p->type) return false;
     cursor = p->as.dir.children[0];
     return true;
 }
@@ -312,6 +318,8 @@ static bool c_firstchild(void) {
 static bool c_lastchild(void) {
     struct Node* p = cursor->parent;
     if (!p) return false;
+    if (Type_LNK == p->type) p = p->as.link.tail;
+    if (!p || Type_DIR != p->type) return false;
     cursor = p->as.dir.children[p->count-1];
     return true;
 }

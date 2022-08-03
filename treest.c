@@ -196,6 +196,7 @@ void dir_unfold(struct Node* node) {
         }
         closedir(dir);
     }
+    parent->count = node->count;
     // TODO: resize to len
 }
 
