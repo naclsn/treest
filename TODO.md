@@ -4,7 +4,6 @@
 * putstr -> buffering
 * const when should
 * clean/update man page (and README.md)
-* aliases? (eg like noremap, using a leader key like `' '`)
 
 ## gflags
 * `-I` ignore=PATTERN
@@ -18,7 +17,7 @@
 ---
 ## fancy
 ### misc
-* scrolling (^E/^Y, ^N/^P, ^D/^U, ^F/^B) and window heigh detection (and signal?)
+* scrolling (^E/^Y, ^D/^U, ^F/^B) and window heigh detection (and signal?)
 * see https://stackoverflow.com/questions/51909557/mouse-events-in-terminal-emulator
 
 ### flags
