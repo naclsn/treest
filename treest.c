@@ -196,7 +196,8 @@ void dir_unfold(struct Node* node) {
         }
         closedir(dir);
     }
-    // TODO: resize to len
+
+    node->as.dir.children = realloc(node->as.dir.children, node->count * sizeof(struct Node*));
 }
 
 void dir_fold(struct Node* node) {

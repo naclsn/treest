@@ -220,7 +220,9 @@ static void read_ls_colors(void) {
 
         tail = head+1;
     }
-    // TODO: resize to len (state.ls_colors.ext and state.ls_colors.exa)
+
+    state.ls_colors.ext = realloc(state.ls_colors.ext, state.ls_colors.ext_count * sizeof(struct LS_COLORS_KVEntry));
+    state.ls_colors.exa = realloc(state.ls_colors.exa, state.ls_colors.exa_count * sizeof(struct LS_COLORS_KVEntry));
 }
 
 static struct LS_COLORS_KVEntry* _binary_search(const char* needle, struct LS_COLORS_KVEntry** hay, size_t a, size_t b) {

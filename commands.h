@@ -76,10 +76,9 @@ static char* prompt_raw(const char* c) {
         buf[len++] = last;
     }
     putln();
-    buf[len] = '\0';
+    buf[len++] = '\0';
 
-    // TODO: resize to len
-    return buf;
+    return realloc(buf, len * sizeof(char));
 }
 
 #ifdef FEAT_READLINE
