@@ -54,9 +54,10 @@ extern bool toggle_gflag(char flag);
 extern struct Command {
     bool (* f)(void);
     char* h;
-} commands_map[128];
-extern unsigned char* aliases_map[128];
+} command_map[128];
+extern char* register_map[128];
 extern bool run_command(char user);
+extern bool run_commands(char* user);
 
 extern struct Node {
     char* path;
