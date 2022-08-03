@@ -196,7 +196,7 @@ void dir_unfold(struct Node* node) {
         }
         closedir(dir);
     }
-    // TODO: realloc to free space (reduce the list to only its content)
+    // TODO: resize to len
 }
 
 void dir_fold(struct Node* node) {

@@ -1,11 +1,18 @@
 #ifdef TREEST_COMMAND
 #error This file should not be included outside treest.c
 #endif // TREEST_COMMAND
-#define TREEST_COMMAND(__x) {                                                \
-    unsigned char user;                                                      \
-    do {                                                                     \
-        if (read(STDIN_FILENO, &user, 1) < 0) die("read");                   \
-    } while (127 < user || !command_map[user].f || !command_map[user].f());  \
+#define TREEST_COMMAND(__x) {                                      \
+    unsigned char user;                                            \
+    do {                                                           \
+        do {                                                       \
+            if (read(STDIN_FILENO, &user, 1) < 0) die("read");     \
+        } while (127 < user);                                      \
+        if (aliases_map[user]) {                                   \
+            for (unsigned char* it = aliases_map[user]; *it; it++) \
+                if (commands_map[*it].f) commands_map[*it].f();    \
+            break;                                                 \
+        }                                                          \
+    } while (!commands_map[user].f || !commands_map[user].f());    \
 }
 
 #include "./treest.h"
@@ -71,6 +78,7 @@ static char* prompt_raw(const char* c) {
     putln();
     buf[len] = '\0';
 
+    // TODO: resize to len
     return buf;
 }
 
@@ -591,9 +599,10 @@ static bool c_pipe(void) {
         head = tail+2;
     }
     strcpy(into, head);
-    free(c);
 
     into+= strlen(head);
+    free(c);
+
     *into++ = '<';
     strcpy(into, quoted);
     *(into+nlen) = '\0';
@@ -610,20 +619,42 @@ static bool c_pipe(void) {
     return true;
 }
 
-static bool c_help(void);
+static bool c_alias(void) {
+    unsigned char a = prompt1("alias-name");
+    if (!a) return false;
+    if (127 < a) {
+        putstr("! not a valid alias name");
+        putln();
+        return false;
+    }
+    free(aliases_map[a]);
+    char* c = prompt("alias-commands");
+    aliases_map[a] = (unsigned char*)c;
+    return !!c;
+}
+
+static bool c_help(void) {
+    unsigned char c = prompt1("help-command");
+    if (c < 128 && commands_map[c].h) {
+        putstr(commands_map[c].h);
+    } else putstr("! not a command");
+    putln();
+    return false;
+}
 
 // REM: `LC_ALL=C sort`
-struct Command command_map[128] = {
+struct Command commands_map[128] = {
     [CTRL('C')]={c_quit,           "quit"},
     [CTRL('D')]={c_quit,           "quit"},
     [CTRL('R')]={c_reload,         "reload the directory at the cursor"},
     [CTRL('L')]={c_refresh,        "refresh the view"},
     ['!']      ={c_shell,          "execute a shell command"},
+    ['"']      ={c_alias,          "create an alias from a name (single character) and a chain of commands"},
     ['#']      ={c_ignore,         "(comment) ignore input until the end of line"},
     ['$']      ={c_findendswith,   "find the next file which name ends with"},
     ['-']      ={c_toggle,         "toggle a flag"},
     ['/']      ={c_findcontains,   "find the next file which name contains"},
-    [':']      ={c_command,        "execut a printer command"},
+    [':']      ={c_command,        "execute a printer command"},
     ['=']      ={c_foldrec,        "fold recursively at the cursor"},
     ['?']      ={c_help,           "enter ? then a key combination to find out about the associated command"},
     ['C']      ={c_promptfold,     "fold at the given path"},
@@ -645,12 +676,4 @@ struct Command command_map[128] = {
     ['|']      ={c_pipe,           "pipe content into a shell command"},
     ['~']      ={c_reloadroot,     "reload at the root (read the whole tree from file system)"},
 };
-
-static bool c_help(void) {
-    unsigned char c = prompt1("help-command");
-    if (c < 128 && command_map[c].h) {
-        putstr(command_map[c].h);
-    } else putstr("! not a command");
-    putln();
-    return false;
-}
+unsigned char* aliases_map[128] = {0};

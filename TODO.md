@@ -4,8 +4,6 @@
 * putstr -> buffering
 * const when should
 * clean/update man page (and README.md)
-* pipe-command shows no output?
-* `'?'` and a static help for each command
 * aliases? (eg like noremap, using a leader key like `' '`)
 
 ## gflags
