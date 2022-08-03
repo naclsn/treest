@@ -260,67 +260,100 @@ static bool c_refresh(void) {
     return true;
 }
 
+static bool c_unfold(void) {
+    struct Node* d = cursor;
+    if (Type_LNK == d->type) d = d->as.link.tail;
+    if (!d || Type_DIR != d->type) return false;
+    dir_unfold(cursor);
+    return true;
+}
+
+static bool c_fold(void) {
+    struct Node* d = cursor;
+    if (Type_LNK == d->type) d = d->as.link.tail;
+    if (!d || Type_DIR != d->type) return false;
+    dir_fold(cursor);
+    return true;
+}
+
 static bool c_previous(void) {
     struct Node* p = cursor->parent;
-    if (p) {
-        if (Type_LNK == p->type) p = p->as.link.tail;
-        if (p && 0 < cursor->index) {
-            cursor = p->as.dir.children[cursor->index - 1];
-            return true;
-        }
-    }
-    return false;
+    if (!p) return false;
+    if (Type_LNK == p->type) p = p->as.link.tail;
+    if (!p || Type_DIR != p->type) return false;
+    if (0 == cursor->index) return false;
+    cursor = p->as.dir.children[cursor->index-1];
+    return true;
 }
 
 static bool c_next(void) {
     struct Node* p = cursor->parent;
-    if (p) {
-        if (Type_LNK == p->type) p = p->as.link.tail;
-        if (p && cursor->index < p->count - 1) {
-            cursor = p->as.dir.children[cursor->index + 1];
-            return true;
-        }
-    }
-    return false;
+    if (!p) return false;
+    if (Type_LNK == p->type) p = p->as.link.tail;
+    if (!p || Type_DIR != p->type) return false;
+    if (p->count-1 == cursor->index) return false;
+    cursor = p->as.dir.children[cursor->index+1];
+    return true;
 }
 
 static bool c_child(void) {
+    if (!c_unfold()) return false;
     struct Node* d = cursor;
     if (Type_LNK == d->type) d = d->as.link.tail;
-    if (d && Type_DIR == d->type) {
-        dir_unfold(cursor);
-        if (d->count) cursor = d->as.dir.children[0];
-        return true;
-    }
-    return false;
-}
-
-static bool c_parent(void) {
-    struct Node* p = cursor->parent;
-    if (p) {
-        cursor = p;
-        return true;
-    }
-    return false;
+    if (0 == d->count) return false;
+    cursor = d->as.dir.children[0];
+    return true;
 }
 
 static bool c_firstchild(void) {
     struct Node* p = cursor->parent;
-    if (p) {
-        if (Type_LNK == p->type) p = p->as.link.tail;
-        cursor = p->as.dir.children[0];
-        return true;
-    }
-    return false;
+    if (!p) return false;
+    if (Type_LNK == p->type) p = p->as.link.tail;
+    if (!p || Type_DIR != p->type) return false;
+    cursor = p->as.dir.children[0];
+    return true;
 }
 
 static bool c_lastchild(void) {
     struct Node* p = cursor->parent;
-    if (p) {
-        if (Type_LNK == p->type) p = p->as.link.tail;
-        cursor = p->as.dir.children[p->count-1];
+    if (!p) return false;
+    if (Type_LNK == p->type) p = p->as.link.tail;
+    if (!p || Type_DIR != p->type) return false;
+    cursor = p->as.dir.children[p->count-1];
+    return true;
+}
+
+static bool c_parent(void) {
+    if (!cursor->parent) return false;
+    cursor = cursor->parent;
+    return true;
+}
+
+static bool c_visiblechild(void) {
+    struct Node* d = cursor;
+    if (Type_LNK == d->type) d = d->as.link.tail;
+    if (!d || Type_DIR != d->type) return false;
+    if (!d->as.dir.unfolded || 0 == d->count) return false;
+    cursor = d->as.dir.children[0];
+    return true;
+}
+
+static bool c_visibleprevious(void) {
+    if (c_previous()) {
+        while (c_visiblechild()) c_lastchild();
         return true;
     }
+    return c_parent();
+}
+
+static bool c_visiblenext(void) {
+    if (c_visiblechild()) return true;
+    if (c_next()) return true;
+    struct Node* pcursor = cursor;
+    if (!cursor->parent) return false;
+    while (c_parent() && !c_next());
+    if (&root != cursor) return true;
+    cursor = pcursor;
     return false;
 }
 
@@ -415,24 +448,6 @@ static bool c_findcontains(void) {
     return false;
 }
 
-static bool c_unfold(void) {
-    struct Node* d = cursor;
-    if (Type_LNK == d->type) d = d->as.link.tail;
-    if (d && Type_DIR == d->type) {
-        dir_unfold(cursor);
-        return true;
-    }
-    return false;
-}
-
-static bool c_fold(void) {
-    if (Type_DIR == cursor->type || Type_LNK == cursor->type) {
-        dir_fold(cursor);
-        return true;
-    }
-    return false;
-}
-
 static void _recurse_foldrec(struct Node* curr) {
     for (size_t k = 0; k < curr->count; k++) {
         struct Node* it = curr->as.dir.children[k];
@@ -466,6 +481,7 @@ static bool c_promptunfold(void) {
     return false;
 }
 
+// XXX: hidden cursor
 static bool c_promptfold(void) {
     char* c = prompt("fold-path");
     if (!c) return false;
@@ -507,7 +523,7 @@ static bool c_promptgofold(void) {
     return false;
 }
 
-// XXX: remove (also in treest.c#opts)
+// XXX: idk
 static bool c_command(void) {
     char* c = prompt("command");
     if (!c) return false;
@@ -643,36 +659,38 @@ static bool c_help(void) {
 
 // REM: `LC_ALL=C sort`
 struct Command commands_map[128] = {
-    [CTRL('C')]={c_quit,           "quit"},
-    [CTRL('D')]={c_quit,           "quit"},
-    [CTRL('R')]={c_reload,         "reload the directory at the cursor"},
-    [CTRL('L')]={c_refresh,        "refresh the view"},
-    ['!']      ={c_shell,          "execute a shell command"},
-    ['"']      ={c_alias,          "create an alias from a name (single character) and a chain of commands"},
-    ['#']      ={c_ignore,         "(comment) ignore input until the end of line"},
-    ['$']      ={c_findendswith,   "find the next file which name ends with"},
-    ['-']      ={c_toggle,         "toggle a flag"},
-    ['/']      ={c_findcontains,   "find the next file which name contains"},
-    [':']      ={c_command,        "execute a printer command"},
-    ['=']      ={c_foldrec,        "fold recursively at the cursor"},
-    ['?']      ={c_help,           "enter ? then a key combination to find out about the associated command"},
-    ['C']      ={c_promptfold,     "fold at the given path"},
-    ['H']      ={c_fold,           "fold at the cursor"},
-    ['L']      ={c_unfold,         "unfold at the cursor"},
-    ['O']      ={c_promptunfold,   "unfold at the given path"},
-    ['Q']      ={c_cquit,          "quit with an exit code (by default indicating failure)"},
-    ['[']      ={c_firstchild,     "go to the parent's first child"},
-    [']']      ={c_lastchild,      "go to the parent's last child"},
-    ['^']      ={c_findstartswith, "find the next file which name starts with"},
-    ['`']      ={c_goroot,         "go to the root"},
-    ['c']      ={c_promptgofold,   "go to and fold at the given path"}, // XXX: ?
-    ['h']      ={c_parent,         "go to the parent directory"},
-    ['j']      ={c_next,           "go to the next file"},
-    ['k']      ={c_previous,       "go to the previous file"},
-    ['l']      ={c_child,          "go to the directory's first child (unfold if needed)"},
-    ['o']      ={c_promptgounfold, "go to and unfold at the given path"},
-    ['q']      ={c_quit,           "quit"},
-    ['|']      ={c_pipe,           "pipe content into a shell command"},
-    ['~']      ={c_reloadroot,     "reload at the root (read the whole tree from file system)"},
+    [CTRL('C')]={c_quit,                 "quit"},
+    [CTRL('D')]={c_quit,                 "quit"},
+    [CTRL('L')]={c_refresh,              "refresh the view"},
+    [CTRL('N')]={c_visiblenext,          "go to the next visible node"},
+    [CTRL('P')]={c_visibleprevious,      "go to the previous visible node"},
+    [CTRL('R')]={c_reload,               "reload the directory at the cursor"},
+    ['!']      ={c_shell,                "execute a shell command"},
+    ['"']      ={c_alias,                "create an alias from a name (single character) and a chain of commands"},
+    ['#']      ={c_ignore,               "(comment) ignore input until the end of line"},
+    ['$']      ={c_findendswith,         "find the next node which name ends with"},
+    ['-']      ={c_toggle,               "toggle a flag"},
+    ['/']      ={c_findcontains,         "find the next node which name contains"},
+    [':']      ={c_command,              "execute a printer command"},
+    ['=']      ={c_foldrec,              "fold recursively at the cursor"},
+    ['?']      ={c_help,                 "enter ? then a key combination to find out about the associated command"},
+    ['C']      ={c_promptfold,           "fold at the given path"},
+    ['H']      ={c_fold,                 "fold at the cursor"},
+    ['L']      ={c_unfold,               "unfold at the cursor"},
+    ['O']      ={c_promptunfold,         "unfold at the given path"},
+    ['Q']      ={c_cquit,                "quit with an exit code (by default indicating failure)"},
+    ['[']      ={c_firstchild,           "go to the parent's first child"},
+    [']']      ={c_lastchild,            "go to the parent's last child"},
+    ['^']      ={c_findstartswith,       "find the next node which name starts with"},
+    ['`']      ={c_goroot,               "go to the root"},
+    ['c']      ={c_promptgofold,         "go to and fold at the given path"}, // XXX: ?
+    ['h']      ={c_parent,               "go to the parent directory"},
+    ['j']      ={c_next,                 "go to the next node"},
+    ['k']      ={c_previous,             "go to the previous node"},
+    ['l']      ={c_child,                "go to the directory's first child (unfold if needed)"},
+    ['o']      ={c_promptgounfold,       "go to and unfold at the given path"},
+    ['q']      ={c_quit,                 "quit"},
+    ['|']      ={c_pipe,                 "pipe content into a shell command"},
+    ['~']      ={c_reloadroot,           "reload at the root (read the whole tree from file system)"},
 };
 unsigned char* aliases_map[128] = {0};

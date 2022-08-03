@@ -197,6 +197,7 @@ void dir_unfold(struct Node* node) {
         closedir(dir);
     }
 
+    parent->count = node->count;
     node->as.dir.children = realloc(node->as.dir.children, node->count * sizeof(struct Node*));
 }
 
