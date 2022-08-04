@@ -422,6 +422,7 @@ int node_compare(struct Node* node, struct Node* mate, enum Sort order) {
     return 0; // unreachable
 }
 
+static char* rcfile = NULL;
 char* opts(int argc, char* argv[]) {
     selected_printer = &ascii_printer;
     bool printer_init = false;
@@ -471,6 +472,8 @@ char* opts(int argc, char* argv[]) {
                 may_realloc(ignore_list, ignore_count * sizeof(char*));
             }
             ignore_list[ignore_count-1] = arg;
+        } else if (0 == memcmp("--rcfile=", argv[k], 9)) {
+            rcfile = argv[k] + 9;
         } else {
             if ('-' == argv[k][0]) {
                 if ('-' == argv[k][1]) {
@@ -533,6 +536,19 @@ int main(int argc, char* argv[]) {
     dir_unfold(&root);
 
     cursor = &root;
+
+    if (rcfile) {
+        FILE* f = fopen(rcfile, "rb");
+        if (!f) die(rcfile);
+        fseek(f, 0, SEEK_SET);
+        char buf[1024];
+        size_t len;
+        while ((len = fread(buf, 1, 1024-1, f))) {
+            buf[len] = '\0';
+            run_commands(buf);
+        }
+        if (ferror(f)) die(rcfile);
+    }
 
     if ((is_tty = isatty(STDOUT_FILENO))) term_raw_mode();
 
