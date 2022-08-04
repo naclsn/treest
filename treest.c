@@ -257,6 +257,11 @@ static void _recurse_dir_reload(struct Node* old, struct Node* niw) {
     if (found_cursor && !moved_cursor) cursor = niw;
 }
 void dir_reload(struct Node* node) {
+    struct Node* dir = node;
+    if (Type_LNK == dir->type) dir = dir->as.link.tail;
+    if (!dir || Type_DIR != dir->type) return;
+
+    bool is_unfolded = dir->as.dir.unfolded;
     bool is_root = &root == node;
 
     if (is_root) {
@@ -286,7 +291,8 @@ void dir_reload(struct Node* node) {
         } else node->parent->as.dir.children[node->index] = niw;
     }
 
-    if (node->as.dir.unfolded) dir_unfold(niw);
+    if (is_unfolded) dir_unfold(niw);
+    if (cursor == node) cursor = niw;
     _recurse_dir_reload(node, niw);
     node_free(node);
 }

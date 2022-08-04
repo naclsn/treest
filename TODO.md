@@ -5,8 +5,11 @@
 * const when should
 * clean/update man page (and README.md)
 
+## option
+* `--ignore=PATTERN`
+
 ## gflags
-* `-I` ignore=PATTERN
+* (`-I` toggle ignore? or command on `^H`?)
 * `-S` size sort
 * `-X` extension sort
 * `-c` ctime sort

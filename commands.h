@@ -247,6 +247,11 @@ static bool c_ignore(void) {
     return false;
 }
 
+static bool c_reloadroot(void) {
+    dir_reload(&root);
+    return true;
+}
+
 static bool c_toggle(void) {
     char x = prompt1("toggle");
     if (x) {
@@ -254,7 +259,7 @@ static bool c_toggle(void) {
         if (!r) {
             putstr("! no such flag");
             putln();
-        } else dir_reload(&root);
+        } else c_reloadroot();
         return r;
     }
     return false;
@@ -361,16 +366,11 @@ static bool c_goroot(void) {
     return true;
 }
 
-static bool c_reloadroot(void) {
-    dir_reload(&root);
-    return true;
-}
-
 static bool c_reload(void) {
     struct Node* d = cursor;
     if (Type_LNK == d->type) d = d->as.link.tail;
     if (d && Type_DIR == d->type) {
-        dir_reload(d);
+        dir_reload(cursor);
         return true;
     }
     return false;
@@ -636,7 +636,7 @@ static bool c_shell(void) {
     putstr("! done");
     if (read(STDIN_FILENO, &_usl, 1) < 0) die("read");
 
-    dir_reload(&root);
+    c_reloadroot();
     return true;
 }
 
@@ -691,7 +691,7 @@ static bool c_pipe(void) {
     putstr("! done");
     if (read(STDIN_FILENO, &_usl, 1) < 0) die("read");
 
-    dir_reload(&root);
+    c_reloadroot();
     return true;
 }
 
