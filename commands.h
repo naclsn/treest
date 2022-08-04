@@ -302,9 +302,8 @@ static bool c_child(void) {
     if (!c_unfold()) return false;
     struct Node* d = cursor;
     if (Type_LNK == d->type) d = d->as.link.tail;
-    if (0 == d->count) return false;
-    cursor = d->as.dir.children[0];
-    return true;
+    if (0 != d->count) cursor = d->as.dir.children[0];
+    return true; // YYY: even when no child..?
 }
 
 static bool c_firstchild(void) {

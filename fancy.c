@@ -58,7 +58,7 @@ static struct {
         .so="01;35",
         .bd="40;33;01",
         .cd="40;33;01",
-        .or="40;31;01",
+        .or="40;31;09",
         // .mi="22;39;49",
         .ex="01;32",
         .sel="7",
@@ -135,7 +135,7 @@ void fancy_node(struct Node* node) {
     if (flags.classify)
         apply_decorations(node);
 
-    if (flags.join && Type_DIR == node->type && 1 == node->count && node->as.dir.unfolded) {
+    if (flags.join && 1 == node->count && node->as.dir.unfolded) {
         if (!flags.classify) putstr("/");
     } else {
         if (is_tty) putstr("\r");

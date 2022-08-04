@@ -66,7 +66,7 @@ void dir_free(struct Node* node) {
 
 void lnk_free(struct Node* node) {
     free(node->as.link.readpath);
-    node_free(node->as.link.to);
+    if (node->as.link.to) node_free(node->as.link.to);
     free(node->as.link.to);
     node->as.link.readpath = NULL;
     node->as.link.to = NULL;
