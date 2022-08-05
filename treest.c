@@ -1,6 +1,25 @@
 #include "./treest.h"
 #include "./commands.h"
 
+void* may_malloc(size_t s) {
+    void* r = malloc(s);
+    if (!r) die("malloc");
+    return r;
+}
+void* may_realloc(void* p, size_t s) {
+    void* r = realloc(p, s);
+    if (!r) die("realloc");
+    return r;
+}
+char* may_strdup(char* c) {
+    char* r = strdup(c);
+    if (!r) die("strdup");
+    return r;
+}
+void may_free(void* p) {
+    free(p);
+}
+
 char* prog;
 char cwd[_MAX_PATH];
 bool is_tty;
@@ -16,7 +35,7 @@ struct Node* node_alloc(struct Node* parent, size_t index, char* path) {
     if (lstat(path, &sb) < 0) return NULL;
     enum Type type = S_IFMT & sb.st_mode;
 
-    struct Node* niw = malloc(sizeof(struct Node));
+    struct Node* niw = may_malloc(sizeof(struct Node));
     struct Node fill = {
         .path=path,
         .name=name,
@@ -43,7 +62,7 @@ void node_free(struct Node* node) {
         case Type_LNK: lnk_free(node); break;
         default: ;
     }
-    free(node->path);
+    may_free(node->path);
     node->path = NULL;
     node->name = NULL;
     if (node == cursor)
@@ -55,19 +74,19 @@ void node_free(struct Node* node) {
 void dir_free(struct Node* node) {
     for (size_t k = 0; k < node->count; k++) {
         node_free(node->as.dir.children[k]);
-        free(node->as.dir.children[k]);
+        may_free(node->as.dir.children[k]);
         node->as.dir.children[k] = NULL;
     }
     node->count = 0;
-    free(node->as.dir.children);
+    may_free(node->as.dir.children);
     node->as.dir.children = NULL;
     node->as.dir.unfolded = false;
 }
 
 void lnk_free(struct Node* node) {
-    free(node->as.link.readpath);
+    may_free(node->as.link.readpath);
     if (node->as.link.to) node_free(node->as.link.to);
-    free(node->as.link.to);
+    may_free(node->as.link.to);
     node->as.link.readpath = NULL;
     node->as.link.to = NULL;
     node->as.link.tail = NULL;
@@ -101,13 +120,13 @@ void lnk_resolve(struct Node* node) {
     char readpath[_MAX_PATH];
     ssize_t len = readlink(node->path, readpath, _MAX_PATH-1);
     if (len < 0) {
-        node->as.link.readpath = strdup(strerror(errno));
+        node->as.link.readpath = may_strdup(strerror(errno));
         node->as.link.to = node->as.link.tail = NULL;
         return;
     }
     readpath[len] = '\0';
 
-    char* savedpath = strdup(readpath);
+    char* savedpath = may_strdup(readpath);
 
     char fullpath[_MAX_PATH];
     char* paste;
@@ -145,7 +164,7 @@ void lnk_resolve(struct Node* node) {
     while ('/' == *(paste-1)) paste--; // YYY: strrchr
     *paste = '\0';
 
-    char* path = strdup(fullpath);
+    char* path = may_strdup(fullpath);
 
     struct Node* niw = node_alloc(node->parent, node->index, path);
     node->as.link.readpath = savedpath;
@@ -166,7 +185,7 @@ void dir_unfold(struct Node* node) {
     size_t parent_path_len = strlen(node->path);
 
     size_t cap = 16;
-    node->as.dir.children = malloc(cap * sizeof(struct Node*));
+    node->as.dir.children = may_malloc(cap * sizeof(struct Node*));
 
     DIR *dir = opendir(node->path);
     if (dir) {
@@ -180,11 +199,11 @@ void dir_unfold(struct Node* node) {
 
             if (cap < node->count) {
                 cap*= 2;
-                node->as.dir.children = realloc(node->as.dir.children, cap * sizeof(struct Node*));
+                node->as.dir.children = may_realloc(node->as.dir.children, cap * sizeof(struct Node*));
             }
 
             size_t path_len = parent_path_len+2 + strlen(ent->d_name);
-            char* path = malloc(path_len);
+            char* path = may_malloc(path_len);
             strcpy(path, node->path);
 
             char* name = path + parent_path_len;
@@ -198,7 +217,7 @@ void dir_unfold(struct Node* node) {
     }
 
     parent->count = node->count;
-    node->as.dir.children = realloc(node->as.dir.children, node->count * sizeof(struct Node*));
+    node->as.dir.children = may_realloc(node->as.dir.children, node->count * sizeof(struct Node*));
 }
 
 void dir_fold(struct Node* node) {
@@ -265,11 +284,11 @@ void dir_reload(struct Node* node) {
     bool is_root = &root == node;
 
     if (is_root) {
-        node = malloc(sizeof(struct Node));
+        node = may_malloc(sizeof(struct Node));
         memcpy(node, &root, sizeof(struct Node));
     }
 
-    struct Node* niw = node_alloc(node->parent, node->index, strdup(node->path));
+    struct Node* niw = node_alloc(node->parent, node->index, may_strdup(node->path));
 
     if (is_root) {
         if (!niw) die("Cannot access root anymore");

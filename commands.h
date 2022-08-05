@@ -42,7 +42,7 @@ bool run_commands(char* user) {
 static char* prompt_raw(const char* c) {
     ssize_t cap = 1024;
     ssize_t len = 0;
-    char* buf = malloc(cap * sizeof(char));
+    char* buf = may_malloc(cap * sizeof(char));
 
     char last;
     putstr(c);
@@ -75,14 +75,14 @@ static char* prompt_raw(const char* c) {
         if (write(STDERR_FILENO, &last, 1) < 0) die("write")
         if (cap < len) {
             cap*= 2;
-            buf = realloc(buf, cap * sizeof(char));
+            buf = may_realloc(buf, cap * sizeof(char));
         }
         buf[len++] = last;
     }
     putln();
     buf[len++] = '\0';
 
-    return realloc(buf, len * sizeof(char));
+    return may_realloc(buf, len * sizeof(char));
 }
 
 #ifdef FEAT_READLINE
@@ -204,7 +204,7 @@ static struct Node* locate(const char* path) {
 static char* quote(char* text) {
     size_t cap = 64;
     size_t len = 0;
-    char* ab = malloc(cap * sizeof(char));
+    char* ab = may_malloc(cap * sizeof(char));
 
     ab[len++] = '\'';
 
@@ -213,7 +213,7 @@ static char* quote(char* text) {
         size_t add = cast-text;
         if (cap < len+add+4) {
             cap*= 2;
-            ab = realloc(ab, cap * sizeof(char));
+            ab = may_realloc(ab, cap * sizeof(char));
         }
         memcpy(ab+len, text, add);
         len+= add;
@@ -222,7 +222,7 @@ static char* quote(char* text) {
         text = cast+1;
     }
     size_t left = strlen(text);
-    if (cap < len+left+2) ab = realloc(ab, (len+left+2) * sizeof(char));
+    if (cap < len+left+2) ab = may_realloc(ab, (len+left+2) * sizeof(char));
     memcpy(ab+len, text, left);
     len+= left;
 
@@ -243,7 +243,7 @@ static bool c_cquit(void) {
 }
 
 static bool c_ignore(void) {
-    free(prompt("ignore"));
+    may_free(prompt("ignore"));
     return false;
 }
 
@@ -387,21 +387,21 @@ static struct {
 static bool c_findnext(void);
 
 static bool c_findstartswith(void) {
-    free(_find_query.text);
+    may_free(_find_query.text);
     _find_query.text = prompt("find-startswith");
     _find_query.match = Match_STARTS_WITH;
     return c_findnext();
 }
 
 static bool c_findendswith(void) {
-    free(_find_query.text);
+    may_free(_find_query.text);
     _find_query.text = prompt("find-endswith");
     _find_query.match = Match_ENDS_WITH;
     return c_findnext();
 }
 
 static bool c_findcontains(void) {
-    free(_find_query.text);
+    may_free(_find_query.text);
     _find_query.text = prompt("find-contains");
     _find_query.match = Match_CONTAINS;
     return c_findnext();
@@ -531,7 +531,7 @@ static bool c_promptunfold(void) {
     char* c = prompt("unfold-path");
     if (!c) return false;
     struct Node* found = locate(c);
-    free(c);
+    may_free(c);
     if (found) {
         struct Node* pre = cursor;
         cursor = found;
@@ -547,7 +547,7 @@ static bool c_promptfold(void) {
     char* c = prompt("fold-path");
     if (!c) return false;
     struct Node* found = locate(c);
-    free(c);
+    may_free(c);
     if (found) {
         struct Node* pre = cursor;
         cursor = found;
@@ -562,7 +562,7 @@ static bool c_promptgounfold(void) {
     char* c = prompt("gounfold-path");
     if (!c) return false;
     struct Node* found = locate(c);
-    free(c);
+    may_free(c);
     if (found) {
         cursor = found;
         c_unfold();
@@ -575,7 +575,7 @@ static bool c_promptgofold(void) {
     char* c = prompt("gofold-path");
     if (!c) return false;
     struct Node* found = locate(c);
-    free(c);
+    may_free(c);
     if (found) {
         cursor = found;
         c_fold();
@@ -589,7 +589,7 @@ static bool c_command(void) {
     char* c = prompt("command");
     if (!c) return false;
     bool r = selected_printer->command(c);
-    free(c);
+    may_free(c);
     return r;
 }
 
@@ -606,7 +606,7 @@ static bool c_shell(void) {
     char* quoted = quote(cursor->path);
     size_t nlen = strlen(quoted);
 
-    char* com = malloc(clen * sizeof(char));
+    char* com = may_malloc(clen * sizeof(char));
     char* into = com;
 
     char* head = c;
@@ -617,7 +617,7 @@ static bool c_shell(void) {
 
         clen+= nlen;
         char* pcom = com;
-        com = realloc(com, clen * sizeof(char));
+        com = may_realloc(com, clen * sizeof(char));
         into+= com - pcom;
 
         strcpy(into, quoted);
@@ -626,11 +626,11 @@ static bool c_shell(void) {
         head = tail+2;
     }
     strcpy(into, head);
-    free(c);
+    may_free(c);
 
     term_restore();
     int _usl = system(com); // YYY
-    free(com);
+    may_free(com);
     term_raw_mode();
 
     putstr("! done");
@@ -655,7 +655,7 @@ static bool c_pipe(void) {
 
     clen+= nlen+1;
 
-    char* com = malloc(clen * sizeof(char));
+    char* com = may_malloc(clen * sizeof(char));
     char* into = com;
 
     char* head = c;
@@ -666,7 +666,7 @@ static bool c_pipe(void) {
 
         clen+= nlen;
         char* pcom = com;
-        com = realloc(com, clen * sizeof(char));
+        com = may_realloc(com, clen * sizeof(char));
         into+= com - pcom;
 
         strcpy(into, quoted);
@@ -677,7 +677,7 @@ static bool c_pipe(void) {
     strcpy(into, head);
 
     into+= strlen(head);
-    free(c);
+    may_free(c);
 
     *into++ = '<';
     strcpy(into, quoted);
@@ -685,7 +685,7 @@ static bool c_pipe(void) {
 
     term_restore();
     int _usl = system(com); // YYY
-    free(com);
+    may_free(com);
     term_raw_mode();
 
     putstr("! done");
@@ -703,7 +703,7 @@ static bool c_if(void) {
         char* c = prompt("then-commands");
         if (!c) return false;
         r = run_commands(c);
-        free(c);
+        may_free(c);
     }
     return r;
 }
@@ -716,7 +716,7 @@ static bool c_ifnot(void) {
         char* c = prompt("then-commands");
         if (!c) return false;
         r = run_commands(c);
-        free(c);
+        may_free(c);
     }
     return r;
 }
@@ -729,7 +729,7 @@ static bool c_while(void) {
         char* c = prompt("do-commands");
         if (!c) return false;
         r = run_commands(c);
-        free(c);
+        may_free(c);
     }
     return r;
 }
@@ -742,7 +742,7 @@ static bool c_whilenot(void) {
         char* c = prompt("do-commands");
         if (!c) return false;
         r = run_commands(c);
-        free(c);
+        may_free(c);
     }
     return r;
 }
@@ -755,7 +755,7 @@ static bool c_register(void) {
         putln();
         return false;
     }
-    free(register_map[a]);
+    may_free(register_map[a]);
     char* c = prompt("register-commands");
     register_map[a] = c;
     return !!c;
@@ -802,7 +802,7 @@ struct Command command_map[128] = {
     [':']      ={c_command,              "execute a printer command"},
     [';']      ={c_refresh,              "refresh the view"},
     ['=']      ={c_foldrec,              "fold recursively at the cursor"},
-    ['?']      ={c_help,                 "enter ? then a key combination to find out about the associated command"},
+    ['?']      ={c_help,                 "print help for a given command"},
     ['C']      ={c_promptfold,           "fold at the given path"},
     ['H']      ={c_fold,                 "fold at the cursor"},
     ['L']      ={c_unfold,               "unfold at the cursor"},

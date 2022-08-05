@@ -24,6 +24,11 @@
     exit(errno);    \
 }
 
+void* may_malloc(size_t s);
+void* may_realloc(void* p, size_t s);
+char* may_strdup(char* c);
+void  may_free(void * p);
+
 #ifndef PATH_MAX
 #define _MAX_PATH 4096
 #elif PATH_MAX < 4097
