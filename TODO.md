@@ -1,7 +1,5 @@
 # TODO
 ## misc
-* malloc -> may_malloc (or with MAYP/MAYN)
-* putstr -> buffering
 * const when should
 * clean/update man page (and README.md)
 
@@ -20,6 +18,7 @@
 ---
 ## fancy
 ### misc
+* putstr -> buffering
 * scrolling (^E/^Y, ^D/^U, ^F/^B) and window heigh detection (and signal?)
 * see https://stackoverflow.com/questions/51909557/mouse-events-in-terminal-emulator
 

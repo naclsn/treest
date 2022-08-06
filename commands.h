@@ -10,6 +10,8 @@
 
 #include "./treest.h"
 
+static void _free_before_normal_exit();
+
 #define putstr(__c) if (write(STDERR_FILENO, __c, strlen(__c)) < 0) die("write")
 #define putln() putstr(is_raw ? "\r\n" : "\n")
 
@@ -233,11 +235,13 @@ static char* quote(char* text) {
 }
 
 static bool c_quit(void) {
+    _free_before_normal_exit();
     exit(EXIT_SUCCESS);
 }
 
 static bool c_cquit(void) {
     char c = prompt1("exit-code");
+    _free_before_normal_exit();
     if (c) exit(c);
     exit(EXIT_FAILURE);
 }
@@ -830,3 +834,11 @@ struct Command command_map[128] = {
     ['~']      ={c_reloadroot,           "reload at the root (read the whole tree from file system)"},
 };
 char* register_map[128] = {0};
+
+#ifdef TRACE_ALLOCS
+static void _free_before_normal_exit() {
+    selected_printer->del();
+    node_free(&root);
+    may_free(_find_query.text);
+}
+#endif

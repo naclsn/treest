@@ -5,7 +5,13 @@ DESTDIR   ?=
 ifneq (, $(shell ldconfig -p | grep readline))
 FEAT += -DFEAT_READLINE -lreadline
 endif
-CFLAGS ?= -std=c99 -Wall -Wextra -Werror -pedantic -O2 -s
+ifneq (, $(DEBUGGING))
+FEAT += -DTRACE_ALLOCS -g
+else
+FEAT += -s
+endif
+
+CFLAGS ?= -std=c99 -Wall -Wextra -Werror -pedantic -O2
 
 VERSION = 0.0.7
 PROG = treest

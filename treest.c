@@ -1,6 +1,7 @@
 #include "./treest.h"
 #include "./commands.h"
 
+#ifndef TRACE_ALLOCS
 void* may_malloc(size_t s) {
     void* r = malloc(s);
     if (!r) die("malloc");
@@ -19,6 +20,7 @@ char* may_strdup(char* c) {
 void may_free(void* p) {
     free(p);
 }
+#endif
 
 char* prog;
 char cwd[_MAX_PATH];
@@ -349,7 +351,7 @@ void term_raw_mode(void) {
 
 char* opts(int argc, char* argv[]) {
     selected_printer = &ascii_printer;
-    selected_printer->init();
+    selected_printer->init(); // TODO(unnecessary): lazy
 
     char* selected_path = NULL;
 
@@ -367,6 +369,7 @@ char* opts(int argc, char* argv[]) {
             #undef SEP
             else {
                 printf("No such printer: '%s'\n", arg);
+                selected_printer->del();
                 exit(EXIT_FAILURE);
             }
         } else {
@@ -378,6 +381,7 @@ char* opts(int argc, char* argv[]) {
                     }
                     if (!selected_printer->command(argv[k]+2)) {
                         printf("Unknown command for '%s': '%s'\n", selected_printer->name, argv[k]+2);
+                        selected_printer->del();
                         exit(EXIT_FAILURE);
                     }
                 }
@@ -394,6 +398,10 @@ char* opts(int argc, char* argv[]) {
 }
 
 int main(int argc, char* argv[]) {
+    #ifdef TRACE_ALLOCS
+    mtrace();
+    #endif
+
     prog = argv[0];
     argv++;
     argc--;

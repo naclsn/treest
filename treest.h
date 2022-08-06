@@ -4,6 +4,10 @@
 #undef _DEFAULT_SOURCE
 #define _DEFAULT_SOURCE 1
 
+#ifdef TRACE_ALLOCS
+#include <mcheck.h>
+#endif
+
 #include <dirent.h>
 #include <errno.h>
 #include <libgen.h>
@@ -24,10 +28,17 @@
     exit(errno);    \
 }
 
+#ifdef TRACE_ALLOCS
+#define may_malloc  malloc
+#define may_realloc realloc
+#define may_strdup  strdup
+#define may_free    free
+#else
 void* may_malloc(size_t s);
 void* may_realloc(void* p, size_t s);
 char* may_strdup(char* c);
 void  may_free(void * p);
+#endif
 
 #ifndef PATH_MAX
 #define _MAX_PATH 4096
