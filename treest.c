@@ -314,6 +314,7 @@ void dir_reload(struct Node* node) {
     if (cursor == node) cursor = niw;
     _recurse_dir_reload(node, niw);
     node_free(node);
+    may_free(node);
 }
 
 static struct termios orig_termios;

@@ -233,15 +233,11 @@ static char* quote(char* text) {
 }
 
 static bool c_quit(void) {
-    selected_printer->del();
-    node_free(&root);
     exit(EXIT_SUCCESS);
 }
 
 static bool c_cquit(void) {
     char c = prompt1("exit-code");
-    selected_printer->del();
-    node_free(&root);
     if (c) exit(c);
     exit(EXIT_FAILURE);
 }
@@ -631,6 +627,7 @@ static bool c_shell(void) {
     }
     strcpy(into, head);
     may_free(c);
+    may_free(quoted);
 
     term_restore();
     int _usl = system(com); // YYY
@@ -682,6 +679,7 @@ static bool c_pipe(void) {
 
     into+= strlen(head);
     may_free(c);
+    may_free(quoted);
 
     *into++ = '<';
     strcpy(into, quoted);
