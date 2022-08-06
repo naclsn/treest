@@ -233,11 +233,15 @@ static char* quote(char* text) {
 }
 
 static bool c_quit(void) {
+    selected_printer->del();
+    node_free(&root);
     exit(EXIT_SUCCESS);
 }
 
 static bool c_cquit(void) {
     char c = prompt1("exit-code");
+    selected_printer->del();
+    node_free(&root);
     if (c) exit(c);
     exit(EXIT_FAILURE);
 }

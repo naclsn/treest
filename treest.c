@@ -348,12 +348,18 @@ void term_raw_mode(void) {
 
 char* opts(int argc, char* argv[]) {
     selected_printer = &ascii_printer;
+    selected_printer->init();
+
     char* selected_path = NULL;
 
     for (int k = 0; k < argc; k++) {
         if (0 == memcmp("--printer=", argv[k], 10)) {
             char* arg = argv[k] + 10;
-            #define DO(it) if (0 == strcmp(it.name, arg)) selected_printer = &it;
+            #define DO(it) if (0 == strcmp(it.name, arg)) {  \
+                selected_printer->del();                     \
+                selected_printer = &it;                      \
+                selected_printer->init();                    \
+            }
             #define SEP else
             EVERY_PRINTERS(DO, SEP)
             #undef DO
@@ -420,8 +426,6 @@ int main(int argc, char* argv[]) {
     cursor = &root;
 
     if ((is_tty = isatty(STDOUT_FILENO))) term_raw_mode();
-
-    selected_printer->init();
 
     while (true) {
         selected_printer->begin();
