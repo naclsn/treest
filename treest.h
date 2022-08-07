@@ -23,22 +23,26 @@
     __do(ascii_printer) __sep        \
     __do(fancy_printer)
 
-#define die(__c) {  \
-    perror(__c);    \
-    exit(errno);    \
+#define die(__c) {                    \
+    char oups[128];                   \
+    snprintf(oups, 128, "%s:%d(%s)",  \
+        __FILE__, __LINE__, __c);     \
+    perror(oups);                     \
+    exit(errno);                      \
 }
 
-#ifdef TRACE_ALLOCS
-#define may_malloc  malloc
-#define may_realloc realloc
-#define may_strdup  strdup
-#define may_free    free
-#else
-void* may_malloc(size_t s);
-void* may_realloc(void* p, size_t s);
-char* may_strdup(char* c);
-void  may_free(void * p);
-#endif
+#define may_malloc(__r, __s) {  \
+    __r = malloc(__s);          \
+    if (!__r) die("malloc");    \
+}
+#define may_realloc(__rp, __s) {  \
+    __rp = realloc(__rp, __s);    \
+    if (!__rp) die("realloc");    \
+}
+#define may_strdup(__r, __c) {  \
+    __r = strdup(__c);          \
+    if (!__r) die("strdup");    \
+}
 
 #ifndef PATH_MAX
 #define _MAX_PATH 4096

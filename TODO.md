@@ -1,6 +1,5 @@
 # TODO
 ## misc
-* const when should
 * clean/update man page (and README.md)
 
 ## option
@@ -8,6 +7,7 @@
 
 ## gflags
 * (`-I` toggle ignore? or command on `^H`?)
+* `-B` ignore backups (entries ending with `~`)
 * `-S` size sort
 * `-X` extension sort
 * `-c` ctime sort
@@ -20,7 +20,6 @@
 ### misc
 * putstr -> buffering
 * scrolling (^E/^Y, ^D/^U, ^F/^B) and window heigh detection (and signal?)
-* see https://stackoverflow.com/questions/51909557/mouse-events-in-terminal-emulator
 
 ### flags
 * (`-b` escape non graphic -- maybe)

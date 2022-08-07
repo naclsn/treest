@@ -76,11 +76,11 @@ void fancy_init(void) {
 }
 
 void fancy_del(void) {
-    for (size_t k = 0; k < state.ls_colors.ext_count; k++) may_free(state.ls_colors.ext[k]);
-    for (size_t k = 0; k < state.ls_colors.exa_count; k++) may_free(state.ls_colors.exa[k]);
-    may_free(state.ls_colors.ext);
-    may_free(state.ls_colors.exa);
-    may_free(state.ls_colors.LS_COLORS);
+    for (size_t k = 0; k < state.ls_colors.ext_count; k++) free(state.ls_colors.ext[k]);
+    for (size_t k = 0; k < state.ls_colors.exa_count; k++) free(state.ls_colors.exa[k]);
+    free(state.ls_colors.ext);
+    free(state.ls_colors.exa);
+    free(state.ls_colors.LS_COLORS);
 }
 
 bool fancy_toggle(char flag) {
@@ -156,10 +156,10 @@ void fancy_leave(struct Node* _UNUSED(node)) {
 static void _sorted_insert(struct LS_COLORS_KVEntry* entry, struct LS_COLORS_KVEntry*** into, size_t* count, size_t* cap) {
     if (0 == *count) {
         *cap = 8;
-        *into = may_malloc(*cap * sizeof(struct LS_COLORS_KVEntry*));
+        may_malloc(*into, *cap * sizeof(struct LS_COLORS_KVEntry*));
     } else if (*cap <= *count) {
         *cap*= 2;
-        *into = may_realloc(*into, *cap * sizeof(struct LS_COLORS_KVEntry*));
+        may_realloc(*into, *cap * sizeof(struct LS_COLORS_KVEntry*));
     }
 
     size_t k = 0;
@@ -180,7 +180,8 @@ static void read_ls_colors(void) {
     size_t ext_cap = 0;
     size_t exa_cap = 0;
 
-    tail = state.ls_colors.LS_COLORS = may_strdup(tail);
+    may_strdup(state.ls_colors.LS_COLORS, tail);
+    tail = state.ls_colors.LS_COLORS;
     char* head;
     while ((head = strchr(tail, ':'))) {
         *head = '\0';
@@ -204,7 +205,7 @@ static void read_ls_colors(void) {
 
         else if ('*' == tail[0] && '.' == tail[1]) {
             tail+= 2;
-            struct LS_COLORS_KVEntry* niw = may_malloc(sizeof(struct LS_COLORS_KVEntry));
+            struct LS_COLORS_KVEntry* niw; may_malloc(niw, sizeof(struct LS_COLORS_KVEntry));
             niw->key = tail;
             niw->val = val;
             _sorted_insert(niw, &state.ls_colors.ext, &state.ls_colors.ext_count, &ext_cap);
@@ -212,7 +213,7 @@ static void read_ls_colors(void) {
 
         else {
             if ('*' == *tail) tail++;
-            struct LS_COLORS_KVEntry* niw = may_malloc(sizeof(struct LS_COLORS_KVEntry));
+            struct LS_COLORS_KVEntry* niw; may_malloc(niw, sizeof(struct LS_COLORS_KVEntry));
             niw->key = tail;
             niw->val = val;
             _sorted_insert(niw, &state.ls_colors.exa, &state.ls_colors.exa_count, &exa_cap);
@@ -221,8 +222,8 @@ static void read_ls_colors(void) {
         tail = head+1;
     }
 
-    state.ls_colors.ext = may_realloc(state.ls_colors.ext, state.ls_colors.ext_count * sizeof(struct LS_COLORS_KVEntry));
-    state.ls_colors.exa = may_realloc(state.ls_colors.exa, state.ls_colors.exa_count * sizeof(struct LS_COLORS_KVEntry));
+    may_realloc(state.ls_colors.ext, state.ls_colors.ext_count * sizeof(struct LS_COLORS_KVEntry));
+    may_realloc(state.ls_colors.exa, state.ls_colors.exa_count * sizeof(struct LS_COLORS_KVEntry));
 }
 
 static struct LS_COLORS_KVEntry* _binary_search(const char* needle, struct LS_COLORS_KVEntry** hay, size_t a, size_t b) {
