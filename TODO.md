@@ -7,7 +7,6 @@
 
 ## gflags
 * (`-I` toggle ignore? or command on `^H`?)
-* `-B` ignore backups (entries ending with `~`)
 * `-S` size sort
 * `-X` extension sort
 * `-c` ctime sort

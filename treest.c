@@ -177,13 +177,15 @@ void dir_unfold(struct Node* node) {
                 || ('.' == ent->d_name[1] && '\0' == ent->d_name[2])
                 || !gflags.almost_all
             )) continue;
+            size_t nlen = strlen(ent->d_name);
+            if (gflags.ignore_backups && '~' == ent->d_name[nlen-1]) continue;
 
             if (cap < node->count) {
                 cap*= 2;
                 may_realloc(node->as.dir.children, cap * sizeof(struct Node*));
             }
 
-            size_t path_len = parent_path_len+2 + strlen(ent->d_name);
+            size_t path_len = parent_path_len+2 + nlen;
             char* path; may_malloc(path, path_len);
             strcpy(path, node->path);
 

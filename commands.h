@@ -28,6 +28,9 @@ bool toggle_gflag(char flag) {
         case 'a':
             TOGGLE(gflags.almost_all);
             return true;
+        case 'B':
+            TOGGLE(gflags.ignore_backups);
+            return true;
     }
     return false;
 }

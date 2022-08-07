@@ -68,6 +68,7 @@ extern bool is_raw;
 
 extern struct GFlags {
     bool almost_all;
+    bool ignore_backups;
 } gflags;
 extern bool toggle_gflag(char flag);
 
