@@ -9,7 +9,7 @@ struct GFlags gflags;
 struct Node root, * cursor;
 struct Printer* selected_printer;
 
-struct Node* node_alloc(struct Node* parent, size_t index, char* path) {
+struct Node* node_alloc(struct Node* parent, char* path) {
     char* name = strrchr(path, '/')+1;
 
     struct stat sb;
@@ -22,7 +22,6 @@ struct Node* node_alloc(struct Node* parent, size_t index, char* path) {
         .name=name,
         .type=type,
         .parent=parent,
-        .index=index
     };
     memcpy(niw, &fill, sizeof(struct Node));
 
@@ -147,7 +146,7 @@ void lnk_resolve(struct Node* node) {
 
     char* path; may_strdup(path, fullpath);
 
-    struct Node* niw = node_alloc(node->parent, node->index, path);
+    struct Node* niw = node_alloc(node->parent, path);
     node->as.link.readpath = savedpath;
     node->as.link.to = niw;
     node->as.link.tail = niw && Type_LNK == niw->type
@@ -180,11 +179,6 @@ void dir_unfold(struct Node* node) {
             size_t nlen = strlen(ent->d_name);
             if (gflags.ignore_backups && '~' == ent->d_name[nlen-1]) continue;
 
-            if (cap < node->count) {
-                cap*= 2;
-                may_realloc(node->as.dir.children, cap * sizeof(struct Node*));
-            }
-
             size_t path_len = parent_path_len+2 + nlen;
             char* path; may_malloc(path, path_len);
             strcpy(path, node->path);
@@ -193,11 +187,33 @@ void dir_unfold(struct Node* node) {
             if ('/' != name[-1]) *name++ = '/';
             strcpy(name, ent->d_name);
 
-            struct Node* niw = node_alloc(parent, node->count, path);
-            if (niw) node->as.dir.children[node->count++] = niw;
+            //if (path_ignore(path)) {
+            //    free(path);
+            //    continue;
+            //}
+
+            if (cap < node->count) {
+                cap*= 2;
+                may_realloc(node->as.dir.children, cap * sizeof(struct Node*));
+            }
+
+            struct Node* niw = node_alloc(parent, path);
+            if (niw) {
+                size_t k = 0;
+                for (k = node->count; 0 < k; k--) {
+                    int cmp = node_compare(node->as.dir.children[k-1], niw, gflags.sort_order);
+                    if (!cmp) cmp = node_compare(node->as.dir.children[k-1], niw, Sort_NAME);
+                    if (cmp < 0) break;
+                    node->as.dir.children[k] = node->as.dir.children[k-1];
+                }
+                node->as.dir.children[k] = niw;
+                node->count++;
+            }
         }
         closedir(dir);
     }
+
+    for (size_t k = 0; k < node->count; k++) node->as.dir.children[k]->index = k;
 
     if (0 == (parent->count = node->count)) node->as.dir.children = NULL;
     else may_realloc(node->as.dir.children, node->count * sizeof(struct Node*));
@@ -272,7 +288,7 @@ void dir_reload(struct Node* node) {
     }
 
     char* niw_path; may_strdup(niw_path, node->path);
-    struct Node* niw = node_alloc(node->parent, node->index, niw_path);
+    struct Node* niw = node_alloc(node->parent, niw_path);
 
     if (is_root) {
         if (!niw) die("Cannot access root anymore");
@@ -329,6 +345,37 @@ void term_raw_mode(void) {
 
     if (tcsetattr(STDOUT_FILENO, TCSAFLUSH, &raw) < 0) die("tcsetattr");
     is_raw = true;
+}
+
+int node_compare(struct Node* node, struct Node* mate, enum Sort order) {
+    if (Sort_REVERSE & order)
+        return -node_compare(node, mate, order & ~Sort_REVERSE);
+
+    switch (order) {
+        case Sort_NAME:
+            return strcoll(node->name, mate->name);
+
+        case Sort_SIZE:
+            break;
+
+        case Sort_EXTENSION: {
+            char* xa = strrchr(node->name, '.');
+            if (!xa) return -1;
+            char* xb = strrchr(mate->name, '.');
+            if (!xb) return +1;
+            return strcmp(xa+1, xb+1);
+        }
+
+        case Sort_ATIME:
+            break;
+        case Sort_MTIME:
+            break;
+        case Sort_CTIME:
+            break;
+
+        default: ;
+    }
+    return 0; // unreachable
 }
 
 char* opts(int argc, char* argv[]) {
@@ -400,6 +447,8 @@ int main(int argc, char* argv[]) {
             exit(EXIT_SUCCESS);
         }
     }
+
+    setlocale(LC_ALL, "");
 
     char* arg_path = opts(argc, argv);
     if (!getcwd(cwd, _MAX_PATH)) die("getcwd");

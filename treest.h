@@ -11,6 +11,7 @@
 #include <dirent.h>
 #include <errno.h>
 #include <libgen.h>
+#include <locale.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -69,6 +70,15 @@ extern bool is_raw;
 extern struct GFlags {
     bool almost_all;
     bool ignore_backups;
+    enum Sort {
+        Sort_NAME=0,
+        Sort_SIZE=1,
+        Sort_EXTENSION=2,
+        Sort_ATIME=4,
+        Sort_MTIME=6,
+        Sort_CTIME=8,
+        Sort_REVERSE=16,
+    } sort_order;
 } gflags;
 extern bool toggle_gflag(char flag);
 
@@ -129,7 +139,7 @@ EVERY_PRINTERS(DO, SEP)
 #undef SEP
 , * selected_printer;
 
-struct Node* node_alloc(struct Node* parent, size_t index, char* path);
+struct Node* node_alloc(struct Node* parent, char* path);
 void node_free(struct Node* node);
 void dir_free(struct Node* node);
 void lnk_free(struct Node* node);
@@ -142,5 +152,7 @@ void dir_fold(struct Node* node);
 void dir_reload(struct Node* node);
 void term_restore(void);
 void term_raw_mode(void);
+//bool path_ignore(char* path);
+int node_compare(struct Node* node, struct Node* mate, enum Sort order);
 
 #endif // TREEST_SAD
