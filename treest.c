@@ -10,25 +10,22 @@ struct Node root, * cursor;
 struct Printer* selected_printer;
 
 struct Node* node_alloc(struct Node* parent, char* path) {
-    char* name = strrchr(path, '/')+1;
-
-    struct stat sb;
-    if (lstat(path, &sb) < 0) return NULL;
-    enum Type type = S_IFMT & sb.st_mode;
-
-    struct Node* niw; may_malloc(niw, sizeof(struct Node));
     struct Node fill = {
         .path=path,
-        .name=name,
-        .type=type,
+        .name=strrchr(path, '/')+1,
         .parent=parent,
     };
+
+    if (lstat(path, &fill.stat) < 0) return NULL;
+    fill.type = S_IFMT & fill.stat.st_mode;
+
+    struct Node* niw; may_malloc(niw, sizeof(struct Node));
     memcpy(niw, &fill, sizeof(struct Node));
 
-    if (Type_REG == type) {
-        if (sb.st_mode & S_IXUSR)
+    if (Type_REG == fill.type) {
+        if (fill.stat.st_mode & S_IXUSR)
             niw->type = Type_EXEC;
-    } else if (Type_LNK == type) {
+    } else if (Type_LNK == fill.type) {
         // TODO: handle looping symlinks as broken
         lnk_resolve(niw);
     }
@@ -187,17 +184,17 @@ void dir_unfold(struct Node* node) {
             if ('/' != name[-1]) *name++ = '/';
             strcpy(name, ent->d_name);
 
-            //if (path_ignore(path)) {
-            //    free(path);
-            //    continue;
-            //}
-
             if (cap < node->count) {
                 cap*= 2;
                 may_realloc(node->as.dir.children, cap * sizeof(struct Node*));
             }
-
             struct Node* niw = node_alloc(parent, path);
+
+            //if (node_ignore(niw)) {
+            //    free(niw);
+            //    continue;
+            //}
+
             if (niw) {
                 size_t k = 0;
                 for (k = node->count; 0 < k; k--) {
@@ -347,16 +344,27 @@ void term_raw_mode(void) {
     is_raw = true;
 }
 
+//static bool _path_match(char* patt, char* path) {
+//    return false;
+//}
+//bool node_ignore(struct Node* node) {
+//    return false;
+//}
+
 int node_compare(struct Node* node, struct Node* mate, enum Sort order) {
     if (Sort_REVERSE & order)
         return -node_compare(node, mate, order & ~Sort_REVERSE);
 
-    switch (order) {
-        case Sort_NAME:
-            return strcoll(node->name, mate->name);
+    if (Sort_DIRSFIRST & order) {
+        if (Type_DIR == node->type) return -1;
+        if (Type_DIR == mate->type) return +1;
+        return node_compare(node, mate, order & ~Sort_DIRSFIRST);
+    }
 
-        case Sort_SIZE:
-            break;
+    switch (order) {
+        case Sort_NAME: return strcoll(node->name, mate->name);
+
+        case Sort_SIZE: return mate->stat.st_size - node->stat.st_size;
 
         case Sort_EXTENSION: {
             char* xa = strrchr(node->name, '.');
@@ -366,12 +374,9 @@ int node_compare(struct Node* node, struct Node* mate, enum Sort order) {
             return strcmp(xa+1, xb+1);
         }
 
-        case Sort_ATIME:
-            break;
-        case Sort_MTIME:
-            break;
-        case Sort_CTIME:
-            break;
+        case Sort_ATIME: return mate->stat.st_atime - node->stat.st_atime;
+        case Sort_MTIME: return mate->stat.st_mtime - node->stat.st_mtime;
+        case Sort_CTIME: return mate->stat.st_ctime - node->stat.st_ctime;
 
         default: ;
     }

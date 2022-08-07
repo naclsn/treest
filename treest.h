@@ -71,13 +71,14 @@ extern struct GFlags {
     bool almost_all;
     bool ignore_backups;
     enum Sort {
-        Sort_NAME=0,
-        Sort_SIZE=1,
-        Sort_EXTENSION=2,
-        Sort_ATIME=4,
-        Sort_MTIME=6,
-        Sort_CTIME=8,
-        Sort_REVERSE=16,
+        Sort_NAME      = 0,
+        Sort_SIZE      = 1,
+        Sort_EXTENSION = 2,
+        Sort_ATIME     = 4,
+        Sort_MTIME     = 6,
+        Sort_CTIME     = 8,
+        Sort_REVERSE   = 16,
+        Sort_DIRSFIRST = 32,
     } sort_order;
 } gflags;
 extern bool toggle_gflag(char flag);
@@ -93,6 +94,7 @@ extern bool run_commands(char* user);
 extern struct Node {
     char* path;
     char* name;
+    struct stat stat; // YYY: need the whole (awkward) stat struct?
     enum Type {
         Type_UNKNOWN = 0,
         Type_FIFO    = S_IFIFO,  // named pipe
@@ -152,7 +154,7 @@ void dir_fold(struct Node* node);
 void dir_reload(struct Node* node);
 void term_restore(void);
 void term_raw_mode(void);
-//bool path_ignore(char* path);
+//bool node_ignore(struct Node* node);
 int node_compare(struct Node* node, struct Node* mate, enum Sort order);
 
 #endif // TREEST_SAD

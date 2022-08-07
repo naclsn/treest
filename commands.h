@@ -20,9 +20,9 @@ static void _free_before_normal_exit();
 #undef CTRL
 #define CTRL(x) ( (~x&64) | (~x&64)>>1 | (x&31) )
 
-#define TOGGLE(flag) flag = !(flag)
+#define TOGGLE(flag) flag = !flag
 #define TOGGLE_BIT(array, flag) array^= flag
-#define TOGGLE_SRT(array, flag) array = (array^flag) & (flag | Sort_REVERSE)
+#define TOGGLE_SRT(array, flag) array = (array^flag) & (flag|Sort_REVERSE|Sort_DIRSFIRST)
 
 bool toggle_gflag(char flag) {
     switch (flag) {
@@ -34,6 +34,7 @@ bool toggle_gflag(char flag) {
         case 't': TOGGLE_SRT(gflags.sort_order, Sort_MTIME);     return true;
         case 'c': TOGGLE_SRT(gflags.sort_order, Sort_CTIME);     return true;
         case 'r': TOGGLE_BIT(gflags.sort_order, Sort_REVERSE);   return true;
+        case 'd': TOGGLE_BIT(gflags.sort_order, Sort_DIRSFIRST); return true;
     }
     return false;
 }

@@ -7,12 +7,6 @@
 
 ## gflags
 * (`-I` toggle ignore? or command on `^H`?)
-* `-S` size sort
-* `-X` extension sort
-* `-c` ctime sort
-* `-r` reverse sort
-* `-t` mtime sort
-* `-u` atime sort
 
 ---
 ## fancy
