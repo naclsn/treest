@@ -626,20 +626,22 @@ static bool c_shell(void) {
 
     char* com; may_malloc(com, clen * sizeof(char));
     char* into = com;
+    size_t ilen = 0;
 
     char* head = c;
     char* tail;
     while ((tail = strstr(head, "{}"))) {
         memcpy(into, head, tail-head);
         into+= tail-head;
+        ilen+= tail-head;
 
         clen+= nlen;
-        char* pcom = com;
         may_realloc(com, clen * sizeof(char));
-        into+= com - pcom;
+        into = com + ilen;
 
         strcpy(into, quoted);
         into+= nlen;
+        ilen+= nlen;
 
         head = tail+2;
     }
@@ -676,20 +678,22 @@ static bool c_pipe(void) {
 
     char* com; may_malloc(com, clen * sizeof(char));
     char* into = com;
+    size_t ilen = 0;
 
     char* head = c;
     char* tail;
     while ((tail = strstr(head, "{}"))) {
         memcpy(into, head, tail-head);
         into+= tail-head;
+        ilen+= tail-head;
 
         clen+= nlen;
-        char* pcom = com;
         may_realloc(com, clen * sizeof(char));
-        into+= com - pcom;
+        into = com + ilen;
 
         strcpy(into, quoted);
         into+= nlen;
+        ilen+= nlen;
 
         head = tail+2;
     }
@@ -697,11 +701,11 @@ static bool c_pipe(void) {
 
     into+= strlen(head);
     free(c);
-    free(quoted);
 
     *into++ = '<';
     strcpy(into, quoted);
     *(into+nlen) = '\0';
+    free(quoted);
 
     term_restore();
     int _usl = system(com); // YYY

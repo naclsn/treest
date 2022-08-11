@@ -1,6 +1,7 @@
 #include "./treest.h"
 #include "./commands.h"
 
+char oups[4110];
 char* prog;
 char cwd[_MAX_PATH];
 bool is_tty;
@@ -188,12 +189,13 @@ void dir_unfold(struct Node* node) {
                 cap*= 2;
                 may_realloc(node->as.dir.children, cap * sizeof(struct Node*));
             }
+
             struct Node* niw = node_alloc(parent, path);
 
-            //if (node_ignore(niw)) {
-            //    free(niw);
-            //    continue;
-            //}
+            if (node_ignore(niw)) {
+                free(niw);
+                continue;
+            }
 
             if (niw) {
                 size_t k = 0;
@@ -212,8 +214,10 @@ void dir_unfold(struct Node* node) {
 
     for (size_t k = 0; k < node->count; k++) node->as.dir.children[k]->index = k;
 
-    if (0 == (parent->count = node->count)) node->as.dir.children = NULL;
-    else may_realloc(node->as.dir.children, node->count * sizeof(struct Node*));
+    if (0 == (parent->count = node->count)) {
+        free(node->as.dir.children);
+        node->as.dir.children = NULL;
+    } else may_realloc(node->as.dir.children, node->count * sizeof(struct Node*));
 }
 
 void dir_fold(struct Node* node) {
@@ -344,12 +348,12 @@ void term_raw_mode(void) {
     is_raw = true;
 }
 
-//static bool _path_match(char* patt, char* path) {
-//    return false;
-//}
-//bool node_ignore(struct Node* node) {
-//    return false;
-//}
+static bool _path_match(char* _UNUSED(patt), char* _UNUSED(path)) {
+    return false;
+}
+bool node_ignore(struct Node* node) {
+    return _path_match("", node->path);
+}
 
 int node_compare(struct Node* node, struct Node* mate, enum Sort order) {
     if (Sort_REVERSE & order)

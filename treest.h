@@ -24,9 +24,9 @@
     __do(ascii_printer) __sep        \
     __do(fancy_printer)
 
+extern char oups[4110];
 #define die(__c) {                    \
-    char oups[128];                   \
-    snprintf(oups, 128, "%s:%d(%s)",  \
+    snprintf(oups, 4110, "%s:%d(%s)", \
         __FILE__, __LINE__, __c);     \
     perror(oups);                     \
     exit(errno);                      \
@@ -154,7 +154,7 @@ void dir_fold(struct Node* node);
 void dir_reload(struct Node* node);
 void term_restore(void);
 void term_raw_mode(void);
-//bool node_ignore(struct Node* node);
+bool node_ignore(struct Node* node);
 int node_compare(struct Node* node, struct Node* mate, enum Sort order);
 
 #endif // TREEST_SAD
