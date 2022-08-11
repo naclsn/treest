@@ -440,7 +440,7 @@ static bool c_findnext(void) {
                     cursor = p->as.dir.children[k];
                     return true;
                 }
-            for (size_t k = 0; k < cursor->index-1; k++)
+            for (size_t k = 0; k < cursor->index; k++)
                 if (0 == memcmp(_find_query.text, p->as.dir.children[k]->name, len)) {
                     cursor = p->as.dir.children[k];
                     return true;
@@ -453,7 +453,7 @@ static bool c_findnext(void) {
                     cursor = p->as.dir.children[k];
                     return true;
                 }
-            for (size_t k = 0; k < cursor->index-1; k++)
+            for (size_t k = 0; k < cursor->index; k++)
                 if (0 == memcmp(_find_query.text, p->as.dir.children[k]->name+strlen(p->as.dir.children[k]->name)-len, len)) {
                     cursor = p->as.dir.children[k];
                     return true;
@@ -466,11 +466,12 @@ static bool c_findnext(void) {
                     cursor = p->as.dir.children[k];
                     return true;
                 }
-            for (size_t k = 0; k < cursor->index-1; k++)
+            for (size_t k = 0; k < cursor->index; k++) {
                 if (NULL != strstr(p->as.dir.children[k]->name, _find_query.text)) {
                     cursor = p->as.dir.children[k];
                     return true;
                 }
+            }
             return false;
     }
     return false;
