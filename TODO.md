@@ -1,7 +1,7 @@
 # TODO
 ## misc
 * clean/update man page (and README.md)
-* seems it can fail drawing when last child is link to dir:
+* seems it can fail drawing when last child is link to dir (to fix in both `_enter`):
 ```
 |   |-- some/Makefile
 |   `-- some/sel
@@ -9,12 +9,6 @@
 |   |   |-- /home/sel/Documents
 |   |   |-- /home/sel/Downloads
 ```
-
-## option
-* `--ignore=PATTERN`
-
-## gflags
-* (`-I` toggle ignore? or command on `^H`?)
 
 ---
 ## fancy

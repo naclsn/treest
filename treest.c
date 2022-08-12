@@ -439,6 +439,15 @@ char* opts(int argc, char* argv[]) {
                 if (ignore_list) free(ignore_list);
                 exit(EXIT_FAILURE);
             }
+        } else if (0 == memcmp("--ignore=", argv[k], 9)) {
+            char* arg = argv[k] + 9;
+            ignore_count++;
+            if (!ignore_list) {
+                may_malloc(ignore_list, ignore_count * sizeof(char*));
+            } else {
+                may_realloc(ignore_list, ignore_count * sizeof(char*));
+            }
+            ignore_list[ignore_count-1] = arg;
         } else {
             if ('-' == argv[k][0]) {
                 if ('-' == argv[k][1]) {
@@ -446,20 +455,13 @@ char* opts(int argc, char* argv[]) {
                         selected_path = argv[k+1];
                         break;
                     }
-                    if (0 == memcmp("--ignore=", argv[0], 9)) {
-                        ignore_count++;
-                        if (!ignore_list) {
-                            may_malloc(ignore_list, ignore_count * sizeof(char*));
-                        } else {
-                            may_realloc(ignore_list, ignore_count * sizeof(char*));
-                        }
-                        ignore_list[ignore_count-1] = argv[0]+9; // TODO: find and set end (if eg. # after)
-                    } else if (!selected_printer->command || !selected_printer->command(argv[k]+2)) {
+                    if (!selected_printer->command || !selected_printer->command(argv[k]+2)) {
                         printf("Unknown command for '%s': '%s'\n", selected_printer->name, argv[k]+2);
                         if (printer_init && selected_printer->del) selected_printer->del();
                         if (ignore_list) free(ignore_list);
                         exit(EXIT_FAILURE);
                     }
+                    continue;
                 }
                 char* flag = argv[k];
                 if (!printer_init) {
@@ -472,8 +474,8 @@ char* opts(int argc, char* argv[]) {
                 selected_path = argv[k];
                 break;
             }
-        }
-    }
+        } // else (argv not long option)
+    } // foreach argv
 
     if (!printer_init && selected_printer->init) selected_printer->init();
 

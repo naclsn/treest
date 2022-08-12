@@ -16,7 +16,7 @@ endif
 
 CFLAGS ?= -std=c99 -Wall -Wextra -Werror -pedantic -O2
 
-VERSION = 0.0.7
+VERSION = 0.1.7
 PROG = treest
 SRCS = $(wildcard *.[ch])
 
