@@ -274,7 +274,7 @@ static bool c_reloadroot(void) {
 static bool c_toggle(void) {
     char x = prompt1("toggle");
     if (x) {
-        bool r = selected_printer->toggle(x);
+        bool r = selected_printer->toggle && selected_printer->toggle(x);
         if (!r) {
             putstr("! no such flag");
             putln();
@@ -613,7 +613,7 @@ static bool c_toggleignore(void) {
 static bool c_command(void) {
     char* c = prompt("command");
     if (!c) return false;
-    bool r = selected_printer->command(c);
+    bool r = selected_printer->command && selected_printer->command(c);
     free(c);
     return r;
 }
@@ -863,7 +863,7 @@ char* register_map[128] = {0};
 
 #ifdef TRACE_ALLOCS
 static void _free_before_normal_exit() {
-    selected_printer->del();
+    if (selected_printer->del) selected_printer->del();
     node_free(&root);
     free(_find_query.text);
 }

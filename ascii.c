@@ -22,22 +22,12 @@ static struct {
     bool relative;
 } flags;
 
-void ascii_init(void) {
-}
-
-void ascii_del(void) {
-}
-
 bool ascii_toggle(char flag) {
     switch (flag) {
         case 'F': TOGGLE(flags.classify); return true;
         case 'P': TOGGLE(flags.relative); return true;
     }
     return toggle_gflag(flag);
-}
-
-bool ascii_command(const char* _UNUSED(c)) {
-    return false;
 }
 
 void ascii_begin(void) {
@@ -115,10 +105,7 @@ void ascii_leave(struct Node* _UNUSED(node)) {
 
 struct Printer ascii_printer = {
     .name="ascii",
-    .init=ascii_init,
-    .del=ascii_del,
     .toggle=ascii_toggle,
-    .command=ascii_command,
     .begin=ascii_begin,
     .end=ascii_end,
     .node=ascii_node,

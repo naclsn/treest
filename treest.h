@@ -129,10 +129,11 @@ extern struct Node {
 
 extern struct Printer {
     char* name;
-    void (* init)(void);
-    void (* del)(void);
-    bool (* toggle)(char flag);
-    bool (* command)(const char* c);
+    void (* init)(void); // nullable
+    void (* del)(void); // nullable
+    bool (* toggle)(char flag); // nullable
+    bool (* command)(const char* c); // nullable
+    bool (* filter)(struct Node* node); // nullable
     void (* begin)(void);
     void (* end)(void);
     void (* node)(struct Node* node);

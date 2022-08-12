@@ -356,6 +356,8 @@ bool node_ignore(struct Node* node) {
     size_t cwd_len = strlen(cwd);
     if ('/' != memcmp(node->path, cwd, cwd_len+1)) return false;
 
+    if (selected_printer->filter) return selected_printer->filter(node);
+
     char* node_rel = node->path+strlen(cwd)+1;
 
     for (size_t k = 0; k < ignore_count; k++) {
@@ -422,7 +424,7 @@ char* opts(int argc, char* argv[]) {
         if (0 == memcmp("--printer=", argv[k], 10)) {
             char* arg = argv[k] + 10;
             if (printer_init) {
-                selected_printer->del();
+                if (selected_printer->del) selected_printer->del();
                 printer_init = false;
             }
             #define DO(it) if (0 == strcmp(it.name, arg)) selected_printer = &it;
@@ -430,7 +432,8 @@ char* opts(int argc, char* argv[]) {
             #undef DO
             else {
                 printf("No such printer: '%s'\n", arg);
-                if (printer_init) selected_printer->del();
+                if (printer_init && selected_printer->del) selected_printer->del();
+                if (ignore_list) free(ignore_list);
                 exit(EXIT_FAILURE);
             }
         } else {
@@ -448,18 +451,20 @@ char* opts(int argc, char* argv[]) {
                             may_realloc(ignore_list, ignore_count * sizeof(char*));
                         }
                         ignore_list[ignore_count-1] = argv[0]+9; // TODO: find and set end (if eg. # after)
-                    } else if (!selected_printer->command(argv[k]+2)) {
+                    } else if (!selected_printer->command || !selected_printer->command(argv[k]+2)) {
                         printf("Unknown command for '%s': '%s'\n", selected_printer->name, argv[k]+2);
-                        if (printer_init) selected_printer->del();
+                        if (printer_init && selected_printer->del) selected_printer->del();
+                        if (ignore_list) free(ignore_list);
                         exit(EXIT_FAILURE);
                     }
                 }
                 char* flag = argv[k];
                 if (!printer_init) {
-                    selected_printer->init();
+                    if (selected_printer->init) selected_printer->init();
                     printer_init = true;
                 }
-                while (*++flag) selected_printer->toggle(*flag);
+                while (*++flag)
+                    if (selected_printer->toggle) selected_printer->toggle(*flag);
             } else {
                 selected_path = argv[k];
                 break;
@@ -467,7 +472,7 @@ char* opts(int argc, char* argv[]) {
         }
     }
 
-    if (!printer_init) selected_printer->init();
+    if (!printer_init && selected_printer->init) selected_printer->init();
 
     return selected_path;
 }
