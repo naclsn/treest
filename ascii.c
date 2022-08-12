@@ -19,6 +19,7 @@ static struct {
 
 static struct {
     bool classify;
+    bool relative;
 } flags;
 
 void ascii_init(void) {
@@ -30,6 +31,7 @@ void ascii_del(void) {
 bool ascii_toggle(char flag) {
     switch (flag) {
         case 'F': TOGGLE(flags.classify); return true;
+        case 'P': TOGGLE(flags.relative); return true;
     }
     return toggle_gflag(flag);
 }
@@ -55,8 +57,15 @@ void ascii_node(struct Node* node) {
 
     if (node == cursor) putstr("> ");
 
+    size_t cwd_len = 0;
+    if (flags.relative) cwd_len = strlen(cwd);
 show_name: // when decorating a link, jumps back here with node moved
-    putstr(node->name);
+    if (flags.relative) {
+        char* rel = '/' != memcmp(node->path, cwd, cwd_len+1)
+            ? node->path
+            : node->path+strlen(cwd)+1;
+        putstr(rel);
+    } else putstr(node->name);
 
     if (flags.classify) {
         switch (node->type) {

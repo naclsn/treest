@@ -192,7 +192,7 @@ void dir_unfold(struct Node* node) {
 
             struct Node* niw = node_alloc(parent, path);
 
-            if (node_ignore(niw)) {
+            if (gflags.ignore && node_ignore(niw)) {
                 free(niw);
                 continue;
             }
@@ -348,11 +348,36 @@ void term_raw_mode(void) {
     is_raw = true;
 }
 
-static bool _path_match(char* _UNUSED(patt), char* _UNUSED(path)) {
-    return false;
-}
+size_t ignore_count = 0;
+char** ignore_list = NULL;
 bool node_ignore(struct Node* node) {
-    return _path_match("", node->path);
+    if (!ignore_list) return false;
+
+    size_t cwd_len = strlen(cwd);
+    if ('/' != memcmp(node->path, cwd, cwd_len+1)) return false;
+
+    char* node_rel = node->path+strlen(cwd)+1;
+
+    for (size_t k = 0; k < ignore_count; k++) {
+        char* patt = ignore_list[k];
+        size_t len = strlen(patt);
+
+        bool invert = '!' == ignore_list[k][0];
+        bool beginning = '/' == patt[0];
+        bool middle = memchr(patt+1, '/', len-2);
+        bool end = '/' == patt[len-1];
+
+        if (end && Type_DIR != node->type) continue;
+        if (invert || '\\' == ignore_list[k][0]) patt++;
+        if (beginning) patt++;
+
+        if (end) patt[len-1] = '\0'; // XXX hack
+        int no = fnmatch(patt, beginning || middle ? node_rel : node->name, FNM_PATHNAME);
+        if (end) patt[len-1] = '/'; // XXX hack
+
+        if (!no) return true;
+    }
+    return false;
 }
 
 int node_compare(struct Node* node, struct Node* mate, enum Sort order) {
@@ -415,7 +440,15 @@ char* opts(int argc, char* argv[]) {
                         selected_path = argv[k+1];
                         break;
                     }
-                    if (!selected_printer->command(argv[k]+2)) {
+                    if (0 == memcmp("--ignore=", argv[0], 9)) {
+                        ignore_count++;
+                        if (!ignore_list) {
+                            may_malloc(ignore_list, ignore_count * sizeof(char*));
+                        } else {
+                            may_realloc(ignore_list, ignore_count * sizeof(char*));
+                        }
+                        ignore_list[ignore_count-1] = argv[0]+9; // TODO: find and set end (if eg. # after)
+                    } else if (!selected_printer->command(argv[k]+2)) {
                         printf("Unknown command for '%s': '%s'\n", selected_printer->name, argv[k]+2);
                         if (printer_init) selected_printer->del();
                         exit(EXIT_FAILURE);
@@ -452,7 +485,12 @@ int main(int argc, char* argv[]) {
             printf("Usage: %s [--printer=NAME] [--LONGOPTIONS] [-FLAGS] [[--] ROOT]\n", prog);
             exit(EXIT_FAILURE);
         } else if (0 == strcmp("--version", argv[0])) {
-            puts(TREEST_VERSION);
+            puts(
+                TREEST_VERSION
+                #ifdef FEAT_READLINE
+                "\n+ readline"
+                #endif
+            );
             exit(EXIT_SUCCESS);
         }
     }

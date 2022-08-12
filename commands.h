@@ -28,6 +28,7 @@ bool toggle_gflag(char flag) {
     switch (flag) {
         case 'A': case 'a': TOGGLE(gflags.almost_all);           return true;
         case 'B': TOGGLE(gflags.ignore_backups);                 return true;
+        case 'I': TOGGLE(gflags.ignore);                         return true;
         case 'S': TOGGLE_SRT(gflags.sort_order, Sort_SIZE);      return true;
         case 'X': TOGGLE_SRT(gflags.sort_order, Sort_EXTENSION); return true;
         case 'u': TOGGLE_SRT(gflags.sort_order, Sort_ATIME);     return true;
@@ -603,6 +604,11 @@ static bool c_promptgofold(void) {
     return false;
 }
 
+static bool c_toggleignore(void) {
+    TOGGLE(gflags.ignore);
+    return true;
+}
+
 // XXX: idk
 static bool c_command(void) {
     char* c = prompt("command");
@@ -812,6 +818,7 @@ static bool c_help(void) {
 struct Command command_map[128] = {
     [CTRL('C')]={c_quit,                 "quit"},
     [CTRL('D')]={c_quit,                 "quit"},
+    [CTRL('H')]={c_toggleignore,         "toggle the ignore global flag"},
     [CTRL('L')]={c_refresh,              "refresh the view"},
     [CTRL('N')]={c_visiblenext,          "go to the next visible node"},
     [CTRL('P')]={c_visibleprevious,      "go to the previous visible node"},

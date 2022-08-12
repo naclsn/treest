@@ -10,6 +10,7 @@
 
 #include <dirent.h>
 #include <errno.h>
+#include <fnmatch.h>
 #include <libgen.h>
 #include <locale.h>
 #include <stdbool.h>
@@ -67,6 +68,9 @@ extern char cwd[_MAX_PATH];
 extern bool is_tty;
 extern bool is_raw;
 
+extern size_t ignore_count;
+extern char** ignore_list;
+
 extern struct GFlags {
     bool almost_all;
     bool ignore_backups;
@@ -80,6 +84,7 @@ extern struct GFlags {
         Sort_REVERSE   = 16,
         Sort_DIRSFIRST = 32,
     } sort_order;
+    bool ignore;
 } gflags;
 extern bool toggle_gflag(char flag);
 
