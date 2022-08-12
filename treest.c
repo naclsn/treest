@@ -192,9 +192,14 @@ void dir_unfold(struct Node* node) {
 
             struct Node* niw = node_alloc(parent, path);
 
-            if (gflags.ignore && node_ignore(niw)) {
-                free(niw);
-                continue;
+            if (gflags.ignore) {
+                bool ignore = selected_printer->filter
+                    ? selected_printer->filter(niw)
+                    : node_ignore(niw);
+                if (ignore) {
+                    free(niw);
+                    continue;
+                }
             }
 
             if (niw) {
@@ -356,8 +361,6 @@ bool node_ignore(struct Node* node) {
     size_t cwd_len = strlen(cwd);
     if ('/' != memcmp(node->path, cwd, cwd_len+1)) return false;
 
-    if (selected_printer->filter) return selected_printer->filter(node);
-
     char* node_rel = node->path+strlen(cwd)+1;
 
     for (size_t k = 0; k < ignore_count; k++) {
@@ -482,6 +485,8 @@ int main(int argc, char* argv[]) {
     mtrace();
     #endif
 
+    if (!getcwd(cwd, _MAX_PATH)) die("getcwd");
+
     prog = argv[0];
     argv++;
     argc--;
@@ -495,6 +500,9 @@ int main(int argc, char* argv[]) {
                 #ifdef FEAT_READLINE
                 "\n+ readline"
                 #endif
+                #ifdef FEAT_GIT2
+                "\n+ git2"
+                #endif
             );
             exit(EXIT_SUCCESS);
         }
@@ -503,7 +511,6 @@ int main(int argc, char* argv[]) {
     setlocale(LC_ALL, "");
 
     char* arg_path = opts(argc, argv);
-    if (!getcwd(cwd, _MAX_PATH)) die("getcwd");
     if (!arg_path) arg_path = cwd;
     char* path;
     if (!(path = realpath(arg_path, NULL))) die(arg_path);

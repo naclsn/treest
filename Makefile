@@ -5,6 +5,9 @@ DESTDIR   ?=
 ifneq (, $(shell ldconfig -p | grep readline))
 FEAT += -DFEAT_READLINE -lreadline
 endif
+ifneq (, $(shell ldconfig -p | grep git2))
+FEAT += -DFEAT_GIT2 -lgit2
+endif
 ifneq (, $(DEBUGGING))
 FEAT += -DTRACE_ALLOCS -g
 else

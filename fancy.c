@@ -2,6 +2,10 @@
 
 /// fancy terminal printer
 
+#ifdef FEAT_GIT2
+#include <git2.h>
+#endif
+
 #define _CL "\x1b[H\x1b[2J\x1b[3J\x1b[?25l"
 #define _LC "\x1b[?25h"
 
@@ -48,6 +52,9 @@ static struct {
         size_t ext_count; // globs on file extension (eg. '*.tar=xyz:')
         size_t exa_count; // matches on exact file name (eg. 'Makefile=xyz:')
     } ls_colors;
+    #ifdef FEAT_GIT2
+    git_repository* repo;
+    #endif
 } state = {
     .ls_colors = {
         .rs="0",
@@ -73,6 +80,12 @@ static struct {
 
 void fancy_init(void) {
     read_ls_colors();
+
+    #ifdef FEAT_GIT2
+    git_libgit2_init();
+    if (git_repository_open_ext(&state.repo, cwd, GIT_REPOSITORY_OPEN_NO_SEARCH, NULL) < 0)
+        state.repo = NULL;
+    #endif
 }
 
 void fancy_del(void) {
@@ -81,6 +94,11 @@ void fancy_del(void) {
     free(state.ls_colors.ext);
     free(state.ls_colors.exa);
     free(state.ls_colors.LS_COLORS);
+
+    #ifdef FEAT_GIT2
+    git_repository_free(state.repo);
+    git_libgit2_shutdown();
+    #endif
 }
 
 bool fancy_toggle(char flag) {
@@ -94,6 +112,17 @@ bool fancy_toggle(char flag) {
 
 bool fancy_command(const char* _UNUSED(c)) {
     return false;
+}
+
+bool fancy_filter(struct Node* node) {
+    #ifdef FEAT_GIT2
+    if (state.repo) {
+        int r;
+        git_ignore_path_is_ignored(&r, state.repo, node->path);
+        return r;
+    }
+    #endif
+    return node_ignore(node);
 }
 
 void fancy_begin(void) {
@@ -190,7 +219,7 @@ static void read_ls_colors(void) {
         *val++ = '\0';
 
         if (2+1 == val-tail) {
-                 if (0 == strcmp("rs", tail)) state.ls_colors.rs = val;
+            if      (0 == strcmp("rs", tail)) state.ls_colors.rs = val;
             else if (0 == strcmp("di", tail)) state.ls_colors.di = val;
             else if (0 == strcmp("fi", tail)) state.ls_colors.fi = val;
             else if (0 == strcmp("ln", tail)) state.ls_colors.ln = val;
@@ -340,6 +369,7 @@ struct Printer fancy_printer = {
     .del=fancy_del,
     .toggle=fancy_toggle,
     .command=fancy_command,
+    .filter=fancy_filter,
     .begin=fancy_begin,
     .end=fancy_end,
     .node=fancy_node,
