@@ -626,7 +626,7 @@ static bool c_shell(void) {
 
     char* c = prompt("shell-command");
     if (!c) return false;
-    ssize_t clen = strlen(c);
+    size_t clen = strlen(c);
 
     char* quoted = quote(cursor->path);
     size_t nlen = strlen(quoted);
@@ -657,15 +657,15 @@ static bool c_shell(void) {
     free(quoted);
 
     term_restore();
-    int _usl = system(com); // YYY
+    int r = system(com); // YYY
     free(com);
     term_raw_mode();
 
-    putstr("! done");
-    if (read(STDIN_FILENO, &_usl, 1) < 0) die("read");
+    putstr("! done"); // YYY
+    if (read(STDIN_FILENO, &clen, 1) < 0) die("read"); // YYY
 
     c_reloadroot();
-    return true;
+    return EXIT_SUCCESS == r;
 }
 
 static bool c_pipe(void) {
@@ -676,7 +676,7 @@ static bool c_pipe(void) {
 
     char* c = prompt("pipe-command");
     if (!c) return false;
-    ssize_t clen = strlen(c);
+    size_t clen = strlen(c);
 
     char* quoted = quote(cursor->path);
     size_t nlen = strlen(quoted);
@@ -715,15 +715,15 @@ static bool c_pipe(void) {
     free(quoted);
 
     term_restore();
-    int _usl = system(com); // YYY
+    int r = system(com); // YYY
     free(com);
     term_raw_mode();
 
-    putstr("! done");
-    if (read(STDIN_FILENO, &_usl, 1) < 0) die("read");
+    putstr("! done"); // YYY
+    if (read(STDIN_FILENO, &clen, 1) < 0) die("read"); // YYY
 
     c_reloadroot();
-    return true;
+    return EXIT_SUCCESS == r;
 }
 
 static bool c_if(void) {
@@ -781,7 +781,7 @@ static bool c_whilenot(void) {
 static bool c_register(void) {
     unsigned char a = prompt1("register-name");
     if (!a) return false;
-    if (127 < a || '"' == a) {
+    if (127 < a) {
         putstr("! not a valid register name");
         putln();
         return false;
@@ -795,13 +795,12 @@ static bool c_register(void) {
 static bool c_runregister(void) {
     unsigned char a = prompt1("register-name");
     if (!a) return false;
-    if (127 < a || '"' == a) {
+    if (127 < a) {
         putstr("! not a valid register name");
         putln();
         return false;
     }
-    run_commands(register_map[a]);
-    return false;
+    return register_map[a] && run_commands(register_map[a]);
 }
 
 static bool c_help(void) {

@@ -104,8 +104,8 @@ void fancy_del(void) {
 bool fancy_toggle(char flag) {
     switch (flag) {
         case 'F': TOGGLE(flags.classify); return true;
-        case 'c': TOGGLE(flags.colors); return true;
-        case 'j': TOGGLE(flags.join); return true;
+        case 'c': TOGGLE(flags.colors);   return true;
+        case 'j': TOGGLE(flags.join);     return true;
     }
     return toggle_gflag(flag);
 }
