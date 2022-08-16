@@ -15,10 +15,15 @@
 #define _AN "\xe2\x94\x94"
 #define _TE "\xe2\x94\x9c"
 
+#define _UP "\xe2\x94\x86" //"\xe2\x86\x91"
+#define _DW "\xe2\x94\x86" //"\xe2\x86\x93"
+
 static const char* const INDENT      = _VE _SP _SP " ";
 static const char* const INDENT_LAST = _SP _SP _SP " ";
 static const char* const BRANCH      = _TE _HZ _HZ " ";
 static const char* const BRANCH_LAST = _AN _HZ _HZ " ";
+static const char* const TOP_OFFSCRN = _UP _SP _SP " ";
+static const char* const BOT_OFFSCRN = _DW _SP _SP " ";
 
 static void read_ls_colors(void);
 static void apply_ls_colors(struct Node* node);
@@ -26,6 +31,9 @@ static void apply_decorations(struct Node* node);
 
 #define TOGGLE(flag) flag = !(flag)
 #define putstr(__c) { if (write(STDOUT_FILENO, __c, strlen(__c)) < 0) die("write"); }
+
+#undef CTRL
+#define CTRL(x) ( (~x&64) | (~x&64)>>1 | (x&31) )
 
 static struct {
     unsigned depth;
@@ -55,6 +63,11 @@ static struct {
     #ifdef FEAT_GIT2
     git_repository* repo;
     #endif
+    struct winsize winsize;
+    unsigned wintop;
+    unsigned wincurr;
+    bool next_is_first_onscreen;
+    struct Command overriden[7];
 } state = {
     .ls_colors = {
         .rs="0",
@@ -78,6 +91,32 @@ static struct {
     bool join;
 } flags;
 
+static bool fancy_c_z1down(void) {
+    return true;
+}
+static bool fancy_c_z1up(void) {
+    return true;
+}
+static bool fancy_c_zdown(void) {
+    return true;
+}
+static bool fancy_c_zup(void) {
+    return true;
+}
+static bool fancy_c_zforward(void) {
+    return true;
+}
+static bool fancy_c_zbackward(void) {
+    return true;
+}
+static bool fancy_c_refresh(void) {
+    if (ioctl(STDOUT_FILENO, TIOCGWINSZ, &state.winsize) < 0) {
+        state.winsize.ws_col = USHRT_MAX;
+        state.winsize.ws_row = USHRT_MAX;
+    }
+    return state.overriden[6].f();
+}
+
 void fancy_init(void) {
     read_ls_colors();
 
@@ -86,6 +125,27 @@ void fancy_init(void) {
     if (git_repository_open_ext(&state.repo, cwd, GIT_REPOSITORY_OPEN_NO_SEARCH, NULL) < 0)
         state.repo = NULL;
     #endif
+
+    // TODO: also update on ^L
+    if (ioctl(STDOUT_FILENO, TIOCGWINSZ, &state.winsize) < 0) {
+        state.winsize.ws_col = USHRT_MAX;
+        state.winsize.ws_row = USHRT_MAX;
+    }
+
+    state.overriden[0] = command_map[CTRL('E')];
+    state.overriden[1] = command_map[CTRL('Y')];
+    state.overriden[2] = command_map[CTRL('D')];
+    state.overriden[3] = command_map[CTRL('U')];
+    state.overriden[4] = command_map[CTRL('F')];
+    state.overriden[5] = command_map[CTRL('B')];
+    state.overriden[6] = command_map[CTRL('L')];
+    command_map[CTRL('E')] = (struct Command){fancy_c_z1down,    "forward one line"};
+    command_map[CTRL('Y')] = (struct Command){fancy_c_z1up,      "backward one line"};
+    command_map[CTRL('D')] = (struct Command){fancy_c_zdown,     "forward one half-window"};
+    command_map[CTRL('U')] = (struct Command){fancy_c_zup,       "backward one half-window"};
+    command_map[CTRL('F')] = (struct Command){fancy_c_zforward,  "forward one window"};
+    command_map[CTRL('B')] = (struct Command){fancy_c_zbackward, "backward one window"};
+    command_map[CTRL('L')] = (struct Command){fancy_c_refresh,   command_map[CTRL('L')].h};
 }
 
 void fancy_del(void) {
@@ -99,6 +159,14 @@ void fancy_del(void) {
     git_repository_free(state.repo);
     git_libgit2_shutdown();
     #endif
+
+    command_map[CTRL('E')] = state.overriden[0];
+    command_map[CTRL('Y')] = state.overriden[1];
+    command_map[CTRL('D')] = state.overriden[2];
+    command_map[CTRL('U')] = state.overriden[3];
+    command_map[CTRL('F')] = state.overriden[4];
+    command_map[CTRL('B')] = state.overriden[5];
+    command_map[CTRL('L')] = state.overriden[6];
 }
 
 bool fancy_toggle(char flag) {
@@ -106,6 +174,9 @@ bool fancy_toggle(char flag) {
         case 'F': TOGGLE(flags.classify); return true;
         case 'c': TOGGLE(flags.colors);   return true;
         case 'j': TOGGLE(flags.join);     return true;
+        /*-*/
+        case 'd': state.wintop++; return true;
+        case 'u': state.wintop--; return true;
     }
     return toggle_gflag(flag);
 }
@@ -129,6 +200,8 @@ void fancy_begin(void) {
     state.depth = -1;
     state.indents = 0;
     putstr(_CL);
+    state.wincurr = 0;
+    state.next_is_first_onscreen = false;
 }
 
 void fancy_end(void) {
@@ -136,6 +209,31 @@ void fancy_end(void) {
 }
 
 void fancy_node(struct Node* node) {
+    state.wincurr++;
+    if (0 != state.wintop && state.wincurr == state.wintop+1) {
+        state.next_is_first_onscreen = true;
+        return;
+    }
+    if (state.winsize.ws_row+state.wintop == state.wincurr+1) {
+        for (int k = state.depth-1; -1 < k; k--)
+            putstr(state.indents & (1<<k) ? INDENT_LAST : BOT_OFFSCRN);
+        putstr(BOT_OFFSCRN);
+        if (is_tty) putstr("\r");
+        putstr("\n");
+        return;
+    }
+    if (state.wincurr <= state.wintop || state.winsize.ws_row+state.wintop < state.wincurr+1)
+        return;
+
+    if (state.next_is_first_onscreen) {
+        for (int k = state.depth-1; -1 < k; k--)
+            putstr(state.indents & (1<<k) ? INDENT_LAST : TOP_OFFSCRN);
+        putstr(TOP_OFFSCRN);
+        if (is_tty) putstr("\r");
+        putstr("\n");
+        state.next_is_first_onscreen = false;
+    }
+
     if (&root != node && !(flags.join && 1 == node->parent->count)) {
         for (int k = state.depth-1; -1 < k; k--)
             putstr(state.indents & (1<<k) ? INDENT_LAST : INDENT);

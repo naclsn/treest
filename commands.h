@@ -816,7 +816,6 @@ static bool c_help(void) {
 // REM: `LC_ALL=C sort`
 struct Command command_map[128] = {
     [CTRL('C')]={c_quit,                 "quit"},
-    [CTRL('D')]={c_quit,                 "quit"},
     [CTRL('H')]={c_toggleignore,         "toggle the ignore global flag"},
     [CTRL('L')]={c_refresh,              "refresh the view"},
     [CTRL('N')]={c_visiblenext,          "go to the next visible node"},
