@@ -217,7 +217,12 @@ void dir_unfold(struct Node* node) {
         closedir(dir);
     }
 
-    for (size_t k = 0; k < node->count; k++) node->as.dir.children[k]->index = k;
+    for (size_t k = 0; k < node->count; k++) {
+        struct Node* child = node->as.dir.children[k];
+        do {
+            child->index = k;
+        } while (Type_LNK == child->type && (child = child->as.link.to));
+    }
 
     if (0 == (parent->count = node->count)) {
         free(node->as.dir.children);
@@ -424,7 +429,25 @@ char* opts(int argc, char* argv[]) {
     char* selected_path = NULL;
 
     for (int k = 0; k < argc; k++) {
-        if (0 == memcmp("--printer=", argv[k], 10)) {
+        if (0 == strcmp("--help", argv[k])) {
+            printf("Usage: %s [--printer=NAME] [--LONGOPTIONS] [-FLAGS] [[--] ROOT]\n", prog);
+            if (printer_init && selected_printer->del) selected_printer->del();
+            if (ignore_list) free(ignore_list);
+            exit(EXIT_FAILURE);
+        } else if (0 == strcmp("--version", argv[k])) {
+            puts(
+                TREEST_VERSION
+                #ifdef FEAT_READLINE
+                "\n+ readline"
+                #endif
+                #ifdef FEAT_GIT2
+                "\n+ git2"
+                #endif
+            );
+            if (printer_init && selected_printer->del) selected_printer->del();
+            if (ignore_list) free(ignore_list);
+            exit(EXIT_SUCCESS);
+        } else if (0 == memcmp("--printer=", argv[k], 10)) {
             char* arg = argv[k] + 10;
             if (printer_init) {
                 if (selected_printer->del) selected_printer->del();
@@ -486,31 +509,12 @@ int main(int argc, char* argv[]) {
     #ifdef TRACE_ALLOCS
     mtrace();
     #endif
-
     if (!getcwd(cwd, _MAX_PATH)) die("getcwd");
+    setlocale(LC_ALL, "");
 
     prog = argv[0];
     argv++;
     argc--;
-    if (1 == argc) {
-        if (0 == strcmp("--help", argv[0])) {
-            printf("Usage: %s [--printer=NAME] [--LONGOPTIONS] [-FLAGS] [[--] ROOT]\n", prog);
-            exit(EXIT_FAILURE);
-        } else if (0 == strcmp("--version", argv[0])) {
-            puts(
-                TREEST_VERSION
-                #ifdef FEAT_READLINE
-                "\n+ readline"
-                #endif
-                #ifdef FEAT_GIT2
-                "\n+ git2"
-                #endif
-            );
-            exit(EXIT_SUCCESS);
-        }
-    }
-
-    setlocale(LC_ALL, "");
 
     char* arg_path = opts(argc, argv);
     if (!arg_path) arg_path = cwd;
