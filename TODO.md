@@ -5,7 +5,6 @@
 ---
 ## fancy
 ### misc
-* putstr -> buffering
 * scrolling: keep cursor in view
 
 ### flags

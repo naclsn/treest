@@ -31,7 +31,6 @@ static void apply_ls_colors(struct Node* node);
 static void apply_decorations(struct Node* node);
 
 #define TOGGLE(flag) flag = !(flag)
-#define putstr(__c) { if (write(STDOUT_FILENO, __c, strlen(__c)) < 0) die("write"); }
 
 #undef CTRL
 #define CTRL(x) ( (~x&64) | (~x&64)>>1 | (x&31) )
@@ -69,6 +68,7 @@ static struct {
     unsigned wincurr;
     bool next_is_first_onscreen;
     struct Command overriden[7];
+    int line_len;
 } state = {
     .ls_colors = {
         .rs="0",
@@ -91,6 +91,28 @@ static struct {
     bool colors;
     bool join;
 } flags;
+
+static void putstr(const char* c, bool visible) {
+    if (!visible) { fputs(c, stdout); return; }
+    if (state.winsize.ws_col == state.line_len) return;
+    const char* h = c;
+    size_t count = 0;
+    while (*h) count += (*h++ & 0xC0) != 0x80;
+    if (state.winsize.ws_col <= state.line_len+count) {
+        state.line_len = state.winsize.ws_col;
+        fputs(_OV, stdout);
+        return;
+    }
+    state.line_len+= count;
+    fputs(c, stdout);
+}
+static void putln() {
+    state.line_len = 0;
+    fputs(is_tty ? "\r\n" : "\n", stdout);
+}
+static void flush() {
+    fflush(stdout);
+}
 
 static bool _c_z1down(void) {
     if (state.wintop < state.winsize.ws_row) state.wintop++;
@@ -206,13 +228,15 @@ bool fancy_filter(struct Node* node) {
 void fancy_begin(void) {
     state.depth = -1;
     state.indents = 0;
-    putstr(_CL);
+    putstr(_CL, false);
     state.wincurr = 0;
     state.next_is_first_onscreen = false;
+    state.line_len = 0;
 }
 
 void fancy_end(void) {
-    putstr(_LC);
+    putstr(_LC, false);
+    flush();
 }
 
 void fancy_node(struct Node* node) {
@@ -223,10 +247,9 @@ void fancy_node(struct Node* node) {
     }
     if (state.winsize.ws_row+state.wintop == state.wincurr+1) {
         for (int k = state.depth-1; -1 < k; k--)
-            putstr(state.indents & (1<<k) ? INDENT_LAST : BOT_OFFSCRN);
-        putstr(BOT_OFFSCRN);
-        if (is_tty) putstr("\r");
-        putstr("\n");
+            putstr(state.indents & (1<<k) ? INDENT_LAST : BOT_OFFSCRN, true);
+        putstr(BOT_OFFSCRN, true);
+        putln();
         return;
     }
     if (state.wincurr <= state.wintop || state.winsize.ws_row+state.wintop < state.wincurr+1)
@@ -234,17 +257,16 @@ void fancy_node(struct Node* node) {
 
     if (state.next_is_first_onscreen) {
         for (int k = state.depth-1; -1 < k; k--)
-            putstr(state.indents & (1<<k) ? INDENT_LAST : TOP_OFFSCRN);
-        putstr(TOP_OFFSCRN);
-        if (is_tty) putstr("\r");
-        putstr("\n");
+            putstr(state.indents & (1<<k) ? INDENT_LAST : TOP_OFFSCRN, true);
+        putstr(TOP_OFFSCRN, true);
+        putln();
         state.next_is_first_onscreen = false;
     }
 
     if (&root != node && !(flags.join && 1 == node->parent->count)) {
         for (int k = state.depth-1; -1 < k; k--)
-            putstr(state.indents & (1<<k) ? INDENT_LAST : INDENT);
-        putstr(((node->parent ? node->parent->count : 1)-1 == node->index) ? BRANCH_LAST : BRANCH);
+            putstr(state.indents & (1<<k) ? INDENT_LAST : INDENT, true);
+        putstr(((node->parent ? node->parent->count : 1)-1 == node->index) ? BRANCH_LAST : BRANCH, true);
     }
 
     if (flags.colors)
@@ -252,30 +274,27 @@ void fancy_node(struct Node* node) {
 
     if (node == cursor) {
         if (flags.colors) {
-            putstr("\x1b[");
-            putstr(state.ls_colors.sel)
-            putstr("m");
-        } else putstr("> ");
+            putstr("\x1b[", false);
+            putstr(state.ls_colors.sel, false);
+            putstr("m", false);
+        } else putstr("> ", true);
     }
 
-    putstr(node->name); // TODO: winsize.ws_col
+    putstr(node->name, true);
 
     if (flags.colors) {
-        putstr("\x1b[");
-        putstr(state.ls_colors.rs)
-        putstr("m");
+        putstr("\x1b[", false);
+        putstr(state.ls_colors.rs, false);
+        putstr("m", false);
     }
 
     if (flags.classify)
         apply_decorations(node);
 
     if (flags.join && 1 == node->count && node->as.dir.unfolded) {
-        // XXX: this j flag implementation does not play well with the scrolling and overflow
-        if (!flags.classify) putstr("/");
-    } else {
-        if (is_tty) putstr("\r");
-        putstr("\n");
-    }
+        if (!flags.classify) putstr("/", true);
+        state.wincurr--;
+    } else putln();
 }
 
 void fancy_enter(struct Node* node) {
@@ -419,49 +438,49 @@ static void apply_ls_colors(struct Node* node) {
     }
 
     if (col) {
-        putstr("\x1b[");
-        putstr(col);
-        putstr("m");
+        putstr("\x1b[", false);
+        putstr(col, false);
+        putstr("m", false);
     }
 }
 
 static void apply_decorations(struct Node* node) {
     switch (node->type) {
         case Type_LNK:
-            putstr("@ -> ");
+            putstr("@ -> ", true);
             if (node->as.link.tail) {
                 if (flags.colors)
                     apply_ls_colors(node->as.link.tail);
 
-                putstr(node->as.link.tail->name); // TODO: winsize.ws_col
+                putstr(node->as.link.tail->name, true);
 
                 if (flags.colors) {
-                    putstr("\x1b[");
-                    putstr(state.ls_colors.rs)
-                    putstr("m");
+                    putstr("\x1b[", false);
+                    putstr(state.ls_colors.rs, false);
+                    putstr("m", false);
                 }
 
                 if (flags.classify)
                     apply_decorations(node->as.link.tail);
-            } else putstr(node->as.link.readpath); // TODO: winsize.ws_col
+            } else putstr(node->as.link.readpath, true);
             break;
 
         case Type_DIR:
-            putstr("/");
+            putstr("/", true);
             if (node->as.dir.unfolded && 0 == node->count)
-                putstr(" (/)");
+                putstr(" (/)", true);
             break;
 
         case Type_FIFO:
-            putstr("|");
+            putstr("|", true);
             break;
 
         case Type_SOCK:
-            putstr("=");
+            putstr("=", true);
             break;
 
         case Type_EXEC:
-            putstr("*");
+            putstr("*", true);
             break;
 
         default:
