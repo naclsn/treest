@@ -6,7 +6,7 @@
 ## fancy
 ### misc
 * putstr -> buffering
-* scrolling (^E/^Y, ^D/^U, ^F/^B) and window heigh detection (and signal?)
+* scrolling: keep cursor in view
 
 ### flags
 * (`-b` escape non graphic -- maybe)

@@ -17,6 +17,7 @@
 
 #define _UP "\xe2\x94\x86" //"\xe2\x86\x91"
 #define _DW "\xe2\x94\x86" //"\xe2\x86\x93"
+#define _OV "\xe2\x80\xa6" // OVER_OFFSCRN
 
 static const char* const INDENT      = _VE _SP _SP " ";
 static const char* const INDENT_LAST = _SP _SP _SP " ";
@@ -91,25 +92,35 @@ static struct {
     bool join;
 } flags;
 
-static bool fancy_c_z1down(void) {
+static bool _c_z1down(void) {
+    if (state.wintop < state.winsize.ws_row) state.wintop++;
     return true;
 }
-static bool fancy_c_z1up(void) {
+static bool _c_z1up(void) {
+    if (0 < state.wintop) state.wintop--;
     return true;
 }
-static bool fancy_c_zdown(void) {
+static bool _c_zdown(void) {
+    if (state.wintop+state.winsize.ws_row/2 < state.winsize.ws_row) state.wintop+= state.winsize.ws_row/2;
+    else state.wintop = state.winsize.ws_row;
     return true;
 }
-static bool fancy_c_zup(void) {
+static bool _c_zup(void) {
+    if (0 < (int)state.wintop-state.winsize.ws_row/2) state.wintop-= state.winsize.ws_row/2;
+    else state.wintop = 0;
     return true;
 }
-static bool fancy_c_zforward(void) {
+static bool _c_zforward(void) {
+    if (state.wintop+state.winsize.ws_row < state.winsize.ws_row) state.wintop+= state.winsize.ws_row;
+    else state.wintop = state.winsize.ws_row;
     return true;
 }
-static bool fancy_c_zbackward(void) {
+static bool _c_zbackward(void) {
+    if (0 < (int)state.wintop-state.winsize.ws_row) state.wintop-= state.winsize.ws_row;
+    else state.wintop = 0;
     return true;
 }
-static bool fancy_c_refresh(void) {
+static bool _c_refresh(void) {
     if (ioctl(STDOUT_FILENO, TIOCGWINSZ, &state.winsize) < 0) {
         state.winsize.ws_col = USHRT_MAX;
         state.winsize.ws_row = USHRT_MAX;
@@ -126,7 +137,6 @@ void fancy_init(void) {
         state.repo = NULL;
     #endif
 
-    // TODO: also update on ^L
     if (ioctl(STDOUT_FILENO, TIOCGWINSZ, &state.winsize) < 0) {
         state.winsize.ws_col = USHRT_MAX;
         state.winsize.ws_row = USHRT_MAX;
@@ -139,13 +149,13 @@ void fancy_init(void) {
     state.overriden[4] = command_map[CTRL('F')];
     state.overriden[5] = command_map[CTRL('B')];
     state.overriden[6] = command_map[CTRL('L')];
-    command_map[CTRL('E')] = (struct Command){fancy_c_z1down,    "forward one line"};
-    command_map[CTRL('Y')] = (struct Command){fancy_c_z1up,      "backward one line"};
-    command_map[CTRL('D')] = (struct Command){fancy_c_zdown,     "forward one half-window"};
-    command_map[CTRL('U')] = (struct Command){fancy_c_zup,       "backward one half-window"};
-    command_map[CTRL('F')] = (struct Command){fancy_c_zforward,  "forward one window"};
-    command_map[CTRL('B')] = (struct Command){fancy_c_zbackward, "backward one window"};
-    command_map[CTRL('L')] = (struct Command){fancy_c_refresh,   command_map[CTRL('L')].h};
+    command_map[CTRL('E')] = (struct Command){_c_z1down,    "forward one line"};
+    command_map[CTRL('Y')] = (struct Command){_c_z1up,      "backward one line"};
+    command_map[CTRL('D')] = (struct Command){_c_zdown,     "forward one half-window"};
+    command_map[CTRL('U')] = (struct Command){_c_zup,       "backward one half-window"};
+    command_map[CTRL('F')] = (struct Command){_c_zforward,  "forward one window"};
+    command_map[CTRL('B')] = (struct Command){_c_zbackward, "backward one window"};
+    command_map[CTRL('L')] = (struct Command){_c_refresh,   command_map[CTRL('L')].h};
 }
 
 void fancy_del(void) {
@@ -174,9 +184,6 @@ bool fancy_toggle(char flag) {
         case 'F': TOGGLE(flags.classify); return true;
         case 'c': TOGGLE(flags.colors);   return true;
         case 'j': TOGGLE(flags.join);     return true;
-        /*-*/
-        case 'd': state.wintop++; return true;
-        case 'u': state.wintop--; return true;
     }
     return toggle_gflag(flag);
 }
@@ -251,7 +258,7 @@ void fancy_node(struct Node* node) {
         } else putstr("> ");
     }
 
-    putstr(node->name);
+    putstr(node->name); // TODO: winsize.ws_col
 
     if (flags.colors) {
         putstr("\x1b[");
@@ -263,6 +270,7 @@ void fancy_node(struct Node* node) {
         apply_decorations(node);
 
     if (flags.join && 1 == node->count && node->as.dir.unfolded) {
+        // XXX: this j flag implementation does not play well with the scrolling and overflow
         if (!flags.classify) putstr("/");
     } else {
         if (is_tty) putstr("\r");
@@ -425,7 +433,7 @@ static void apply_decorations(struct Node* node) {
                 if (flags.colors)
                     apply_ls_colors(node->as.link.tail);
 
-                putstr(node->as.link.tail->name);
+                putstr(node->as.link.tail->name); // TODO: winsize.ws_col
 
                 if (flags.colors) {
                     putstr("\x1b[");
@@ -435,7 +443,7 @@ static void apply_decorations(struct Node* node) {
 
                 if (flags.classify)
                     apply_decorations(node->as.link.tail);
-            } else putstr(node->as.link.readpath);
+            } else putstr(node->as.link.readpath); // TODO: winsize.ws_col
             break;
 
         case Type_DIR:

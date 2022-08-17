@@ -27,12 +27,20 @@
     __do(ascii_printer) __sep        \
     __do(fancy_printer)
 
-extern char oups[4110];
-#define die(__c) {                    \
-    snprintf(oups, 4110, "%s:%d(%s)", \
-        __FILE__, __LINE__, __c);     \
-    perror(oups);                     \
-    exit(errno);                      \
+#ifndef PATH_MAX
+#define _MAX_PATH 4096
+#elif PATH_MAX < 4097
+#define _MAX_PATH PATH_MAX
+#else
+#define _MAX_PATH 4096
+#endif
+
+extern char oups[_MAX_PATH+14];
+#define die(__c) {                             \
+    snprintf(oups, _MAX_PATH+14, "%s:%d: %s",  \
+        __FILE__, __LINE__, __c);              \
+    perror(oups);                              \
+    exit(errno);                               \
 }
 
 #define may_malloc(__r, __s) {  \
@@ -47,14 +55,6 @@ extern char oups[4110];
     __r = strdup(__c);          \
     if (!__r) die("strdup");    \
 }
-
-#ifndef PATH_MAX
-#define _MAX_PATH 4096
-#elif PATH_MAX < 4097
-#define _MAX_PATH PATH_MAX
-#else
-#define _MAX_PATH 4096
-#endif
 
 #ifdef _UNUSED
 #elif defined(__GNUC__)

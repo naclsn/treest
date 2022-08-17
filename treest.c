@@ -1,7 +1,7 @@
 #include "./treest.h"
 #include "./commands.h"
 
-char oups[4110];
+char oups[_MAX_PATH+14];
 char* prog;
 char cwd[_MAX_PATH];
 bool is_tty;
