@@ -422,6 +422,30 @@ int node_compare(struct Node* node, struct Node* mate, enum Sort order) {
     return 0; // unreachable
 }
 
+bool user_was_stdin = false;
+static int LOOPBACK_FILENO[2];
+#define LB_READ 0
+#define LB_WRITE 1
+static fd_set user_fds;
+int user_write(void* buf, size_t len) {
+    return write(LOOPBACK_FILENO[LB_WRITE], buf, len);
+}
+int user_read(void* buf, size_t len) {
+    fd_set cpy = user_fds;
+    if (select(9, &cpy, NULL, NULL, NULL) < 0) die("select");
+    for (int i = 8; -1 < i; i--)
+        if (FD_ISSET(i, &cpy)) {
+            user_was_stdin = STDIN_FILENO == i;
+            size_t r = read(i, buf, len);
+            if (0 == r) {
+                FD_CLR(i, &user_fds);
+                close(i);
+            }
+            return r;
+        }
+    return -1; // unreachable
+}
+
 static char* rcfile = NULL;
 char* opts(int argc, char* argv[]) {
     selected_printer = &ascii_printer;
@@ -537,17 +561,20 @@ int main(int argc, char* argv[]) {
 
     cursor = &root;
 
+    if (pipe(LOOPBACK_FILENO) < 0) die("pipe(loopback)");
+    // YYY: should probably O_NONBLOCK, but the real hack
+    // is to fork exec a while (read && write); in the
+    // mean time, no writing more than PIPE_BUF without
+    // causing a deadlock - not that it matter 'cause this
+    // 'feature' should not be used anyway...
+    FD_ZERO(&user_fds);
+    FD_SET(STDIN_FILENO, &user_fds);
+    FD_SET(LOOPBACK_FILENO[LB_READ], &user_fds);
+
     if (rcfile) {
-        FILE* f = fopen(rcfile, "rb");
-        if (!f) die(rcfile);
-        fseek(f, 0, SEEK_SET);
-        char buf[1024];
-        size_t len;
-        while ((len = fread(buf, 1, 1024-1, f))) {
-            buf[len] = '\0';
-            run_commands(buf);
-        }
-        if (ferror(f)) die(rcfile);
+        int rcfd = open(rcfile, O_RDONLY);
+        if (rcfd < 0) die(rcfile);
+        FD_SET(rcfd, &user_fds);
     }
 
     if ((is_tty = isatty(STDOUT_FILENO))) term_raw_mode();

@@ -11,6 +11,7 @@
 #include <dirent.h>
 #include <errno.h>
 #include <fnmatch.h>
+#include <fcntl.h>
 #include <libgen.h>
 #include <limits.h>
 #include <locale.h>
@@ -19,6 +20,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/ioctl.h>
+#include <sys/select.h>
 #include <sys/stat.h>
 #include <termios.h>
 #include <unistd.h>
@@ -149,20 +151,24 @@ EVERY_PRINTERS(DO, SEP)
 #undef SEP
 , * selected_printer;
 
-struct Node* node_alloc(struct Node* parent, char* path);
-void node_free(struct Node* node);
-void dir_free(struct Node* node);
-void lnk_free(struct Node* node);
-void node_print(struct Node* node, struct Printer* pr);
-void dir_print(struct Node* node, struct Printer* pr);
-void lnk_print(struct Node* node, struct Printer* pr);
-void lnk_resolve(struct Node* node);
-void dir_unfold(struct Node* node);
-void dir_fold(struct Node* node);
-void dir_reload(struct Node* node);
-void term_restore(void);
-void term_raw_mode(void);
-bool node_ignore(struct Node* node);
-int node_compare(struct Node* node, struct Node* mate, enum Sort order);
+extern struct Node* node_alloc(struct Node* parent, char* path);
+extern void node_free(struct Node* node);
+extern void dir_free(struct Node* node);
+extern void lnk_free(struct Node* node);
+extern void node_print(struct Node* node, struct Printer* pr);
+extern void dir_print(struct Node* node, struct Printer* pr);
+extern void lnk_print(struct Node* node, struct Printer* pr);
+extern void lnk_resolve(struct Node* node);
+extern void dir_unfold(struct Node* node);
+extern void dir_fold(struct Node* node);
+extern void dir_reload(struct Node* node);
+extern void term_restore(void);
+extern void term_raw_mode(void);
+extern bool node_ignore(struct Node* node);
+extern int node_compare(struct Node* node, struct Node* mate, enum Sort order);
+
+extern bool user_was_stdin;
+extern int user_write(void* buf, size_t len);
+extern int user_read(void* buf, size_t len);
 
 #endif // TREEST_SAD
