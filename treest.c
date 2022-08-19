@@ -423,6 +423,7 @@ int node_compare(struct Node* node, struct Node* mate, enum Sort order) {
 }
 
 bool user_was_stdin = false;
+bool user_was_loopback = false;
 static int LOOPBACK_FILENO[2];
 #define LB_READ 0
 #define LB_WRITE 1
@@ -431,15 +432,19 @@ int user_write(void* buf, size_t len) {
     return write(LOOPBACK_FILENO[LB_WRITE], buf, len);
 }
 int user_read(void* buf, size_t len) {
-    fd_set cpy = user_fds;
+    fd_set cpy;
+try_again: // jumps here when read retured 0 (EOF, closes fd)
+    cpy = user_fds;
     if (select(9, &cpy, NULL, NULL, NULL) < 0) die("select");
     for (int i = 8; -1 < i; i--)
         if (FD_ISSET(i, &cpy)) {
             user_was_stdin = STDIN_FILENO == i;
+            user_was_loopback = LOOPBACK_FILENO[LB_READ] == i;
             size_t r = read(i, buf, len);
             if (0 == r) {
                 FD_CLR(i, &user_fds);
                 close(i);
+                goto try_again;
             }
             return r;
         }

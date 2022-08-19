@@ -98,7 +98,7 @@ extern struct Command {
 } command_map[128];
 extern char* register_map[128];
 extern bool run_command(char user);
-extern bool run_commands(char* user);
+extern void run_commands(char* user);
 
 extern struct Node {
     char* path;
@@ -168,6 +168,7 @@ extern bool node_ignore(struct Node* node);
 extern int node_compare(struct Node* node, struct Node* mate, enum Sort order);
 
 extern bool user_was_stdin;
+extern bool user_was_loopback;
 extern int user_write(void* buf, size_t len);
 extern int user_read(void* buf, size_t len);
 
