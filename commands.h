@@ -1,11 +1,14 @@
 #ifdef TREEST_COMMAND
 #error This file should not be included outside treest.c
 #endif // TREEST_COMMAND
-#define TREEST_COMMAND() {                                  \
-    char user;                                              \
-    do {                                                    \
-        if (read(STDIN_FILENO, &user, 1) < 0) die("read");  \
-    } while (!run_command(user));                           \
+#define TREEST_COMMAND() {             \
+    char user;                         \
+    do {                               \
+        int r = user_read(&user, 1);   \
+        if (r < 0) die("read");        \
+        if (0 == r && user_was_stdin)  \
+            return EXIT_SUCCESS;       \
+    } while (!run_command(user));      \
 }
 
 #include "./treest.h"
@@ -45,10 +48,8 @@ bool run_command(char user) {
     return c < 128 && command_map[c].f && command_map[c].f();
 }
 
-bool run_commands(char* user) {
-    bool r = false;
-    while (*user) r = run_command(*user++);
-    return r;
+void run_commands(char* user) {
+    user_write(user, strlen(user));
 }
 
 static char* prompt_raw(const char* c) {
@@ -60,7 +61,7 @@ static char* prompt_raw(const char* c) {
     putstr(c);
     putstr(": ");
     while (true) {
-        if (read(STDIN_FILENO, &last, 1) < 0) die("read");
+        if (user_read(&last, 1) < 0) die("read");
         if (CTRL('C') == last || CTRL('D') == last || CTRL('G') == last || CTRL('[') == last) {
             putstr("- aborted");
             putln();
@@ -81,7 +82,7 @@ static char* prompt_raw(const char* c) {
             }
             continue;
         }
-        if (CTRL('I') == last) continue;
+        if (CTRL('I') == last && user_was_loopback) break;
         if (CTRL('J') == last || CTRL('M') == last) break;
 
         if (write(STDERR_FILENO, &last, 1) < 0) die("write")
@@ -103,19 +104,16 @@ static char* prompt_raw(const char* c) {
 #include <readline/history.h>
 static char* prompt_rl(const char* c) {
     size_t len = strlen(c);
-    char p[len+2];
+    char p[len+7];
     strcpy(p, c);
-    strcpy(p+len, ": ");
+    strcpy(p+len, " (rl): ");
     term_restore();
     char* r = readline(p);
     term_raw_mode();
     add_history(r);
     return r;
 }
-
-static char* prompt_sel(const char* c);
-char* (* prompt)(const char* c) = prompt_sel;
-static char* prompt_sel(const char* c) { return (prompt = isatty(STDIN_FILENO) ? prompt_rl : prompt_raw)(c); }
+static char* prompt(const char* c) { return (user_was_stdin && isatty(STDIN_FILENO) ? prompt_rl : prompt_raw)(c); }
 #else
 #define prompt prompt_raw
 #endif
@@ -124,7 +122,7 @@ static char prompt1(const char* c) {
     char r;
     putstr(c);
     putstr(": ");
-    if (read(STDIN_FILENO, &r, 1) < 0) die("read");
+    if (user_read(&r, 1) < 0) die("read");
     if (CTRL('C') == r || CTRL('D') == r || CTRL('G') == r || CTRL('J') == r || CTRL('M') == r || CTRL('[') == r) {
         putstr("- aborted");
         putln();
@@ -662,7 +660,7 @@ static bool c_shell(void) {
     term_raw_mode();
 
     putstr("! done"); // YYY
-    if (read(STDIN_FILENO, &clen, 1) < 0) die("read"); // YYY
+    if (user_read(&clen, 1) < 0) die("read"); // YYY
 
     c_reloadroot();
     return EXIT_SUCCESS == r;
@@ -720,7 +718,7 @@ static bool c_pipe(void) {
     term_raw_mode();
 
     putstr("! done"); // YYY
-    if (read(STDIN_FILENO, &clen, 1) < 0) die("read"); // YYY
+    if (user_read(&clen, 1) < 0) die("read"); // YYY
 
     c_reloadroot();
     return EXIT_SUCCESS == r;
@@ -729,11 +727,11 @@ static bool c_pipe(void) {
 static bool c_if(void) {
     char a = prompt1("if-command");
     if (!a) return false;
-    bool r = false;
-    if (run_command(a)) {
+    bool r = run_command(a);
+    if (r) {
         char* c = prompt("then-commands");
         if (!c) return false;
-        r = run_commands(c);
+        run_commands(c);
         free(c);
     }
     return r;
@@ -742,11 +740,11 @@ static bool c_if(void) {
 static bool c_ifnot(void) {
     char a = prompt1("ifnot-command");
     if (!a) return false;
-    bool r = false;
-    if (!run_command(a)) {
+    bool r = !run_command(a);
+    if (r) {
         char* c = prompt("then-commands");
         if (!c) return false;
-        r = run_commands(c);
+        run_commands(c);
         free(c);
     }
     return r;
@@ -755,11 +753,11 @@ static bool c_ifnot(void) {
 static bool c_while(void) {
     char a = prompt1("while-command");
     if (!a) return false;
-    bool r = false;
-    while (run_command(a)) {
+    bool r = run_command(a);
+    while (r) {
         char* c = prompt("do-commands");
         if (!c) return false;
-        r = run_commands(c);
+        run_commands(c);
         free(c);
     }
     return r;
@@ -768,11 +766,11 @@ static bool c_while(void) {
 static bool c_whilenot(void) {
     char a = prompt1("whilenot-command");
     if (!a) return false;
-    bool r = false;
-    while (!run_command(a)) {
+    bool r = !run_command(a);
+    while (r) {
         char* c = prompt("do-commands");
         if (!c) return false;
-        r = run_commands(c);
+        run_commands(c);
         free(c);
     }
     return r;
@@ -800,7 +798,11 @@ static bool c_runregister(void) {
         putln();
         return false;
     }
-    return register_map[a] && run_commands(register_map[a]);
+    if (register_map[a]) {
+        run_commands(register_map[a]);
+        return true;
+    }
+    return false;
 }
 
 static bool c_help(void) {
