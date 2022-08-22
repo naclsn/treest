@@ -451,18 +451,18 @@ try_again: // jumps here when read retured 0 (EOF, closes fd)
     return -1; // unreachable
 }
 
+static char** printer_argv = NULL;
+static int printer_argc = 0;
 static char* rcfile = NULL;
 char* opts(int argc, char* argv[]) {
     selected_printer = &ascii_printer;
-    bool printer_init = false;
-
     char* selected_path = NULL;
 
     for (int k = 0; k < argc; k++) {
         if (0 == strcmp("--help", argv[k])) {
             printf("Usage: %s [--printer=NAME] [--LONGOPTIONS] [-FLAGS] [[--] ROOT]\n", prog);
-            if (printer_init && selected_printer->del) selected_printer->del();
             free(ignore_list);
+            free(printer_argv);
             exit(EXIT_FAILURE);
         } else if (0 == strcmp("--version", argv[k])) {
             puts(
@@ -474,22 +474,18 @@ char* opts(int argc, char* argv[]) {
                 "\n+ git2"
                 #endif
             );
-            if (printer_init && selected_printer->del) selected_printer->del();
             free(ignore_list);
+            free(printer_argv);
             exit(EXIT_SUCCESS);
         } else if (0 == memcmp("--printer=", argv[k], 10)) {
             char* arg = argv[k] + 10;
-            if (printer_init) {
-                if (selected_printer->del) selected_printer->del();
-                printer_init = false;
-            }
             #define DO(it) if (0 == strcmp(it.name, arg)) selected_printer = &it;
             EVERY_PRINTERS(DO, else)
             #undef DO
             else {
                 printf("No such printer: '%s'\n", arg);
-                if (printer_init && selected_printer->del) selected_printer->del();
                 free(ignore_list);
+                free(printer_argv);
                 exit(EXIT_FAILURE);
             }
         } else if (0 == memcmp("--ignore=", argv[k], 9)) {
@@ -505,34 +501,23 @@ char* opts(int argc, char* argv[]) {
             rcfile = argv[k] + 9;
         } else {
             if ('-' == argv[k][0]) {
-                if ('-' == argv[k][1]) {
-                    if ('\0' == argv[k][2]) {
-                        selected_path = argv[k+1];
-                        break;
-                    }
-                    if (!selected_printer->command || !selected_printer->command(argv[k]+2)) {
-                        printf("Unknown command for '%s': '%s'\n", selected_printer->name, argv[k]+2);
-                        if (printer_init && selected_printer->del) selected_printer->del();
-                        free(ignore_list);
-                        exit(EXIT_FAILURE);
-                    }
-                    continue;
+                if ('-' == argv[k][1] && '\0' == argv[k][2]) {
+                    selected_path = argv[k+1];
+                    break;
                 }
-                char* flag = argv[k];
-                if (!printer_init) {
-                    if (selected_printer->init) selected_printer->init();
-                    printer_init = true;
+                printer_argc++;
+                if (!printer_argv) {
+                    may_malloc(printer_argv, printer_argc * sizeof(char*));
+                } else {
+                    may_realloc(printer_argv, printer_argc * sizeof(char*));
                 }
-                while (*++flag)
-                    if (selected_printer->toggle) selected_printer->toggle(*flag);
+                printer_argv[printer_argc-1] = argv[k];
             } else {
                 selected_path = argv[k];
                 break;
             }
         } // else (argv not long option)
     } // foreach argv
-
-    if (!printer_init && selected_printer->init) selected_printer->init();
 
     return selected_path;
 }
@@ -555,16 +540,19 @@ int main(int argc, char* argv[]) {
     if (!(path = realpath(arg_path, NULL))) {
         if (selected_printer->del) selected_printer->del();
         free(ignore_list);
+        free(printer_argv);
         die(arg_path);
     }
     if (lstat(path, &sb) < 0) {
         if (selected_printer->del) selected_printer->del();
         free(ignore_list);
+        free(printer_argv);
         die(path);
     }
     if (!S_ISDIR(sb.st_mode)) {
         if (selected_printer->del) selected_printer->del();
         free(ignore_list);
+        free(printer_argv);
         errno = ENOTDIR;
         die(path);
     }
@@ -585,6 +573,24 @@ int main(int argc, char* argv[]) {
     FD_ZERO(&user_fds);
     FD_SET(STDIN_FILENO, &user_fds);
     FD_SET(LOOPBACK_FILENO[LB_READ], &user_fds);
+
+    if (selected_printer->init) selected_printer->init();
+    for (int k = 0; k < printer_argc; k++) {
+        if ('-' == printer_argv[k][1]) {
+            if (!selected_printer->command || !selected_printer->command(printer_argv[k]+2)) {
+                printf("Unknown command for '%s': '%s'\n", selected_printer->name, printer_argv[k]+2);
+                if (selected_printer->del) selected_printer->del();
+                free(ignore_list);
+                free(printer_argv);
+                exit(EXIT_FAILURE);
+            }
+            continue;
+        }
+        if (!selected_printer->toggle) continue;
+        char* flag = printer_argv[k];
+        while (*++flag) selected_printer->toggle(*flag);
+    }
+    free(printer_argv);
 
     if (rcfile) {
         int rcfd = open(rcfile, O_RDONLY);

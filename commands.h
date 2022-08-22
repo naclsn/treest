@@ -32,11 +32,11 @@ bool toggle_gflag(char flag) {
         case 'I': TOGGLE(gflags.ignore);                         return true;
         case 'S': TOGGLE_SRT(gflags.sort_order, Sort_SIZE);      return true;
         case 'X': TOGGLE_SRT(gflags.sort_order, Sort_EXTENSION); return true;
-        case 'u': TOGGLE_SRT(gflags.sort_order, Sort_ATIME);     return true;
-        case 't': TOGGLE_SRT(gflags.sort_order, Sort_MTIME);     return true;
         case 'c': TOGGLE_SRT(gflags.sort_order, Sort_CTIME);     return true;
-        case 'r': TOGGLE_BIT(gflags.sort_order, Sort_REVERSE);   return true;
         case 'd': TOGGLE_BIT(gflags.sort_order, Sort_DIRSFIRST); return true;
+        case 'r': TOGGLE_BIT(gflags.sort_order, Sort_REVERSE);   return true;
+        case 't': TOGGLE_SRT(gflags.sort_order, Sort_MTIME);     return true;
+        case 'u': TOGGLE_SRT(gflags.sort_order, Sort_ATIME);     return true;
     }
     return false;
 }

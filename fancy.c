@@ -6,8 +6,14 @@
 #include <git2.h>
 #endif
 
-#define _CL "\x1b[H\x1b[2J\x1b[3J\x1b[?25l"
-#define _LC "\x1b[?25h"
+// FIXME: fsr, somehow, this can eat at the main screen
+// buffer; the order it is sent in is correct so no idea
+// as to what it comes from... most likely the clear seq
+// is too 'agressive'
+#define _CL "\x1b[H\x1b[2J\x1b[3J"
+#define _LC ""
+#define _CX _CL "\x1b[?25l"
+#define _XC _LC "\x1b[?25h"
 #define _EALT "\x1b[?1049h"
 #define _DALT "\x1b[?1049l"
 
@@ -92,6 +98,7 @@ static struct {
     bool classify;
     bool colors;
     bool join;
+    bool noexterm;
 } flags;
 
 static void putstr(const char* c, bool visible) {
@@ -152,9 +159,9 @@ static bool _c_refresh(void) {
     return state.overriden[6].f();
 }
 static bool _c_suspend(void) {
-    putstr(_DALT, false); flush();
+    if (!flags.noexterm) { putstr(_DALT, false); flush(); }
     bool r = state.overriden[7].f();
-    putstr(_EALT, false); flush();
+    if (!flags.noexterm) { putstr(_EALT, false); flush(); }
     return r;
 }
 
@@ -172,7 +179,7 @@ void fancy_init(void) {
         state.winsize.ws_row = USHRT_MAX;
     }
 
-    putstr(_EALT, false); flush();
+    if (!flags.noexterm) { putstr(_EALT, false); flush(); }
 
     state.overriden[0] = command_map[CTRL('E')];
     state.overriden[1] = command_map[CTRL('Y')];
@@ -204,7 +211,7 @@ void fancy_del(void) {
     git_libgit2_shutdown();
     #endif
 
-    putstr(_DALT, false); flush();
+    if (!flags.noexterm) { putstr(_DALT, false); flush(); }
 
     command_map[CTRL('E')] = state.overriden[0];
     command_map[CTRL('Y')] = state.overriden[1];
@@ -218,8 +225,9 @@ void fancy_del(void) {
 
 bool fancy_toggle(char flag) {
     switch (flag) {
+        case 'C': TOGGLE(flags.colors);   return true;
         case 'F': TOGGLE(flags.classify); return true;
-        case 'c': TOGGLE(flags.colors);   return true;
+        case 'T': TOGGLE(flags.noexterm); return true;
         case 'j': TOGGLE(flags.join);     return true;
     }
     return toggle_gflag(flag);
@@ -243,14 +251,14 @@ bool fancy_filter(struct Node* node) {
 void fancy_begin(void) {
     state.depth = -1;
     state.indents = 0;
-    putstr(_CL, false);
+    putstr(!flags.noexterm ? _CX : _CL, false);
     state.wincurr = 0;
     state.next_is_first_onscreen = false;
     state.line_len = 0;
 }
 
 void fancy_end(void) {
-    putstr(_LC, false);
+    putstr(!flags.noexterm ? _XC : _LC, false);
     flush();
 }
 

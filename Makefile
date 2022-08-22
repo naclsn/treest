@@ -2,11 +2,15 @@ PREFIX    ?= /usr/local
 MANPREFIX ?= $(PREFIX)/share/man
 DESTDIR   ?= 
 
+ifndef NO_READLINE
 ifneq (, $(shell ldconfig -p | grep readline))
 FEAT += -DFEAT_READLINE -lreadline
 endif
+endif
+ifndef NO_GIT2
 ifneq (, $(shell ldconfig -p | grep git2))
 FEAT += -DFEAT_GIT2 -lgit2
+endif
 endif
 ifneq (, $(DEBUGGING))
 FEAT += -DTRACE_ALLOCS -g
