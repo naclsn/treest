@@ -13,9 +13,7 @@
 
 #include "./treest.h"
 
-#ifdef TRACE_ALLOCS
 static void _free_before_normal_exit();
-#endif
 
 #define putstr(__c) if (write(STDERR_FILENO, __c, strlen(__c)) < 0) die("write")
 #define putln() putstr(is_raw ? "\r\n" : "\n")
@@ -244,19 +242,22 @@ static char* quote(char* text) {
 }
 
 static bool c_quit(void) {
-    #ifdef TRACE_ALLOCS
     _free_before_normal_exit();
-    #endif
     exit(EXIT_SUCCESS);
 }
 
 static bool c_cquit(void) {
     char c = prompt1("exit-code");
-    #ifdef TRACE_ALLOCS
     _free_before_normal_exit();
-    #endif
     if (c) exit(c);
     exit(EXIT_FAILURE);
+}
+
+static bool c_suspend(void) {
+    term_restore();
+    raise(SIGSTOP); // YYY: or SIGTSTP?
+    term_raw_mode();
+    return true;
 }
 
 static bool c_ignore(void) {
@@ -823,6 +824,7 @@ struct Command command_map[128] = {
     [CTRL('N')]={c_visiblenext,          "go to the next visible node"},
     [CTRL('P')]={c_visibleprevious,      "go to the previous visible node"},
     [CTRL('R')]={c_reload,               "reload the directory at the cursor"},
+    [CTRL('Z')]={c_suspend,              "suspend"},
     ['!']      ={c_shell,                "execute a shell command"},
     ['"']      ={c_register,             "fill or empty a register"},
     ['#']      ={c_ignore,               "(comment) ignore input until the end of line"},
@@ -861,10 +863,8 @@ struct Command command_map[128] = {
 };
 char* register_map[128] = {0};
 
-#ifdef TRACE_ALLOCS
 static void _free_before_normal_exit() {
     if (selected_printer->del) selected_printer->del();
     node_free(&root);
     free(_find_query.text);
 }
-#endif

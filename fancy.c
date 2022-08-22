@@ -8,6 +8,8 @@
 
 #define _CL "\x1b[H\x1b[2J\x1b[3J\x1b[?25l"
 #define _LC "\x1b[?25h"
+#define _EALT "\x1b[?1049h"
+#define _DALT "\x1b[?1049l"
 
 #define _SP "\xc2\xa0"
 #define _HZ "\xe2\x94\x80"
@@ -67,7 +69,7 @@ static struct {
     unsigned wintop;
     unsigned wincurr;
     bool next_is_first_onscreen;
-    struct Command overriden[7];
+    struct Command overriden[8];
     int line_len;
 } state = {
     .ls_colors = {
@@ -149,6 +151,12 @@ static bool _c_refresh(void) {
     }
     return state.overriden[6].f();
 }
+static bool _c_suspend(void) {
+    putstr(_DALT, false); flush();
+    bool r = state.overriden[7].f();
+    putstr(_EALT, false); flush();
+    return r;
+}
 
 void fancy_init(void) {
     read_ls_colors();
@@ -164,6 +172,8 @@ void fancy_init(void) {
         state.winsize.ws_row = USHRT_MAX;
     }
 
+    putstr(_EALT, false); flush();
+
     state.overriden[0] = command_map[CTRL('E')];
     state.overriden[1] = command_map[CTRL('Y')];
     state.overriden[2] = command_map[CTRL('D')];
@@ -171,6 +181,7 @@ void fancy_init(void) {
     state.overriden[4] = command_map[CTRL('F')];
     state.overriden[5] = command_map[CTRL('B')];
     state.overriden[6] = command_map[CTRL('L')];
+    state.overriden[7] = command_map[CTRL('Z')];
     command_map[CTRL('E')] = (struct Command){_c_z1down,    "forward one line"};
     command_map[CTRL('Y')] = (struct Command){_c_z1up,      "backward one line"};
     command_map[CTRL('D')] = (struct Command){_c_zdown,     "forward one half-window"};
@@ -178,6 +189,7 @@ void fancy_init(void) {
     command_map[CTRL('F')] = (struct Command){_c_zforward,  "forward one window"};
     command_map[CTRL('B')] = (struct Command){_c_zbackward, "backward one window"};
     command_map[CTRL('L')] = (struct Command){_c_refresh,   command_map[CTRL('L')].h};
+    command_map[CTRL('Z')] = (struct Command){_c_suspend,   command_map[CTRL('Z')].h};
 }
 
 void fancy_del(void) {
@@ -192,6 +204,8 @@ void fancy_del(void) {
     git_libgit2_shutdown();
     #endif
 
+    putstr(_DALT, false); flush();
+
     command_map[CTRL('E')] = state.overriden[0];
     command_map[CTRL('Y')] = state.overriden[1];
     command_map[CTRL('D')] = state.overriden[2];
@@ -199,6 +213,7 @@ void fancy_del(void) {
     command_map[CTRL('F')] = state.overriden[4];
     command_map[CTRL('B')] = state.overriden[5];
     command_map[CTRL('L')] = state.overriden[6];
+    command_map[CTRL('Z')] = state.overriden[7];
 }
 
 bool fancy_toggle(char flag) {

@@ -462,7 +462,7 @@ char* opts(int argc, char* argv[]) {
         if (0 == strcmp("--help", argv[k])) {
             printf("Usage: %s [--printer=NAME] [--LONGOPTIONS] [-FLAGS] [[--] ROOT]\n", prog);
             if (printer_init && selected_printer->del) selected_printer->del();
-            if (ignore_list) free(ignore_list);
+            free(ignore_list);
             exit(EXIT_FAILURE);
         } else if (0 == strcmp("--version", argv[k])) {
             puts(
@@ -475,7 +475,7 @@ char* opts(int argc, char* argv[]) {
                 #endif
             );
             if (printer_init && selected_printer->del) selected_printer->del();
-            if (ignore_list) free(ignore_list);
+            free(ignore_list);
             exit(EXIT_SUCCESS);
         } else if (0 == memcmp("--printer=", argv[k], 10)) {
             char* arg = argv[k] + 10;
@@ -489,7 +489,7 @@ char* opts(int argc, char* argv[]) {
             else {
                 printf("No such printer: '%s'\n", arg);
                 if (printer_init && selected_printer->del) selected_printer->del();
-                if (ignore_list) free(ignore_list);
+                free(ignore_list);
                 exit(EXIT_FAILURE);
             }
         } else if (0 == memcmp("--ignore=", argv[k], 9)) {
@@ -513,7 +513,7 @@ char* opts(int argc, char* argv[]) {
                     if (!selected_printer->command || !selected_printer->command(argv[k]+2)) {
                         printf("Unknown command for '%s': '%s'\n", selected_printer->name, argv[k]+2);
                         if (printer_init && selected_printer->del) selected_printer->del();
-                        if (ignore_list) free(ignore_list);
+                        free(ignore_list);
                         exit(EXIT_FAILURE);
                     }
                     continue;
@@ -551,10 +551,20 @@ int main(int argc, char* argv[]) {
     char* arg_path = opts(argc, argv);
     if (!arg_path) arg_path = cwd;
     char* path;
-    if (!(path = realpath(arg_path, NULL))) die(arg_path);
     struct stat sb;
-    if (lstat(path, &sb) < 0) die(path);
+    if (!(path = realpath(arg_path, NULL))) {
+        if (selected_printer->del) selected_printer->del();
+        free(ignore_list);
+        die(arg_path);
+    }
+    if (lstat(path, &sb) < 0) {
+        if (selected_printer->del) selected_printer->del();
+        free(ignore_list);
+        die(path);
+    }
     if (!S_ISDIR(sb.st_mode)) {
+        if (selected_printer->del) selected_printer->del();
+        free(ignore_list);
         errno = ENOTDIR;
         die(path);
     }
