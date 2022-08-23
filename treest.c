@@ -1,6 +1,12 @@
 #include "./treest.h"
 #include "./commands.h"
 
+#define TREEST_UPDATE() {                     \
+        selected_printer->begin();            \
+        node_print(&root, selected_printer);  \
+        selected_printer->end();              \
+}
+
 char oups[_MAX_PATH+14];
 char* prog;
 char cwd[_MAX_PATH];
@@ -9,6 +15,12 @@ bool is_raw;
 struct GFlags gflags;
 struct Node root, * cursor;
 struct Printer* selected_printer;
+
+static int LOOPBACK_FILENO[2];
+#define LB_READ 0
+#define LB_WRITE 1
+static int NOTIFY_FILENO;
+static fd_set user_fds;
 
 struct Node* node_alloc(struct Node* parent, char* path) {
     struct Node fill = {
@@ -23,12 +35,29 @@ struct Node* node_alloc(struct Node* parent, char* path) {
     struct Node* niw; may_malloc(niw, sizeof(struct Node));
     memcpy(niw, &fill, sizeof(struct Node));
 
-    if (Type_REG == fill.type) {
-        if (fill.stat.st_mode & S_IXUSR)
-            niw->type = Type_EXEC;
-    } else if (Type_LNK == fill.type) {
-        // TODO: handle looping symlinks as broken
-        lnk_resolve(niw);
+    switch (fill.type) {
+        case Type_REG:
+            if (fill.stat.st_mode & S_IXUSR)
+                niw->type = Type_EXEC;
+            break;
+
+        case Type_LNK:
+            // TODO: handle looping symlinks as broken
+            lnk_resolve(niw);
+            break;
+
+        case Type_DIR:
+            if (gflags.watch) {
+                uint32_t m = IN_ATTRIB | IN_CREATE | IN_DELETE | IN_MOVE;
+                // YYY: should probably
+                //if (0 == strcmp(root.path, fill.path)) m|= IN_DELETE_SELF | IN_MOVE_SELF;
+                int wd = inotify_add_watch(NOTIFY_FILENO, path, m);
+                if (wd < 0) die(fill.path);
+                // TODO: add assoc (wd, niw) to the list
+            }
+            break;
+
+        default: ;
     }
 
     return niw;
@@ -424,20 +453,64 @@ int node_compare(struct Node* node, struct Node* mate, enum Sort order) {
 
 bool user_was_stdin = false;
 bool user_was_loopback = false;
-static int LOOPBACK_FILENO[2];
-#define LB_READ 0
-#define LB_WRITE 1
-static fd_set user_fds;
+
+static void _notify_events(void) {
+    char buf[4096] __attribute__((aligned(__alignof__(struct inotify_event))));
+    struct inotify_event* event;
+    ssize_t len;
+
+    while (true) {
+        len = read(NOTIFY_FILENO, buf, sizeof(buf));
+        if (len <= 0) return;
+
+        char* head = buf;
+        while (head < buf + len) {
+            event = (struct inotify_event *) head;
+
+            if (event->mask & IN_ATTRIB) // TODO: reload the node's stat and type
+                printf("notif: attrib '%s'\r\n", event->len ? event->name : "");
+            if (event->mask & (IN_CREATE | IN_MOVED_TO)) // TODO: node_new and sort-insert
+                printf("notif: create '%s'\r\n", event->len ? event->name : "");
+            if (event->mask & (IN_DELETE | IN_MOVED_FROM)) // TODO: node_delete and update children
+                printf("notif: delete '%s'\r\n", event->len ? event->name : "");
+            //if (event->mask & (IN_DELETE_SELF | IN_MOVE_SELF))
+            //    exit(EXIT_FAILURE); // only root node, exit
+
+            // to get the dirname, find the corresponding wd
+            // (to event->wd) and its associated path
+
+            // to get full path, append the name (of len event->len)
+            // if len is 0, event is on the dir itself (maybe?)
+            // if so would only append for the `.._SELF`s
+
+            // can also use `event->mask & IN_ISDIR` but probably usl
+
+            head+= sizeof(struct inotify_event) + event->len;
+        }
+    }
+}
+
 int user_write(void* buf, size_t len) {
     return write(LOOPBACK_FILENO[LB_WRITE], buf, len);
 }
+
 int user_read(void* buf, size_t len) {
     fd_set cpy;
 try_again: // jumps here when read retured 0 (EOF, closes fd)
     cpy = user_fds;
     if (select(9, &cpy, NULL, NULL, NULL) < 0) die("select");
+
     for (int i = 8; -1 < i; i--)
         if (FD_ISSET(i, &cpy)) {
+            if (gflags.watch && NOTIFY_FILENO == i) {
+                _notify_events();
+                // YYY: what if it gets a notify even when user is in prompt :/
+                // should return a buf="^L"/len=1 with user_was_loopback only set;
+                // printers are expected to be able to handle this
+                TREEST_UPDATE();
+                goto try_again; // in that case, maybe not
+            }
+
             user_was_stdin = STDIN_FILENO == i;
             user_was_loopback = LOOPBACK_FILENO[LB_READ] == i;
             size_t r = read(i, buf, len);
@@ -448,6 +521,7 @@ try_again: // jumps here when read retured 0 (EOF, closes fd)
             }
             return r;
         }
+
     return -1; // unreachable
 }
 
@@ -592,6 +666,12 @@ int main(int argc, char* argv[]) {
     }
     free(printer_argv);
 
+    if (gflags.watch) {
+        NOTIFY_FILENO = inotify_init1(IN_NONBLOCK);
+        FD_SET(NOTIFY_FILENO, &user_fds);
+        dir_reload(&root);
+    }
+
     if (rcfile) {
         int rcfd = open(rcfile, O_RDONLY);
         if (rcfd < 0) die(rcfile);
@@ -601,10 +681,7 @@ int main(int argc, char* argv[]) {
     if ((is_tty = isatty(STDOUT_FILENO))) term_raw_mode();
 
     while (true) {
-        selected_printer->begin();
-        node_print(&root, selected_printer);
-        selected_printer->end();
-
+        TREEST_UPDATE();
         TREEST_COMMAND();
     }
 }

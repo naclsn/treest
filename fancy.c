@@ -115,11 +115,11 @@ static void putstr(const char* c, bool visible) {
     state.line_len+= count;
     fputs(c, stdout);
 }
-static void putln() {
+static void putln(void) {
     state.line_len = 0;
     fputs(is_tty ? "\r\n" : "\n", stdout);
 }
-static void flush() {
+static void flush(void) {
     fflush(stdout);
 }
 

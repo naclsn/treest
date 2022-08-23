@@ -37,6 +37,7 @@ bool toggle_gflag(char flag) {
         case 'r': TOGGLE_BIT(gflags.sort_order, Sort_REVERSE);   return true;
         case 't': TOGGLE_SRT(gflags.sort_order, Sort_MTIME);     return true;
         case 'u': TOGGLE_SRT(gflags.sort_order, Sort_ATIME);     return true;
+        case 'w': TOGGLE(gflags.watch);                          return true;
     }
     return false;
 }
@@ -863,7 +864,7 @@ struct Command command_map[128] = {
 };
 char* register_map[128] = {0};
 
-static void _free_before_normal_exit() {
+static void _free_before_normal_exit(void) {
     if (selected_printer->del) selected_printer->del();
     node_free(&root);
     free(_find_query.text);
