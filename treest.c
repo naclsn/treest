@@ -16,10 +16,15 @@ struct GFlags gflags;
 struct Node root, * cursor;
 struct Printer* selected_printer;
 
-static int LOOPBACK_FILENO[2];
+static int LOOPBACK_FILENO[2] = {-1, -1};
 #define LB_READ 0
 #define LB_WRITE 1
-static int NOTIFY_FILENO;
+static int NOTIFY_FILENO = -1;
+static struct WatchAssoc {
+    int wd;
+    struct Node* node;
+    struct WatchAssoc* next;
+}* watch_assocs;
 static fd_set user_fds;
 
 struct Node* node_alloc(struct Node* parent, char* path) {
@@ -51,9 +56,13 @@ struct Node* node_alloc(struct Node* parent, char* path) {
                 uint32_t m = IN_ATTRIB | IN_CREATE | IN_DELETE | IN_MOVE;
                 // YYY: should probably
                 //if (0 == strcmp(root.path, fill.path)) m|= IN_DELETE_SELF | IN_MOVE_SELF;
-                int wd = inotify_add_watch(NOTIFY_FILENO, path, m);
-                if (wd < 0) die(fill.path);
-                // TODO: add assoc (wd, niw) to the list
+                struct WatchAssoc* wa;
+                may_malloc(wa, sizeof(struct WatchAssoc));
+                wa->wd = inotify_add_watch(NOTIFY_FILENO, path, m);
+                if (wa->wd < 0) die(fill.path);
+                wa->node = niw;
+                if (!watch_assocs) watch_assocs = wa;
+                else watch_assocs->next = wa;
             }
             break;
 
@@ -88,6 +97,7 @@ void dir_free(struct Node* node) {
     free(node->as.dir.children);
     node->as.dir.children = NULL;
     node->as.dir.unfolded = false;
+    // TODO: free/close the wd
 }
 
 void lnk_free(struct Node* node) {
@@ -198,6 +208,7 @@ void dir_unfold(struct Node* node) {
     if (dir) {
         struct dirent *ent;
         while ((ent = readdir(dir))) {
+            // TODO: extract to function for re-use in notify (on create)
             if ('.' == ent->d_name[0] && (
                 '\0' == ent->d_name[1]
                 || ('.' == ent->d_name[1] && '\0' == ent->d_name[2])
@@ -346,6 +357,7 @@ void dir_reload(struct Node* node) {
                 node->parent->as.dir.children[k]->index--;
             }
             node_free(node);
+            //free(node); //?
             return;
         } else node->parent->as.dir.children[node->index] = niw;
     }
@@ -456,36 +468,64 @@ bool user_was_loopback = false;
 
 static void _notify_events(void) {
     char buf[4096] __attribute__((aligned(__alignof__(struct inotify_event))));
-    struct inotify_event* event;
-    ssize_t len;
 
     while (true) {
-        len = read(NOTIFY_FILENO, buf, sizeof(buf));
+        ssize_t len = read(NOTIFY_FILENO, buf, sizeof(buf));
         if (len <= 0) return;
 
-        char* head = buf;
-        while (head < buf + len) {
+        struct inotify_event* event;
+        for (char* head = buf; head < buf + len; head+= sizeof(struct inotify_event) + event->len) {
             event = (struct inotify_event *) head;
 
-            if (event->mask & IN_ATTRIB) // TODO: reload the node's stat and type
-                printf("notif: attrib '%s'\r\n", event->len ? event->name : "");
-            if (event->mask & (IN_CREATE | IN_MOVED_TO)) // TODO: node_new and sort-insert
-                printf("notif: create '%s'\r\n", event->len ? event->name : "");
-            if (event->mask & (IN_DELETE | IN_MOVED_FROM)) // TODO: node_delete and update children
-                printf("notif: delete '%s'\r\n", event->len ? event->name : "");
             //if (event->mask & (IN_DELETE_SELF | IN_MOVE_SELF))
             //    exit(EXIT_FAILURE); // only root node, exit
 
-            // to get the dirname, find the corresponding wd
-            // (to event->wd) and its associated path
+            if (!event->len) continue;
 
-            // to get full path, append the name (of len event->len)
-            // if len is 0, event is on the dir itself (maybe?)
-            // if so would only append for the `.._SELF`s
+            struct Node* dir = NULL;
+            struct WatchAssoc* wa = watch_assocs;
+            do {
+                if (event->wd == wa->wd) {
+                    dir = wa->node;
+                    break;
+                }
+            } while ((wa = wa->next));
+            if (!dir) continue; // XXX: should not happen but should at least report it
 
-            // can also use `event->mask & IN_ISDIR` but probably usl
+            if (event->mask & (IN_CREATE | IN_MOVED_TO)) {
+                // TODO: node_new and sort-insert
+                printf("notif: create '%s/%s'\r\n", dir->path, event->name);
+                //char* niw_path;
+                //.. see TODO in dir_unfold
+                //struct Node* niw = node_alloc(dir, niw_path);
+                continue;
+            }
 
-            head+= sizeof(struct inotify_event) + event->len;
+            struct Node* file = NULL;
+            for (size_t k = 0; k < dir->count; k++)
+                if (0 == strcmp(event->name, dir->as.dir.children[k]->name))
+                    file = dir->as.dir.children[k];
+            if (!file) continue; // XXX: should not happend but should at least report it
+
+            if (event->mask & (IN_DELETE | IN_MOVED_FROM)) {
+                // TODO: node_delete and update children
+                printf("notif: delete '%s/%s' (existing '%s')\r\n", dir->path, event->name, file->path);
+                //node_free(file);
+                // and remove from dir and such
+                continue;
+            }
+
+            if (event->mask & IN_ATTRIB) {
+                // TODO: reload the node's stat and type
+                printf("notif: attrib '%s/%s' (existing '%s')\r\n", dir->path, event->name, file->path);
+                if (Type_REG == file->type) {
+                    lstat(file->path, &file->stat);
+                    file->type = S_IFMT & file->stat.st_mode;
+                    if (file->stat.st_mode & S_IXUSR)
+                        file->type = Type_EXEC;
+                }
+                continue;
+            }
         }
     }
 }
@@ -513,7 +553,7 @@ try_again: // jumps here when read retured 0 (EOF, closes fd)
 
             user_was_stdin = STDIN_FILENO == i;
             user_was_loopback = LOOPBACK_FILENO[LB_READ] == i;
-            size_t r = read(i, buf, len);
+            ssize_t r = read(i, buf, len);
             if (0 == r) {
                 FD_CLR(i, &user_fds);
                 close(i);
