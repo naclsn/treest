@@ -6,11 +6,7 @@
 #include <git2.h>
 #endif
 
-// FIXME: fsr, somehow, this can eat at the main screen
-// buffer; the order it is sent in is correct so no idea
-// as to what it comes from... most likely the clear seq
-// is too 'agressive'
-#define _CL "\x1b[H\x1b[2J\x1b[3J"
+#define _CL "\x1b[H\x1b[2J"
 #define _LC ""
 #define _CX _CL "\x1b[?25l"
 #define _XC _LC "\x1b[?25h"
@@ -170,7 +166,7 @@ void fancy_init(void) {
 
     #ifdef FEAT_GIT2
     git_libgit2_init();
-    if (git_repository_open_ext(&state.repo, cwd, GIT_REPOSITORY_OPEN_NO_SEARCH, NULL) < 0)
+    if (git_repository_open_ext(&state.repo, root.path, GIT_REPOSITORY_OPEN_NO_SEARCH, NULL) < 0)
         state.repo = NULL;
     #endif
 
