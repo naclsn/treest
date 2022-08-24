@@ -317,11 +317,17 @@ void fancy_node(struct Node* node) {
 }
 
 void fancy_enter(struct Node* node) {
+    if (flags.join) {
+        if (1 == node->count) return;
+        while (node->parent && 1 == node->parent->count)
+            node = node->parent;
+    }
     state.depth++;
     state.indents = state.indents << 1 | ((node->parent ? node->parent->count : 1)-1 == node->index);
 }
 
-void fancy_leave(struct Node* _UNUSED(node)) {
+void fancy_leave(struct Node* node) {
+    if (flags.join && 1 == node->count) return;
     state.depth--;
     state.indents = state.indents >> 1;
 }
