@@ -12,7 +12,7 @@ ifneq (, $(shell ldconfig -p | grep git2))
 FEAT += -DFEAT_GIT2 -lgit2
 endif
 endif
-ifneq (, $(DEBUGGING))
+ifdef DEBUGGING
 FEAT += -DTRACE_ALLOCS -g
 else
 FEAT += -s

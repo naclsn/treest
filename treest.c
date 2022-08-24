@@ -1,6 +1,12 @@
 #include "./treest.h"
 #include "./commands.h"
 
+#define TREEST_UPDATE() {                     \
+        selected_printer->begin();            \
+        node_print(&root, selected_printer);  \
+        selected_printer->end();              \
+}
+
 char oups[_MAX_PATH+14];
 char* prog;
 char cwd[_MAX_PATH];
@@ -197,6 +203,7 @@ void dir_unfold(struct Node* node) {
                     ? selected_printer->filter(niw)
                     : node_ignore(niw);
                 if (ignore) {
+                    node_free(niw);
                     free(niw);
                     continue;
                 }
@@ -317,8 +324,10 @@ void dir_reload(struct Node* node) {
                 node->parent->as.dir.children[k]->index--;
             }
             node_free(node);
+            free(node);
+            free(niw_path);
             return;
-        } else node->parent->as.dir.children[node->index] = niw;
+        } else node->parent->as.dir.children[niw->index = node->index] = niw;
     }
 
     if (is_unfolded) dir_unfold(niw);
@@ -436,11 +445,12 @@ int user_read(void* buf, size_t len) {
 try_again: // jumps here when read retured 0 (EOF, closes fd)
     cpy = user_fds;
     if (select(9, &cpy, NULL, NULL, NULL) < 0) die("select");
+
     for (int i = 8; -1 < i; i--)
         if (FD_ISSET(i, &cpy)) {
             user_was_stdin = STDIN_FILENO == i;
             user_was_loopback = LOOPBACK_FILENO[LB_READ] == i;
-            size_t r = read(i, buf, len);
+            ssize_t r = read(i, buf, len);
             if (0 == r) {
                 FD_CLR(i, &user_fds);
                 close(i);
@@ -448,6 +458,7 @@ try_again: // jumps here when read retured 0 (EOF, closes fd)
             }
             return r;
         }
+
     return -1; // unreachable
 }
 
@@ -560,7 +571,6 @@ int main(int argc, char* argv[]) {
     root.path = path;
     root.name = strrchr(path, '/')+1;
     root.type = Type_DIR;
-    dir_unfold(&root);
 
     cursor = &root;
 
@@ -592,6 +602,8 @@ int main(int argc, char* argv[]) {
     }
     free(printer_argv);
 
+    dir_unfold(&root);
+
     if (rcfile) {
         int rcfd = open(rcfile, O_RDONLY);
         if (rcfd < 0) die(rcfile);
@@ -601,10 +613,7 @@ int main(int argc, char* argv[]) {
     if ((is_tty = isatty(STDOUT_FILENO))) term_raw_mode();
 
     while (true) {
-        selected_printer->begin();
-        node_print(&root, selected_printer);
-        selected_printer->end();
-
+        TREEST_UPDATE();
         TREEST_COMMAND();
     }
 }
