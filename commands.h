@@ -662,7 +662,7 @@ static bool c_shell(void) {
     term_raw_mode();
 
     putstr("! done"); // YYY
-    if (user_read(&clen, 1) < 0) die("read"); // YYY
+    if (user_read(&clen, 1) < 0) die("read"); // XXX
 
     c_reloadroot();
     return EXIT_SUCCESS == r;
@@ -720,7 +720,7 @@ static bool c_pipe(void) {
     term_raw_mode();
 
     putstr("! done"); // YYY
-    if (user_read(&clen, 1) < 0) die("read"); // YYY
+    if (user_read(&clen, 1) < 0) die("read"); // XXX
 
     c_reloadroot();
     return EXIT_SUCCESS == r;

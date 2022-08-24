@@ -20,12 +20,14 @@ static struct {
 static struct {
     bool classify;
     bool relative;
+    bool index;
 } flags;
 
 bool ascii_toggle(char flag) {
     switch (flag) {
         case 'F': TOGGLE(flags.classify); return true;
         case 'P': TOGGLE(flags.relative); return true;
+        case 'i': TOGGLE(flags.index);    return true;
     }
     return toggle_gflag(flag);
 }
@@ -47,6 +49,11 @@ void ascii_node(struct Node* node) {
 
     if (node == cursor) putstr("> ");
 
+    if (flags.index) {
+        char buf[16];
+        sprintf(buf, "[%2zu/%2zu] ", node->index, node->parent ? node->parent->count : 1);
+        putstr(buf);
+    }
     size_t cwd_len = 0;
     if (flags.relative) cwd_len = strlen(cwd);
 show_name: // when decorating a link, jumps back here with node moved
