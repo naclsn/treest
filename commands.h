@@ -898,4 +898,5 @@ static void _free_before_normal_exit(void) {
     if (selected_printer->del) selected_printer->del();
     for (int k = 0; k < 128; k++) free(register_map[k]);
     node_free(&root);
+    free(ignore_list);
 }

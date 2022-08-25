@@ -333,13 +333,9 @@ void fancy_leave(struct Node* node) {
 }
 
 static void _sorted_insert(struct LS_COLORS_KVEntry* entry, struct LS_COLORS_KVEntry*** into, size_t* count, size_t* cap) {
-    if (0 == *count) {
-        *cap = 8;
-        may_malloc(*into, *cap * sizeof(struct LS_COLORS_KVEntry*));
-    } else if (*cap <= *count) {
-        *cap*= 2;
-        may_realloc(*into, *cap * sizeof(struct LS_COLORS_KVEntry*));
-    }
+    if (0 == *count) *cap = 8;
+    else if (*cap <= *count) *cap*= 2;
+    may_realloc(*into, *cap * sizeof(struct LS_COLORS_KVEntry*));
 
     size_t k = 0;
     for (k = *count; 0 < k; k--) {

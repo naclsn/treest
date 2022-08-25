@@ -594,8 +594,6 @@ char* opts(int argc, char* argv[]) {
     for (int k = 0; k < argc; k++) {
         if (0 == strcmp("--help", argv[k])) {
             printf("Usage: %s [--printer=NAME] [--LONGOPTIONS] [-FLAGS] [[--] ROOT]\n", prog);
-            free(ignore_list);
-            free(printer_argv);
             exit(EXIT_FAILURE);
         } else if (0 == strcmp("--version", argv[k])) {
             puts(
@@ -607,8 +605,6 @@ char* opts(int argc, char* argv[]) {
                 "\n+ git2"
                 #endif
             );
-            free(ignore_list);
-            free(printer_argv);
             exit(EXIT_SUCCESS);
         } else if (0 == memcmp("--printer=", argv[k], 10)) {
             char* arg = argv[k] + 10;
@@ -617,18 +613,12 @@ char* opts(int argc, char* argv[]) {
             #undef DO
             else {
                 printf("No such printer: '%s'\n", arg);
-                free(ignore_list);
-                free(printer_argv);
                 exit(EXIT_FAILURE);
             }
         } else if (0 == memcmp("--ignore=", argv[k], 9)) {
             char* arg = argv[k] + 9;
             ignore_count++;
-            if (!ignore_list) {
-                may_malloc(ignore_list, ignore_count * sizeof(char*));
-            } else {
-                may_realloc(ignore_list, ignore_count * sizeof(char*));
-            }
+            may_realloc(ignore_list, ignore_count * sizeof(char*));
             ignore_list[ignore_count-1] = arg;
         } else if (0 == memcmp("--rcfile=", argv[k], 9)) {
             rcfile = argv[k] + 9;
@@ -639,11 +629,7 @@ char* opts(int argc, char* argv[]) {
                     break;
                 }
                 printer_argc++;
-                if (!printer_argv) {
-                    may_malloc(printer_argv, printer_argc * sizeof(char*));
-                } else {
-                    may_realloc(printer_argv, printer_argc * sizeof(char*));
-                }
+                may_realloc(printer_argv, printer_argc * sizeof(char*));
                 printer_argv[printer_argc-1] = argv[k];
             } else {
                 selected_path = argv[k];
@@ -670,22 +656,9 @@ int main(int argc, char* argv[]) {
     if (!arg_path) arg_path = cwd;
     char* path;
     struct stat sb;
-    if (!(path = realpath(arg_path, NULL))) {
-        if (selected_printer->del) selected_printer->del();
-        free(ignore_list);
-        free(printer_argv);
-        die(arg_path);
-    }
-    if (lstat(path, &sb) < 0) {
-        if (selected_printer->del) selected_printer->del();
-        free(ignore_list);
-        free(printer_argv);
-        die(path);
-    }
+    if (!(path = realpath(arg_path, NULL))) die(arg_path);
+    if (lstat(path, &sb) < 0) die(path);
     if (!S_ISDIR(sb.st_mode)) {
-        if (selected_printer->del) selected_printer->del();
-        free(ignore_list);
-        free(printer_argv);
         errno = ENOTDIR;
         die(path);
     }
@@ -712,8 +685,6 @@ int main(int argc, char* argv[]) {
             if (!selected_printer->command || !selected_printer->command(printer_argv[k]+2)) {
                 printf("Unknown command for '%s': '%s'\n", selected_printer->name, printer_argv[k]+2);
                 if (selected_printer->del) selected_printer->del();
-                free(ignore_list);
-                free(printer_argv);
                 exit(EXIT_FAILURE);
             }
             continue;
@@ -723,6 +694,7 @@ int main(int argc, char* argv[]) {
         while (*++flag) selected_printer->toggle(*flag);
     }
     free(printer_argv);
+    printer_argv = NULL;
 
     dir_unfold(&root);
 
