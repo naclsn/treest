@@ -750,6 +750,12 @@ int main(int argc, char* argv[]) {
             if (r < 0) die("read");
             if (0 == r && user_was_stdin)
                 return EXIT_SUCCESS;
+
+            if ('.' != user) {
+                may_realloc(register_map['.'], 2 * sizeof(char));
+                register_map['.'][0] = user;
+                register_map['.'][1] = '\0';
+            }
         } while (!run_command(user));
     }
 }

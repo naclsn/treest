@@ -113,10 +113,21 @@ static char* prompt_rl(const char* c) {
     add_history(r);
     return r;
 }
-static char* prompt(const char* c) { return (user_was_stdin && isatty(STDIN_FILENO) ? prompt_rl : prompt_raw)(c); }
+static char* prompt_impl(const char* c) { return (user_was_stdin && isatty(STDIN_FILENO) ? prompt_rl : prompt_raw)(c); }
 #else
-#define prompt prompt_raw
+#define prompt_impl prompt_raw
 #endif
+
+static char* prompt(const char* c) {
+    char* r = prompt_impl(c);
+    size_t add = strlen(r);
+    size_t len = strlen(register_map['.']);
+    may_realloc(register_map['.'], (len+add+2) * sizeof(char));
+    strcpy(register_map['.']+len, r);
+    register_map['.'][len+add] = '\t';
+    register_map['.'][len+add+1] = '\0';
+    return r;
+}
 
 static char prompt1(const char* c) {
     char r;
@@ -137,6 +148,11 @@ try_again:
     char w[2] = {r};
     putstr(w);
     putln();
+
+    size_t len = strlen(register_map['.']);
+    may_realloc(register_map['.'], (len+2) * sizeof(char));
+    register_map['.'][len] = r;
+    register_map['.'][len+1] = '\0';
     return r;
 }
 
@@ -617,6 +633,13 @@ static bool c_toggleignore(void) {
     return true;
 }
 
+static bool c_rerun(void) {
+    if (!register_map['.'] && '\0' == *register_map['.'])
+        return false;
+    run_commands(register_map['.']);
+    return true;
+}
+
 // XXX: idk
 static bool c_command(void) {
     char* c = prompt("command");
@@ -839,6 +862,7 @@ struct Command command_map[128] = {
     ['(']      ={c_if,                   "run commands if"},
     [')']      ={c_ifnot,                "run commands ifnot"},
     ['-']      ={c_toggle,               "toggle a flag"},
+    ['.']      ={c_rerun,                "re-run the last command"},
     ['/']      ={c_findcontains,         "find the next node which name contains"},
     [':']      ={c_command,              "execute a printer command"},
     [';']      ={c_refresh,              "refresh the view"},
