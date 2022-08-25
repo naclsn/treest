@@ -1,12 +1,6 @@
 #include "./treest.h"
 #include "./commands.h"
 
-#define TREEST_UPDATE() {                     \
-        selected_printer->begin();            \
-        node_print(&root, selected_printer);  \
-        selected_printer->end();              \
-}
-
 char oups[_MAX_PATH+14];
 char* prog;
 char cwd[_MAX_PATH];
@@ -15,6 +9,17 @@ bool is_raw;
 struct GFlags gflags;
 struct Node root, * cursor;
 struct Printer* selected_printer;
+
+static int LOOPBACK_FILENO[2] = {-1, -1};
+#define LB_READ 0
+#define LB_WRITE 1
+static int NOTIFY_FILENO = -1;
+static struct WatchAssoc {
+    int wd;
+    struct Node* node;
+    struct WatchAssoc* next;
+}* watch_assocs;
+static fd_set user_fds;
 
 struct Node* node_alloc(struct Node* parent, char* path) {
     struct Node fill = {
@@ -29,12 +34,18 @@ struct Node* node_alloc(struct Node* parent, char* path) {
     struct Node* niw; may_malloc(niw, sizeof(struct Node));
     memcpy(niw, &fill, sizeof(struct Node));
 
-    if (Type_REG == fill.type) {
-        if (fill.stat.st_mode & S_IXUSR)
-            niw->type = Type_EXEC;
-    } else if (Type_LNK == fill.type) {
-        // TODO: handle looping symlinks as broken
-        lnk_resolve(niw);
+    switch (fill.type) {
+        case Type_REG:
+            if (fill.stat.st_mode & S_IXUSR)
+                niw->type = Type_EXEC;
+            break;
+
+        case Type_LNK:
+            // TODO: handle looping symlinks as broken
+            lnk_resolve(niw);
+            break;
+
+        default: ;
     }
 
     return niw;
@@ -62,6 +73,21 @@ void dir_free(struct Node* node) {
         node->as.dir.children[k] = NULL;
     }
     node->count = 0;
+
+    if (gflags.watch && node->as.dir.unfolded) {
+        struct WatchAssoc* wa;
+        struct WatchAssoc* pwa = watch_assocs;
+        do {
+            wa = pwa->next;
+            if (wa && wa->node == node) break;
+        } while ((pwa = wa));
+        if (wa) {
+            inotify_rm_watch(NOTIFY_FILENO, wa->wd);
+            pwa->next = wa->next;
+            free(wa);
+        } //else ; // XXX: should not happen but could at least report it
+    }
+
     free(node->as.dir.children);
     node->as.dir.children = NULL;
     node->as.dir.unfolded = false;
@@ -158,6 +184,53 @@ void lnk_resolve(struct Node* node) {
         : niw;
 }
 
+static size_t _dir_new_child(struct Node* node, struct Node* true_parent, char* d_name) {
+    size_t parent_path_len = strlen(node->path);
+
+    if ('.' == d_name[0] && (
+        '\0' == d_name[1]
+        || ('.' == d_name[1] && '\0' == d_name[2])
+        || !gflags.almost_all
+    )) return -1;
+    size_t nlen = strlen(d_name);
+    if (gflags.ignore_backups && '~' == d_name[nlen-1]) return -1;
+
+    size_t path_len = parent_path_len+2 + nlen;
+    char* path; may_malloc(path, path_len);
+    strcpy(path, node->path);
+
+    char* name = path + parent_path_len;
+    if ('/' != name[-1]) *name++ = '/';
+    strcpy(name, d_name);
+
+    struct Node* niw = node_alloc(true_parent, path);
+    if (!niw) return -1;
+
+    if (gflags.ignore) {
+        bool ignore = selected_printer->filter
+            ? selected_printer->filter(niw)
+            : node_ignore(niw);
+        if (ignore) {
+            node_free(niw);
+            free(niw);
+            return -1;
+        }
+    }
+
+    may_realloc(node->as.dir.children, (node->count+1) * sizeof(struct Node*));
+
+    size_t k = 0;
+    for (k = node->count; 0 < k; k--) {
+        int cmp = node_compare(node->as.dir.children[k-1], niw, gflags.sort_order);
+        if (!cmp) cmp = node_compare(node->as.dir.children[k-1], niw, Sort_NAME);
+        if (cmp < 0) break;
+        node->as.dir.children[k] = node->as.dir.children[k-1];
+    }
+    node->as.dir.children[k] = niw;
+    node->count++;
+    return k;
+}
+
 void dir_unfold(struct Node* node) {
     struct Node* parent = node;
     if (Type_LNK == node->type) node = node->as.link.tail;
@@ -166,61 +239,11 @@ void dir_unfold(struct Node* node) {
     node->as.dir.unfolded = true;
     if (node->as.dir.children) return;
 
-    size_t parent_path_len = strlen(node->path);
-
-    size_t cap = 16;
-    may_malloc(node->as.dir.children, cap * sizeof(struct Node*));
-
     DIR *dir = opendir(node->path);
     if (dir) {
         struct dirent *ent;
-        while ((ent = readdir(dir))) {
-            if ('.' == ent->d_name[0] && (
-                '\0' == ent->d_name[1]
-                || ('.' == ent->d_name[1] && '\0' == ent->d_name[2])
-                || !gflags.almost_all
-            )) continue;
-            size_t nlen = strlen(ent->d_name);
-            if (gflags.ignore_backups && '~' == ent->d_name[nlen-1]) continue;
-
-            size_t path_len = parent_path_len+2 + nlen;
-            char* path; may_malloc(path, path_len);
-            strcpy(path, node->path);
-
-            char* name = path + parent_path_len;
-            if ('/' != name[-1]) *name++ = '/';
-            strcpy(name, ent->d_name);
-
-            if (cap < node->count) {
-                cap*= 2;
-                may_realloc(node->as.dir.children, cap * sizeof(struct Node*));
-            }
-
-            struct Node* niw = node_alloc(parent, path);
-
-            if (gflags.ignore) {
-                bool ignore = selected_printer->filter
-                    ? selected_printer->filter(niw)
-                    : node_ignore(niw);
-                if (ignore) {
-                    node_free(niw);
-                    free(niw);
-                    continue;
-                }
-            }
-
-            if (niw) {
-                size_t k = 0;
-                for (k = node->count; 0 < k; k--) {
-                    int cmp = node_compare(node->as.dir.children[k-1], niw, gflags.sort_order);
-                    if (!cmp) cmp = node_compare(node->as.dir.children[k-1], niw, Sort_NAME);
-                    if (cmp < 0) break;
-                    node->as.dir.children[k] = node->as.dir.children[k-1];
-                }
-                node->as.dir.children[k] = niw;
-                node->count++;
-            }
-        }
+        while ((ent = readdir(dir)))
+            _dir_new_child(node, parent, ent->d_name);
         closedir(dir);
     }
 
@@ -234,7 +257,23 @@ void dir_unfold(struct Node* node) {
     if (0 == (parent->count = node->count)) {
         free(node->as.dir.children);
         node->as.dir.children = NULL;
-    } else may_realloc(node->as.dir.children, node->count * sizeof(struct Node*));
+    } else {
+        may_realloc(node->as.dir.children, node->count * sizeof(struct Node*));
+
+        if (gflags.watch) {
+            uint32_t m = IN_ATTRIB | IN_CREATE | IN_DELETE | IN_MOVE;
+            // YYY: should probably
+            //if (0 == strcmp(root.path, fill.path)) m|= IN_DELETE_SELF | IN_MOVE_SELF;
+            struct WatchAssoc* wa;
+            may_malloc(wa, sizeof(struct WatchAssoc));
+            wa->wd = inotify_add_watch(NOTIFY_FILENO, node->path, m);
+            if (wa->wd < 0) die(node->path);
+            wa->node = node;
+            if (!watch_assocs) watch_assocs = wa;
+            else watch_assocs->next = wa;
+            wa->next = NULL;
+        }
+    }
 }
 
 void dir_fold(struct Node* node) {
@@ -433,13 +472,87 @@ int node_compare(struct Node* node, struct Node* mate, enum Sort order) {
 
 bool user_was_stdin = false;
 bool user_was_loopback = false;
-static int LOOPBACK_FILENO[2];
-#define LB_READ 0
-#define LB_WRITE 1
-static fd_set user_fds;
+
+static void _notify_events(void) {
+    char buf[4096] __attribute__((aligned(__alignof__(struct inotify_event))));
+
+    while (true) {
+        ssize_t len = read(NOTIFY_FILENO, buf, sizeof(buf));
+        if (len <= 0) return;
+
+        struct inotify_event* event;
+        for (char* head = buf; head < buf + len; head+= sizeof(struct inotify_event) + event->len) {
+            event = (struct inotify_event *) head;
+
+            //if (event->mask & (IN_DELETE_SELF | IN_MOVE_SELF))
+            //    exit(EXIT_FAILURE); // only root node, exit
+
+            if (!event->len) continue;
+
+            struct Node* dir = NULL;
+            struct WatchAssoc* wa = watch_assocs;
+            do {
+                if (event->wd == wa->wd) {
+                    dir = wa->node;
+                    break;
+                }
+            } while ((wa = wa->next));
+            if (!dir) continue; // XXX: should not happen but could at least report it
+
+            struct Node* parent = NULL;
+            if (dir->parent) {
+                parent = Type_DIR == dir->parent->type
+                    ? dir->parent
+                    : dir->parent->as.link.tail;
+                parent = parent->as.dir.children[dir->index];
+            }
+            bool is_a_link_tail = parent != dir;
+
+            if (event->mask & (IN_CREATE | IN_MOVED_TO)) {
+                size_t index = _dir_new_child(dir, parent, event->name);
+                dir->as.dir.children[index]->index = index;
+                while (++index < dir->count)
+                    dir->as.dir.children[index]->index++;
+                if (is_a_link_tail) parent->count++;
+                continue;
+            }
+
+            struct Node* file = NULL;
+            for (size_t k = 0; k < dir->count; k++)
+                if (0 == strcmp(event->name, dir->as.dir.children[k]->name))
+                    file = dir->as.dir.children[k];
+            if (!file) continue; // XXX: should not happend but could at least report it
+
+            if (event->mask & (IN_DELETE | IN_MOVED_FROM)) {
+                for (size_t k = file->index; k < dir->count-1; k++) {
+                    dir->as.dir.children[k] = dir->as.dir.children[k+1];
+                    dir->as.dir.children[k]->index--;
+                }
+                dir->as.dir.children[--dir->count] = NULL;
+                node_free(file);
+                free(file);
+                may_realloc(dir->as.dir.children, dir->count * sizeof(struct Node*));
+                if (is_a_link_tail) parent->count--;
+                continue;
+            }
+
+            if (event->mask & IN_ATTRIB) {
+                // if (Type_REG == file->type || Type_EXEC == file->type) {
+                    lstat(file->path, &file->stat);
+                    file->type = S_IFMT & file->stat.st_mode;
+                    if (file->stat.st_mode & S_IXUSR)
+                        file->type = Type_EXEC;
+                // }
+                continue;
+            }
+        }
+    }
+}
+
 int user_write(void* buf, size_t len) {
     return write(LOOPBACK_FILENO[LB_WRITE], buf, len);
 }
+
 int user_read(void* buf, size_t len) {
     fd_set cpy;
 try_again: // jumps here when read retured 0 (EOF, closes fd)
@@ -448,6 +561,15 @@ try_again: // jumps here when read retured 0 (EOF, closes fd)
 
     for (int i = 8; -1 < i; i--)
         if (FD_ISSET(i, &cpy)) {
+            if (gflags.watch && NOTIFY_FILENO == i) {
+                _notify_events();
+                user_was_stdin = false;
+                user_was_loopback = true;
+                char* d = (char*)buf;
+                *d = CTRL('L');
+                return 1;
+            }
+
             user_was_stdin = STDIN_FILENO == i;
             user_was_loopback = LOOPBACK_FILENO[LB_READ] == i;
             ssize_t r = read(i, buf, len);
@@ -604,6 +726,12 @@ int main(int argc, char* argv[]) {
 
     dir_unfold(&root);
 
+    if (gflags.watch) {
+        NOTIFY_FILENO = inotify_init1(IN_NONBLOCK);
+        FD_SET(NOTIFY_FILENO, &user_fds);
+        dir_reload(&root);
+    }
+
     if (rcfile) {
         int rcfd = open(rcfile, O_RDONLY);
         if (rcfd < 0) die(rcfile);
@@ -612,8 +740,16 @@ int main(int argc, char* argv[]) {
 
     if ((is_tty = isatty(STDOUT_FILENO))) term_raw_mode();
 
+    char user;
     while (true) {
-        TREEST_UPDATE();
-        TREEST_COMMAND();
+        if (command_map[CTRL('L')].f)
+            command_map[CTRL('L')].f();
+
+        do {
+            int r = user_read(&user, 1);
+            if (r < 0) die("read");
+            if (0 == r && user_was_stdin)
+                return EXIT_SUCCESS;
+        } while (!run_command(user));
     }
 }

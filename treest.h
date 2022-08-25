@@ -20,6 +20,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <signal.h>
+#include <sys/inotify.h>
 #include <sys/ioctl.h>
 #include <sys/select.h>
 #include <sys/stat.h>
@@ -90,6 +91,7 @@ extern struct GFlags {
         Sort_DIRSFIRST = 32,
     } sort_order;
     bool ignore;
+    bool watch;
 } gflags;
 extern bool toggle_gflag(char flag);
 
