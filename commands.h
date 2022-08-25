@@ -1,15 +1,7 @@
 #ifdef TREEST_COMMAND
 #error This file should not be included outside treest.c
 #endif // TREEST_COMMAND
-#define TREEST_COMMAND() {             \
-    char user;                         \
-    do {                               \
-        int r = user_read(&user, 1);   \
-        if (r < 0) die("read");        \
-        if (0 == r && user_was_stdin)  \
-            return EXIT_SUCCESS;       \
-    } while (!run_command(user));      \
-}
+#define TREEST_COMMAND
 
 #include "./treest.h"
 
@@ -61,6 +53,15 @@ static char* prompt_raw(const char* c) {
     putstr(": ");
     while (true) {
         if (user_read(&last, 1) < 0) die("read");
+        if (CTRL('L') == last) {
+            if (command_map[CTRL('L')].f)
+                command_map[CTRL('L')].f();
+            putstr(c);
+            putstr(": ");
+            buf[len] = '\0';
+            putstr(buf);
+            continue;
+        }
         if (CTRL('C') == last || CTRL('D') == last || CTRL('G') == last || CTRL('[') == last) {
             putstr("- aborted");
             putln();
@@ -107,7 +108,7 @@ static char* prompt_rl(const char* c) {
     strcpy(p, c);
     strcpy(p+len, " (rl): ");
     term_restore();
-    char* r = readline(p);
+    char* r = readline(p); // YYY: will not refresh on eg notify
     term_raw_mode();
     add_history(r);
     return r;
@@ -119,9 +120,15 @@ static char* prompt(const char* c) { return (user_was_stdin && isatty(STDIN_FILE
 
 static char prompt1(const char* c) {
     char r;
+try_again:
     putstr(c);
     putstr(": ");
     if (user_read(&r, 1) < 0) die("read");
+    if (CTRL('L') == r) {
+        if (command_map[CTRL('L')].f)
+            command_map[CTRL('L')].f();
+        goto try_again;
+    }
     if (CTRL('C') == r || CTRL('D') == r || CTRL('G') == r || CTRL('J') == r || CTRL('M') == r || CTRL('[') == r) {
         putstr("- aborted");
         putln();
@@ -285,6 +292,9 @@ static bool c_toggle(void) {
 }
 
 static bool c_refresh(void) {
+    selected_printer->begin();
+    node_print(&root, selected_printer);
+    selected_printer->end();
     return true;
 }
 
@@ -661,8 +671,7 @@ static bool c_shell(void) {
     free(com);
     term_raw_mode();
 
-    putstr("! done"); // YYY
-    if (user_read(&clen, 1) < 0) die("read"); // XXX
+    prompt1("! done"); // YYY
 
     c_reloadroot();
     return EXIT_SUCCESS == r;
@@ -719,8 +728,7 @@ static bool c_pipe(void) {
     free(com);
     term_raw_mode();
 
-    putstr("! done"); // YYY
-    if (user_read(&clen, 1) < 0) die("read"); // XXX
+    prompt1("! done"); // YYY
 
     c_reloadroot();
     return EXIT_SUCCESS == r;

@@ -35,6 +35,9 @@ bool ascii_toggle(char flag) {
 void ascii_begin(void) {
     state.depth = -1;
     state.indents = 0;
+
+    if (is_tty) putchar('\r');
+    putchar('\n');
 }
 
 void ascii_end(void) {

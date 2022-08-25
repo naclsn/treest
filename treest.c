@@ -1,12 +1,6 @@
 #include "./treest.h"
 #include "./commands.h"
 
-#define TREEST_UPDATE() {                     \
-        selected_printer->begin();            \
-        node_print(&root, selected_printer);  \
-        selected_printer->end();              \
-}
-
 char oups[_MAX_PATH+14];
 char* prog;
 char cwd[_MAX_PATH];
@@ -560,11 +554,8 @@ try_again: // jumps here when read retured 0 (EOF, closes fd)
         if (FD_ISSET(i, &cpy)) {
             if (gflags.watch && NOTIFY_FILENO == i) {
                 _notify_events();
-                // YYY: what if it gets a notify even when user is in prompt :/
-                // should return a buf="^L"/len=1 with user_was_loopback only set;
-                // printers are expected to be able to handle this
-                TREEST_UPDATE();
-                goto try_again; // in that case, maybe not
+                user_was_stdin = false;
+                user_was_loopback = true;
                 char* d = (char*)buf;
                 *d = CTRL('L');
                 return 1;
@@ -739,8 +730,16 @@ int main(int argc, char* argv[]) {
 
     if ((is_tty = isatty(STDOUT_FILENO))) term_raw_mode();
 
+    char user;
     while (true) {
-        TREEST_UPDATE();
-        TREEST_COMMAND();
+        if (command_map[CTRL('L')].f)
+            command_map[CTRL('L')].f();
+
+        do {
+            int r = user_read(&user, 1);
+            if (r < 0) die("read");
+            if (0 == r && user_was_stdin)
+                return EXIT_SUCCESS;
+        } while (!run_command(user));
     }
 }
