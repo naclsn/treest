@@ -497,15 +497,21 @@ static void _notify_events(void) {
             } while ((wa = wa->next));
             if (!dir) continue; // XXX: should not happen but could at least report it
 
+            struct Node* parent = NULL;
+            if (dir->parent) {
+                parent = Type_DIR == dir->parent->type
+                    ? dir->parent
+                    : dir->parent->as.link.tail;
+                parent = parent->as.dir.children[dir->index];
+            }
+            bool is_a_link_tail = parent != dir;
+
             if (event->mask & (IN_CREATE | IN_MOVED_TO)) {
-                // YYY: not sure if the first one shouldn't be the
-                // link itself when the second one is a link's tail
-                // TODO/TOTEST: creating children under a dir that's
-                // refered to from a link (which is in the tree)
-                size_t index = _dir_new_child(dir, dir, event->name);
+                size_t index = _dir_new_child(dir, parent, event->name);
                 dir->as.dir.children[index]->index = index;
                 while (++index < dir->count)
-                    dir->as.dir.children[index]->index = index;
+                    dir->as.dir.children[index]->index++;
+                if (is_a_link_tail) parent->count++;
                 continue;
             }
 
@@ -524,6 +530,7 @@ static void _notify_events(void) {
                 node_free(file);
                 free(file);
                 may_realloc(dir->as.dir.children, dir->count * sizeof(struct Node*));
+                if (is_a_link_tail) parent->count--;
                 continue;
             }
 

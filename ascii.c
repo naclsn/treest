@@ -21,6 +21,7 @@ static struct {
     bool classify;
     bool relative;
     bool index;
+    bool link_dir;
 } flags;
 
 bool ascii_toggle(char flag) {
@@ -28,6 +29,7 @@ bool ascii_toggle(char flag) {
         case 'F': TOGGLE(flags.classify); return true;
         case 'P': TOGGLE(flags.relative); return true;
         case 'i': TOGGLE(flags.index);    return true;
+        case 'l': TOGGLE(flags.link_dir); return true;
     }
     return toggle_gflag(flag);
 }
@@ -54,9 +56,10 @@ void ascii_node(struct Node* node) {
 
     if (flags.index) {
         char buf[16];
-        sprintf(buf, "[%2zu/%2zu] ", node->index, node->parent ? node->parent->count : 1);
+        sprintf(buf, "[%2zu] ", node->index);
         putstr(buf);
     }
+
     size_t cwd_len = 0;
     if (flags.relative) cwd_len = strlen(cwd);
 show_name: // when decorating a link, jumps back here with node moved
@@ -66,6 +69,28 @@ show_name: // when decorating a link, jumps back here with node moved
             : node->path+strlen(cwd)+1;
         putstr(rel);
     } else putstr(node->name);
+
+    if (flags.index && (Type_DIR == node->type || Type_LNK == node->type)) {
+        char buf[16];
+        sprintf(buf, " [/%zu] ", node->count);
+        putstr(buf);
+    }
+
+    if (flags.link_dir && Type_DIR == node->type && node->parent) {
+        struct Node* parent = Type_DIR == node->parent->type
+            ? node->parent
+            : node->parent->as.link.tail;
+        struct Node* mate = parent->as.dir.children[node->index];
+        if (mate != node) {
+            char buf[64];
+            sprintf(buf, " (%p/%p%c -> %p) ", (void*)parent, (void*)mate,
+                  Type_DIR == mate->type ? '/'
+                : Type_LNK == mate->type ? '@'
+                : '?'
+                , (void*)node);
+            putstr(buf);
+        }
+    }
 
     if (flags.classify) {
         switch (node->type) {
