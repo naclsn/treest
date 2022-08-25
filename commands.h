@@ -394,138 +394,136 @@ static bool c_reload(void) {
     return false;
 }
 
-static struct {
-    char* text;
-    enum {
-        Match_STARTS_WITH,
-        Match_ENDS_WITH,
-        Match_CONTAINS,
-    } match;
-} _find_query = {0};
-static bool c_findnext(void);
-
-static bool c_findstartswith(void) {
-    free(_find_query.text);
-    _find_query.text = prompt("find-startswith");
-    _find_query.match = Match_STARTS_WITH;
-    return c_findnext();
-}
-
-static bool c_findendswith(void) {
-    free(_find_query.text);
-    _find_query.text = prompt("find-endswith");
-    _find_query.match = Match_ENDS_WITH;
-    return c_findnext();
-}
-
-static bool c_findcontains(void) {
-    free(_find_query.text);
-    _find_query.text = prompt("find-contains");
-    _find_query.match = Match_CONTAINS;
-    return c_findnext();
-}
-
 static bool c_findnext(void) {
-    if (!_find_query.text) return false;
-    size_t len = strlen(_find_query.text);
+    if (!register_map['/']) return false;
+    char* text = register_map['/']+1;
+    size_t len = strlen(text);
 
     struct Node* p = cursor->parent;
     if (!p) return false;
     if (Type_LNK == p->type) p = p->as.link.tail;
 
-    switch (_find_query.match) {
-        case Match_STARTS_WITH:
+    switch (text[-1]) {
+        case '<':
             for (size_t k = cursor->index+1; k < p->count; k++)
-                if (0 == memcmp(_find_query.text, p->as.dir.children[k]->name, len)) {
+                if (0 == memcmp(text, p->as.dir.children[k]->name, len)) {
                     cursor = p->as.dir.children[k];
                     return true;
                 }
             for (size_t k = 0; k < cursor->index; k++)
-                if (0 == memcmp(_find_query.text, p->as.dir.children[k]->name, len)) {
+                if (0 == memcmp(text, p->as.dir.children[k]->name, len)) {
                     cursor = p->as.dir.children[k];
                     return true;
                 }
             return false;
 
-        case Match_ENDS_WITH:
+        case '=':
             for (size_t k = cursor->index+1; k < p->count; k++)
-                if (0 == memcmp(_find_query.text, p->as.dir.children[k]->name+strlen(p->as.dir.children[k]->name)-len, len)) {
-                    cursor = p->as.dir.children[k];
-                    return true;
-                }
-            for (size_t k = 0; k < cursor->index; k++)
-                if (0 == memcmp(_find_query.text, p->as.dir.children[k]->name+strlen(p->as.dir.children[k]->name)-len, len)) {
-                    cursor = p->as.dir.children[k];
-                    return true;
-                }
-            return false;
-
-        case Match_CONTAINS:
-            for (size_t k = cursor->index+1; k < p->count; k++)
-                if (NULL != strstr(p->as.dir.children[k]->name, _find_query.text)) {
+                if (NULL != strstr(p->as.dir.children[k]->name, text)) {
                     cursor = p->as.dir.children[k];
                     return true;
                 }
             for (size_t k = 0; k < cursor->index; k++) {
-                if (NULL != strstr(p->as.dir.children[k]->name, _find_query.text)) {
+                if (NULL != strstr(p->as.dir.children[k]->name, text)) {
                     cursor = p->as.dir.children[k];
                     return true;
                 }
             }
+            return false;
+
+        case '>':
+            for (size_t k = cursor->index+1; k < p->count; k++)
+                if (0 == memcmp(text, p->as.dir.children[k]->name+strlen(p->as.dir.children[k]->name)-len, len)) {
+                    cursor = p->as.dir.children[k];
+                    return true;
+                }
+            for (size_t k = 0; k < cursor->index; k++)
+                if (0 == memcmp(text, p->as.dir.children[k]->name+strlen(p->as.dir.children[k]->name)-len, len)) {
+                    cursor = p->as.dir.children[k];
+                    return true;
+                }
             return false;
     }
     return false;
 }
 
 static bool c_findprevious(void) {
-    if (!_find_query.text) return false;
-    size_t len = strlen(_find_query.text);
+    if (!register_map['/']) return false;
+    char* text = register_map['/']+1;
+    size_t len = strlen(text);
 
     struct Node* p = cursor->parent;
     if (!p) return false;
     if (Type_LNK == p->type) p = p->as.link.tail;
 
-    switch (_find_query.match) {
-        case Match_STARTS_WITH:
+    switch (text[-1]) {
+        case '<':
             for (size_t k = cursor->index-1; 0 < k+1; k--)
-                if (0 == memcmp(_find_query.text, p->as.dir.children[k]->name, len)) {
+                if (0 == memcmp(text, p->as.dir.children[k]->name, len)) {
                     cursor = p->as.dir.children[k];
                     return true;
                 }
             for (size_t k = p->count-1; cursor->index < k; k--)
-                if (0 == memcmp(_find_query.text, p->as.dir.children[k]->name, len)) {
+                if (0 == memcmp(text, p->as.dir.children[k]->name, len)) {
                     cursor = p->as.dir.children[k];
                     return true;
                 }
             return false;
 
-        case Match_ENDS_WITH:
+        case '=':
             for (size_t k = cursor->index-1; 0 < k+1; k--)
-                if (0 == memcmp(_find_query.text, p->as.dir.children[k]->name+strlen(p->as.dir.children[k]->name)-len, len)) {
+                if (NULL != strstr(p->as.dir.children[k]->name, text)) {
                     cursor = p->as.dir.children[k];
                     return true;
                 }
             for (size_t k = p->count-1; cursor->index < k; k--)
-                if (0 == memcmp(_find_query.text, p->as.dir.children[k]->name+strlen(p->as.dir.children[k]->name)-len, len)) {
+                if (NULL != strstr(p->as.dir.children[k]->name, text)) {
                     cursor = p->as.dir.children[k];
                     return true;
                 }
             return false;
 
-        case Match_CONTAINS:
+        case '>':
             for (size_t k = cursor->index-1; 0 < k+1; k--)
-                if (NULL != strstr(p->as.dir.children[k]->name, _find_query.text)) {
+                if (0 == memcmp(text, p->as.dir.children[k]->name+strlen(p->as.dir.children[k]->name)-len, len)) {
                     cursor = p->as.dir.children[k];
                     return true;
                 }
             for (size_t k = p->count-1; cursor->index < k; k--)
-                if (NULL != strstr(p->as.dir.children[k]->name, _find_query.text)) {
+                if (0 == memcmp(text, p->as.dir.children[k]->name+strlen(p->as.dir.children[k]->name)-len, len)) {
                     cursor = p->as.dir.children[k];
                     return true;
                 }
             return false;
     }
     return false;
+}
+
+static bool c_findstartswith(void) {
+    char* text = prompt("find-startswith");
+    may_realloc(register_map['/'], strlen(text)+2);
+    strcpy(register_map['/']+1, text);
+    free(text);
+    *register_map['/'] = '<';
+    return c_findnext();
+}
+
+static bool c_findcontains(void) {
+    char* text = prompt("find-contains");
+    may_realloc(register_map['/'], strlen(text)+2);
+    strcpy(register_map['/']+1, text);
+    free(text);
+    *register_map['/'] = '=';
+    return c_findnext();
+}
+
+static bool c_findendswith(void) {
+    char* text = prompt("find-endswith");
+    may_realloc(register_map['/'], strlen(text)+2);
+    strcpy(register_map['/']+1, text);
+    free(text);
+    *register_map['/'] = '>';
+    return c_findnext();
 }
 
 static void _recurse_foldrec(struct Node* curr) {
@@ -865,6 +863,6 @@ char* register_map[128] = {0};
 
 static void _free_before_normal_exit() {
     if (selected_printer->del) selected_printer->del();
+    for (int k = 0; k < 128; k++) free(register_map[k]);
     node_free(&root);
-    free(_find_query.text);
 }
