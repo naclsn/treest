@@ -506,10 +506,10 @@ static void _notify_events(void) {
                     : dir->parent->as.link.tail;
                 parent = parent->as.dir.children[dir->index];
             }
-            bool is_a_link_tail = parent != dir;
+            bool is_a_link_tail = parent && parent != dir;
 
             if (event->mask & (IN_CREATE | IN_MOVED_TO)) {
-                size_t index = _dir_new_child(dir, parent, event->name);
+                size_t index = _dir_new_child(dir, parent ? parent : dir, event->name);
                 dir->as.dir.children[index]->index = index;
                 while (++index < dir->count)
                     dir->as.dir.children[index]->index++;
@@ -696,13 +696,13 @@ int main(int argc, char* argv[]) {
     free(printer_argv);
     printer_argv = NULL;
 
-    dir_unfold(&root);
-
     if (gflags.watch) {
         NOTIFY_FILENO = inotify_init1(IN_NONBLOCK);
+        if (NOTIFY_FILENO < 0) die("notify");
         FD_SET(NOTIFY_FILENO, &user_fds);
-        dir_reload(&root);
     }
+
+    dir_unfold(&root);
 
     if (rcfile) {
         int rcfd = open(rcfile, O_RDONLY);
