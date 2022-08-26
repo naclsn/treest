@@ -175,4 +175,7 @@ extern bool user_was_loopback;
 extern int user_write(void* buf, size_t len);
 extern int user_read(void* buf, size_t len);
 
+extern void watch_start(void);
+extern void watch_stop(void);
+
 #endif // TREEST_SAD

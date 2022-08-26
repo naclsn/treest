@@ -74,7 +74,7 @@ void dir_free(struct Node* node) {
     }
     node->count = 0;
 
-    if (gflags.watch && node->as.dir.unfolded) {
+    if (gflags.watch && watch_assocs) {
         struct WatchAssoc* wa;
         struct WatchAssoc* pwa = watch_assocs;
         do {
@@ -85,7 +85,7 @@ void dir_free(struct Node* node) {
             inotify_rm_watch(NOTIFY_FILENO, wa->wd);
             pwa->next = wa->next;
             free(wa);
-        } //else ; // XXX: should not happen but could at least report it
+        }
     }
 
     free(node->as.dir.children);
@@ -584,6 +584,25 @@ try_again: // jumps here when read retured 0 (EOF, closes fd)
     return -1; // unreachable
 }
 
+void watch_start(void) {
+    NOTIFY_FILENO = inotify_init1(IN_NONBLOCK);
+    if (NOTIFY_FILENO < 0) die("notify");
+    FD_SET(NOTIFY_FILENO, &user_fds);
+}
+void watch_stop(void) {
+    if (watch_assocs) {
+        struct WatchAssoc* wa;
+        struct WatchAssoc* pwa = watch_assocs;
+        do {
+            wa = pwa->next;
+            //inotify_rm_watch(NOTIFY_FILENO, pwa->wd);
+            free(pwa);
+        } while ((pwa = wa));
+        close(NOTIFY_FILENO);
+        watch_assocs = NULL;
+    }
+}
+
 static char** printer_argv = NULL;
 static int printer_argc = 0;
 static char* rcfile = NULL;
@@ -689,18 +708,14 @@ int main(int argc, char* argv[]) {
             }
             continue;
         }
-        if (!selected_printer->toggle) continue;
         char* flag = printer_argv[k];
-        while (*++flag) selected_printer->toggle(*flag);
+        while (*++flag)
+            selected_printer->toggle
+                ? selected_printer->toggle(*flag)
+                : toggle_gflag(*flag);
     }
     free(printer_argv);
     printer_argv = NULL;
-
-    if (gflags.watch) {
-        NOTIFY_FILENO = inotify_init1(IN_NONBLOCK);
-        if (NOTIFY_FILENO < 0) die("notify");
-        FD_SET(NOTIFY_FILENO, &user_fds);
-    }
 
     dir_unfold(&root);
 
