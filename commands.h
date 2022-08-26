@@ -29,7 +29,11 @@ bool toggle_gflag(char flag) {
         case 'r': TOGGLE_BIT(gflags.sort_order, Sort_REVERSE);   return true;
         case 't': TOGGLE_SRT(gflags.sort_order, Sort_MTIME);     return true;
         case 'u': TOGGLE_SRT(gflags.sort_order, Sort_ATIME);     return true;
-        case 'w': TOGGLE(gflags.watch);                          return true;
+        case 'w':
+            TOGGLE(gflags.watch);
+            if (gflags.watch) watch_start();
+            else watch_stop();
+            return true;
     }
     return false;
 }
@@ -897,6 +901,7 @@ char* register_map[128] = {0};
 static void _free_before_normal_exit(void) {
     if (selected_printer->del) selected_printer->del();
     for (int k = 0; k < 128; k++) free(register_map[k]);
+    if (gflags.watch) watch_stop();
     node_free(&root);
     free(ignore_list);
 }
