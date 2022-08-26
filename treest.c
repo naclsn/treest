@@ -679,8 +679,27 @@ int main(int argc, char* argv[]) {
     FD_SET(STDIN_FILENO, &user_fds);
     FD_SET(LOOPBACK_FILENO[LB_READ], &user_fds);
 
+    char *treest_env_arg = getenv("TREEST");
+    if (treest_env_arg) {
+        may_strdup(treest_env_arg, treest_env_arg);
+        char *tail = treest_env_arg;
+        char *head = treest_env_arg;
+        while (' ' == *tail) tail++;
+        while ((head = strchr(tail, ' '))) {
+            *head = '\0';
+            printer_argc++;
+            may_realloc(printer_argv, printer_argc * sizeof(char *));
+            printer_argv[printer_argc-1] = tail;
+            tail = head + 1;
+        }
+        printer_argc++;
+        may_realloc(printer_argv, printer_argc * sizeof(char *));
+        printer_argv[printer_argc-1] = tail;
+    }
+
     if (selected_printer->init) selected_printer->init();
     for (int k = 0; k < printer_argc; k++) {
+        if ('\0' == printer_argv[k][0]) continue;
         if ('-' == printer_argv[k][1]) {
             if (!selected_printer->command || !selected_printer->command(printer_argv[k]+2)) {
                 printf("Unknown command for '%s': '%s'\n", selected_printer->name, printer_argv[k]+2);
@@ -691,10 +710,12 @@ int main(int argc, char* argv[]) {
         }
         if (!selected_printer->toggle) continue;
         char* flag = printer_argv[k];
+        if ('-' != *flag) flag--;
         while (*++flag) selected_printer->toggle(*flag);
     }
+
     free(printer_argv);
-    printer_argv = NULL;
+    if (treest_env_arg) free(treest_env_arg);
 
     if (gflags.watch) {
         NOTIFY_FILENO = inotify_init1(IN_NONBLOCK);
