@@ -48,10 +48,18 @@ extern char oups[_MAX_PATH+14];
 }
 
 #define may_malloc(__r, __s) {  \
+    if (0 == __s) {             \
+        errno = EINVAL;         \
+        die("malloc");          \
+    }                           \
     __r = malloc(__s);          \
     if (!__r) die("malloc");    \
 }
 #define may_realloc(__rp, __s) {  \
+    if (0 == __s) {               \
+        errno = EINVAL;           \
+        die("realloc");           \
+    }                             \
     __rp = realloc(__rp, __s);    \
     if (!__rp) die("realloc");    \
 }
