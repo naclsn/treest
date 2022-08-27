@@ -680,14 +680,13 @@ int main(int argc, char* argv[]) {
     char* arg_path = opts(argc, argv);
     if (!arg_path) arg_path = cwd;
     char* path;
-    struct stat sb;
     if (!(path = realpath(arg_path, NULL))) die(arg_path);
-    if (lstat(path, &sb) < 0) die(path);
-    if (!S_ISDIR(sb.st_mode)) {
+
+    if (lstat(path, &root.stat) < 0) die(path);
+    if (!S_ISDIR(root.stat.st_mode)) {
         errno = ENOTDIR;
         die(path);
     }
-
     root.path = path;
     root.name = strrchr(path, '/')+1;
     root.type = Type_DIR;

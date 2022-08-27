@@ -96,6 +96,8 @@ static struct {
     bool join;
     bool noexterm;
     bool quit_alt;
+    bool size;
+    bool human_readable;
 } flags;
 
 static void putstr(const char* c, bool visible) {
@@ -222,11 +224,13 @@ void fancy_del(void) {
 
 bool fancy_toggle(char flag) {
     switch (flag) {
-        case 'C': TOGGLE(flags.colors);   return true;
-        case 'F': TOGGLE(flags.classify); return true;
-        case 'T': TOGGLE(flags.noexterm); return true;
-        case 'j': TOGGLE(flags.join);     return true;
-        case 'q': TOGGLE(flags.quit_alt); return true;
+        case 'C': TOGGLE(flags.colors);         return true;
+        case 'F': TOGGLE(flags.classify);       return true;
+        case 'T': TOGGLE(flags.noexterm);       return true;
+        case 'h': TOGGLE(flags.human_readable); return true;
+        case 'j': TOGGLE(flags.join);           return true;
+        case 'q': TOGGLE(flags.quit_alt);       return true;
+        case 's': TOGGLE(flags.size);           return true;
     }
     return toggle_gflag(flag);
 }
@@ -288,6 +292,31 @@ void fancy_node(struct Node* node) {
         for (int k = state.depth-1; -1 < k; k--)
             putstr(state.indents & (1<<k) ? INDENT_LAST : INDENT, true);
         putstr(((node->parent ? node->parent->count : 1)-1 == node->index) ? BRANCH_LAST : BRANCH, true);
+    }
+
+    if (flags.size) {
+        char buf[16];
+        if (flags.human_readable) {
+            short shifts = 0;
+            size_t curr = node->stat.st_size;
+            short flt = (curr >> 6) & 15;
+            size_t next;
+            while ((next = curr >> 10)) {
+                shifts++;
+                flt = (curr >> 6) & 15;
+                curr = next;
+            }
+            if (0 != shifts && 15 == flt) {
+                curr++;
+                flt = 0;
+            }
+            if (0 == shifts) sprintf(buf, "[%5u]  ", (unsigned)curr);
+            else if (9 < curr) sprintf(buf, "[%4u%c]  ", (unsigned)curr, " KMGTPE?!"[shifts]);
+            else sprintf(buf, "[%2u.%u%c]  ", (unsigned)curr, flt*10/15, " KMGTPE?!"[shifts]);
+        } else {
+            sprintf(buf, "[%11zu]  ", node->stat.st_size);
+        }
+        putstr(buf, true);
     }
 
     if (flags.colors)

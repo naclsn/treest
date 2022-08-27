@@ -22,14 +22,18 @@ static struct {
     bool relative;
     bool index;
     bool link_dir;
+    bool size;
+    bool human_readable;
 } flags;
 
 bool ascii_toggle(char flag) {
     switch (flag) {
-        case 'F': TOGGLE(flags.classify); return true;
-        case 'P': TOGGLE(flags.relative); return true;
-        case 'i': TOGGLE(flags.index);    return true;
-        case 'l': TOGGLE(flags.link_dir); return true;
+        case 'F': TOGGLE(flags.classify);       return true;
+        case 'P': TOGGLE(flags.relative);       return true;
+        case 'h': TOGGLE(flags.human_readable); return true;
+        case 'i': TOGGLE(flags.index);          return true;
+        case 'l': TOGGLE(flags.link_dir);       return true;
+        case 's': TOGGLE(flags.size);           return true;
     }
     return toggle_gflag(flag);
 }
@@ -50,6 +54,31 @@ void ascii_node(struct Node* node) {
         for (int k = state.depth-1; -1 < k; k--)
             putstr(state.indents & (1<<k) ? INDENT_LAST : INDENT);
         putstr(((node->parent ? node->parent->count : 1)-1 == node->index) ? BRANCH_LAST : BRANCH);
+    }
+
+    if (flags.size) {
+        char buf[16];
+        if (flags.human_readable) {
+            short shifts = 0;
+            size_t curr = node->stat.st_size;
+            short flt = (curr >> 6) & 15;
+            size_t next;
+            while ((next = curr >> 10)) {
+                shifts++;
+                flt = (curr >> 6) & 15;
+                curr = next;
+            }
+            if (0 != shifts && 15 == flt) {
+                curr++;
+                flt = 0;
+            }
+            if (0 == shifts) sprintf(buf, "[%5u]  ", (unsigned)curr);
+            else if (9 < curr) sprintf(buf, "[%4u%c]  ", (unsigned)curr, " KMGTPE?!"[shifts]);
+            else sprintf(buf, "[%2u.%u%c]  ", (unsigned)curr, flt*10/15, " KMGTPE?!"[shifts]);
+        } else {
+            sprintf(buf, "[%11zu]  ", node->stat.st_size);
+        }
+        putstr(buf);
     }
 
     if (node == cursor) putstr("> ");

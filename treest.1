@@ -238,11 +238,17 @@ T}
 -P@T{
 show the node's relative path instead of only the name
 T}
+-h@T{
+with -s, show sizes in a more human readable way
+T}
 -i@T{
 show child count for directories and node index for child
 T}
 -l@T{
 when the directory is from a link, show addresses
+T}
+-s@T{
+show the size of files
 T}
 .TE
 
@@ -263,11 +269,17 @@ T}
 do not send terminal escape sequences (hiding cursor and
 alternative screen buffer)
 T}
+-h@T{
+with -s, show sizes in a more human readable way
+T}
 -j@T{
 when a directory has a single child, show on the same line
 T}
 -q@T{
 toggle quitting without leaving alternative buffer screen
+T}
+-s@T{
+show the size of files
 T}
 
 ^E@T{
@@ -302,10 +314,7 @@ command is executed from the cwd of treest, which is
 not changed from its own invocation.
 
 .SH "SEE ALSO"
-.BR dircolors(1),
-.BR ls(1),
-.BR tree(1),
-.BR gitignore(1)
+.BR tree (1)
 
 .SH AUTHOR
 Grenier Celestin
