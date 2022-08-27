@@ -230,8 +230,28 @@ static size_t _dir_new_child(struct Node* node, struct Node* true_parent, char* 
         node->as.dir.children[k] = node->as.dir.children[k-1];
     }
     node->as.dir.children[k] = niw;
+
     node->count++;
+    if (node != true_parent) true_parent->count++;
     return k;
+}
+
+void _dir_remove_child(struct Node* node, struct Node* true_parent, struct Node* child) {
+    node->count--;
+    if (node != true_parent) true_parent->count--;
+
+    for (size_t k = child->index; k < node->count; k++) {
+        node->as.dir.children[k] = node->as.dir.children[k+1];
+        node->as.dir.children[k]->index--;
+    }
+    node->as.dir.children[node->count] = NULL;
+
+    node_free(child);
+    free(child);
+    if (0 == node->count) {
+        free(node->as.dir.children);
+        node->as.dir.children = NULL;
+    } else may_realloc(node->as.dir.children, node->count * sizeof(struct Node*));
 }
 
 void dir_unfold(struct Node* node) {
@@ -260,22 +280,20 @@ void dir_unfold(struct Node* node) {
     if (0 == (parent->count = node->count)) {
         free(node->as.dir.children);
         node->as.dir.children = NULL;
-    } else {
-        may_realloc(node->as.dir.children, node->count * sizeof(struct Node*));
+    } else may_realloc(node->as.dir.children, node->count * sizeof(struct Node*));
 
-        if (gflags.watch) {
-            uint32_t m = IN_ATTRIB | IN_CREATE | IN_DELETE | IN_MOVE;
-            // YYY: should probably
-            //if (0 == strcmp(root.path, fill.path)) m|= IN_DELETE_SELF | IN_MOVE_SELF;
-            struct WatchAssoc* wa;
-            may_malloc(wa, sizeof(struct WatchAssoc));
-            wa->wd = inotify_add_watch(NOTIFY_FILENO, node->path, m);
-            if (wa->wd < 0) die(node->path);
-            wa->node = node;
-            if (!watch_assocs) watch_assocs = wa;
-            else watch_assocs->next = wa;
-            wa->next = NULL;
-        }
+    if (gflags.watch) {
+        uint32_t m = IN_ATTRIB | IN_CREATE | IN_DELETE | IN_MOVE;
+        // YYY: should probably
+        //if (0 == strcmp(root.path, fill.path)) m|= IN_DELETE_SELF | IN_MOVE_SELF;
+        struct WatchAssoc* wa;
+        may_malloc(wa, sizeof(struct WatchAssoc));
+        wa->wd = inotify_add_watch(NOTIFY_FILENO, node->path, m);
+        if (wa->wd < 0) die(node->path);
+        wa->node = node;
+        if (!watch_assocs) watch_assocs = wa;
+        else watch_assocs->next = wa;
+        wa->next = NULL;
     }
 }
 
@@ -283,7 +301,8 @@ void dir_fold(struct Node* node) {
     if (Type_LNK == node->type) node = node->as.link.tail;
     if (!node || Type_DIR != node->type) return;
 
-    node->as.dir.unfolded = false;
+    if (!node->as.dir.children) dir_free(node);
+    else node->as.dir.unfolded = false;
 }
 
 static void _recurse_dir_reload(struct Node* old, struct Node* niw) {
@@ -360,13 +379,15 @@ void dir_reload(struct Node* node) {
         niw = &root;
     } else {
         if (!niw) {
-            node->parent->count--;
-            for (size_t k = node->index; k < node->parent->count; k++) {
-                node->parent->as.dir.children[k] = node->parent->as.dir.children[k+1];
-                node->parent->as.dir.children[k]->index--;
-            }
-            node_free(node);
-            free(node);
+            struct Node* parent = NULL;
+            if (node->parent) {
+                parent = Type_DIR == node->parent->type
+                    ? node->parent
+                    : node->parent->as.link.tail;
+                parent = parent->as.dir.children[node->index];
+            } else parent = node;
+
+            _dir_remove_child(node->parent, parent, node);
             free(niw_path);
             return;
         } else node->parent->as.dir.children[niw->index = node->index] = niw;
@@ -510,15 +531,15 @@ static void _notify_events(void) {
                     ? dir->parent
                     : dir->parent->as.link.tail;
                 parent = parent->as.dir.children[dir->index];
-            }
-            bool is_a_link_tail = parent && parent != dir;
+            } else parent = dir;
 
             if (event->mask & (IN_CREATE | IN_MOVED_TO)) {
-                size_t index = _dir_new_child(dir, parent ? parent : dir, event->name);
+                size_t index = _dir_new_child(dir, parent, event->name);
+                // YYY: (3 lines) index fixup could be in _dir_new_child
+                // at cost of a loss in efficiency in dir_unfold (2n -> nlogn)
                 dir->as.dir.children[index]->index = index;
                 while (++index < dir->count)
                     dir->as.dir.children[index]->index++;
-                if (is_a_link_tail) parent->count++;
                 continue;
             }
 
@@ -529,15 +550,7 @@ static void _notify_events(void) {
             if (!file) continue; // XXX: should not happend but could at least report it
 
             if (event->mask & (IN_DELETE | IN_MOVED_FROM)) {
-                for (size_t k = file->index; k < dir->count-1; k++) {
-                    dir->as.dir.children[k] = dir->as.dir.children[k+1];
-                    dir->as.dir.children[k]->index--;
-                }
-                dir->as.dir.children[--dir->count] = NULL;
-                node_free(file);
-                free(file);
-                may_realloc(dir->as.dir.children, dir->count * sizeof(struct Node*));
-                if (is_a_link_tail) parent->count--;
+                _dir_remove_child(dir, parent, file);
                 continue;
             }
 
