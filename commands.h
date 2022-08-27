@@ -124,6 +124,12 @@ static char* prompt_impl(const char* c) { return (user_was_stdin && isatty(STDIN
 
 static char* prompt(const char* c) {
     char* r = prompt_impl(c);
+    if (!r) {
+        // YYY: appears on the next line...
+        putstr("- aborted");
+        putln();
+        return NULL;
+    }
     size_t add = strlen(r);
     size_t len = strlen(register_map['.']);
     may_realloc(register_map['.'], (len+add+2) * sizeof(char));
@@ -239,7 +245,7 @@ static struct Node* locate(const char* path) {
 }
 
 static char* quote(char* text) {
-    size_t cap = 64;
+    size_t cap = strlen(text)+1;
     size_t len = 0;
     char* ab; may_malloc(ab, cap * sizeof(char));
 
@@ -248,10 +254,8 @@ static char* quote(char* text) {
     char* cast = text;
     while ((cast = strchr(text, '\''))) {
         size_t add = cast-text;
-        if (cap < len+add+4) {
-            cap*= 2;
-            may_realloc(ab, cap * sizeof(char));
-        }
+        cap+= 4;
+        may_realloc(ab, cap * sizeof(char));
         memcpy(ab+len, text, add);
         len+= add;
         memcpy(ab+len, "'\\''", 4);
@@ -259,7 +263,7 @@ static char* quote(char* text) {
         text = cast+1;
     }
     size_t left = strlen(text);
-    if (cap < len+left+2) may_realloc(ab, (len+left+2) * sizeof(char));
+    may_realloc(ab, (len+left+2) * sizeof(char));
     memcpy(ab+len, text, left);
     len+= left;
 
@@ -532,6 +536,7 @@ static bool c_findprevious(void) {
 
 static bool c_findstartswith(void) {
     char* text = prompt("find-startswith");
+    if (!text) return false;
     may_realloc(register_map['/'], strlen(text)+2);
     strcpy(register_map['/']+1, text);
     free(text);
@@ -541,6 +546,7 @@ static bool c_findstartswith(void) {
 
 static bool c_findcontains(void) {
     char* text = prompt("find-contains");
+    if (!text) return false;
     may_realloc(register_map['/'], strlen(text)+2);
     strcpy(register_map['/']+1, text);
     free(text);
@@ -550,6 +556,7 @@ static bool c_findcontains(void) {
 
 static bool c_findendswith(void) {
     char* text = prompt("find-endswith");
+    if (!text) return false;
     may_realloc(register_map['/'], strlen(text)+2);
     strcpy(register_map['/']+1, text);
     free(text);
@@ -661,7 +668,7 @@ static bool c_shell(void) {
 
     char* c = prompt("shell-command");
     if (!c) return false;
-    size_t clen = strlen(c);
+    size_t clen = strlen(c)+1;
 
     char* quoted = quote(cursor->path);
     size_t nlen = strlen(quoted);
@@ -710,7 +717,7 @@ static bool c_pipe(void) {
 
     char* c = prompt("pipe-command");
     if (!c) return false;
-    size_t clen = strlen(c);
+    size_t clen = strlen(c)+1;
 
     char* quoted = quote(cursor->path);
     size_t nlen = strlen(quoted);
