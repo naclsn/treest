@@ -428,8 +428,8 @@ static void read_ls_colors(void) {
         tail = head+1;
     }
 
-    may_realloc(state.ls_colors.ext, state.ls_colors.ext_count * sizeof(struct LS_COLORS_KVEntry));
-    may_realloc(state.ls_colors.exa, state.ls_colors.exa_count * sizeof(struct LS_COLORS_KVEntry));
+    if (0 != state.ls_colors.ext_count) may_realloc(state.ls_colors.ext, state.ls_colors.ext_count * sizeof(struct LS_COLORS_KVEntry));
+    if (0 != state.ls_colors.exa_count) may_realloc(state.ls_colors.exa, state.ls_colors.exa_count * sizeof(struct LS_COLORS_KVEntry));
 }
 
 static struct LS_COLORS_KVEntry* _binary_search(const char* needle, struct LS_COLORS_KVEntry** hay, size_t a, size_t b) {
