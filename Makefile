@@ -18,9 +18,9 @@ else
 FEAT += -s
 endif
 
-CFLAGS ?= -std=c99 -Wall -Wextra -Werror -pedantic -O2
+CFLAGS ?= -std=c99 -Wall -Wextra -pedantic -O2 # -Werror
 
-VERSION = 0.1.9
+VERSION = 0.1.10
 PROG = treest
 SRCS = $(wildcard *.[ch])
 

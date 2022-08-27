@@ -868,7 +868,7 @@ struct Command command_map[128] = {
     [CTRL('P')]={c_visibleprevious,      "go to the previous visible node"},
     [CTRL('R')]={c_reload,               "reload the directory at the cursor"},
     [CTRL('Z')]={c_suspend,              "suspend"},
-    ['!']      ={c_shell,                "execute a shell command"},
+    ['!']      ={c_shell,                "execute a shell command, use {} for the full path at the cursor"},
     ['"']      ={c_register,             "fill or empty a register, use `?\"` to see used registers content"},
     ['#']      ={c_ignore,               "(comment) ignore input until the end of line"},
     ['$']      ={c_findendswith,         "find the next node which name ends with"},
@@ -901,7 +901,7 @@ struct Command command_map[128] = {
     ['o']      ={c_promptgounfold,       "go to and unfold at the given path"},
     ['q']      ={c_quit,                 "quit"},
     ['{']      ={c_while,                "run commands while"},
-    ['|']      ={c_pipe,                 "pipe content into a shell command"},
+    ['|']      ={c_pipe,                 "pipe content into a shell command, use {} for the full path at the cursor"},
     ['}']      ={c_whilenot,             "run commands whilenot"},
     ['~']      ={c_reloadroot,           "reload at the root (read the whole tree from file system)"},
 };

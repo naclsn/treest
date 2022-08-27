@@ -21,7 +21,7 @@ raw mode.
 Show the quick help.
 .TP
 \fB\-\-version
-Print the version successfully.
+Print the version and build features successfully.
 .TP
 \fB\-\-printer=\fINAME\fR
 Change for the specified printer.
@@ -45,37 +45,37 @@ same meaning.
 .TS
 tab (@);
 l lx.
-A@T{
---almost-all
+-A@T{
+do not ignore entries starting with . (except . and ..)
 T}
-B@T{
---ignore-backups
+-B@T{
+do not list entries ending with ~
 T}
-I@T{
+-I@T{
 toggle the filtering by ignored patterns
 T}
-S@T{
+-S@T{
 sort by size
 T}
-X@T{
+-X@T{
 sort by extension
 T}
-c@T{
+-c@T{
 sort by ctime
 T}
-d@T{
+-d@T{
 sort directories first
 T}
-r@T{
+-r@T{
 reverse sorting order
 T}
-t@T{
+-t@T{
 sort by mtime
 T}
-u@T{
+-u@T{
 sort by atime
 T}
-w@T{
+-w@T{
 toggle watch mode: watches are set on every unfolded
 directories (see the \fBinotify(7)\fR)
 T}
@@ -112,7 +112,7 @@ T}
 suspend
 T}
 !@T{
-execute a shell command
+execute a shell command, use {} for the full path at the cursor
 T}
 "@T{
 fill or empty a register, use `?"` to see used registers content
@@ -211,7 +211,7 @@ T}
 run commands while
 T}
 |@T{
-pipe content into a shell command
+pipe content into a shell command, use {} for the full path at the cursor
 T}
 }@T{
 run commands whilenot
@@ -228,27 +228,84 @@ flags are silently ignored.  The default printer is
 "\fBascii\fR".
 
 .TP
-\fBascii\fR
-F - classify
-P - relative
-i - index
-l - link_dir
+\fBascii\fR - simple default and debug printer
+.TS
+tab (@);
+l lx.
+-F@T{
+classify (append as decorator one of */=@|)
+T}
+-P@T{
+show the node's relative path instead of only the name
+T}
+-i@T{
+show child count for directories and node index for child
+T}
+-l@T{
+when the directory is from a link, show addresses
+T}
+.TE
 
 .TP
-\fBfancy\fR
-blablabla
-C - colors
-F - classify
-T - noexterm
-j - join
-q - quit_alt
-blablabla
-E - z1down
-Y - z1up
-D - zdown
-U - zup
-F - zforward
-B - zbackward
+\fBfancy\fR - standard terminal printer
+If it was built with \fBgit2\fR(3), it will also use the
+appropriate ignore rules for given root directory.
+.TS
+tab (@);
+l lx.
+-C@T{
+colorize the output
+T}
+-F@T{
+classify (append as decorator one of */=@|)
+T}
+-T@T{
+do not send terminal escape sequences (hiding cursor and
+alternative screen buffer)
+T}
+-j@T{
+when a directory has a single child, show on the same line
+T}
+-q@T{
+toggle quitting without leaving alternative buffer screen
+T}
+
+^E@T{
+forward one line
+T}
+^Y@T{
+backward one line
+T}
+^D@T{
+forward one half-window
+T}
+^U@T{
+backward one half-window
+T}
+^F@T{
+forward one window
+T}
+^B@T{
+backward one window
+T}
+.TE
+
+.SH BUGS
+The "fancy" printer does not scroll to keep the cursor
+on-screen.  It also does not update its internal window
+size without an explicit redraw.
+
+.SH NOTES
+The shell (!) and pipe (|) commands use the
+\fBsystem\fR(3) if a shell is indeed available.  The
+command is executed from the cwd of treest, which is
+not changed from its own invocation.
+
+.SH "SEE ALSO"
+.BR dircolors(1),
+.BR ls(1),
+.BR tree(1),
+.BR gitignore(1)
 
 .SH AUTHOR
 Grenier Celestin
