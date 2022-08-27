@@ -41,7 +41,6 @@ struct Node* node_alloc(struct Node* parent, char* path) {
             break;
 
         case Type_LNK:
-            // TODO: handle looping symlinks as broken
             lnk_resolve(niw);
             break;
 
@@ -176,8 +175,12 @@ void lnk_resolve(struct Node* node) {
 
     char* path; may_strdup(path, fullpath);
 
-    struct Node* niw = node_alloc(node->parent, path);
     node->as.link.readpath = savedpath;
+
+    struct Node* niw = NULL;
+    if (!(stat(node->path, &(struct stat){0}) < 0 && ELOOP == errno))
+        niw = node_alloc(node->parent, path);
+
     node->as.link.to = niw;
     node->as.link.tail = niw && Type_LNK == niw->type
         ? niw->as.link.tail
@@ -443,8 +446,10 @@ int node_compare(struct Node* node, struct Node* mate, enum Sort order) {
         return -node_compare(node, mate, order & ~Sort_REVERSE);
 
     if (Sort_DIRSFIRST & order) {
-        if (Type_DIR == node->type) return -1;
-        if (Type_DIR == mate->type) return +1;
+        bool node_dir = Type_DIR == (Type_LNK == node->type && node->as.link.tail ? node->as.link.tail : node)->type;
+        bool mate_dir = Type_DIR == (Type_LNK == mate->type && mate->as.link.tail ? mate->as.link.tail : mate)->type;
+        if (node_dir && !mate_dir) return -1;
+        if (mate_dir && !node_dir) return +1;
         return node_compare(node, mate, order & ~Sort_DIRSFIRST);
     }
 

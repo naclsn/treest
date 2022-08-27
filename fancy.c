@@ -95,6 +95,7 @@ static struct {
     bool colors;
     bool join;
     bool noexterm;
+    bool quit_alt;
 } flags;
 
 static void putstr(const char* c, bool visible) {
@@ -155,7 +156,7 @@ static bool _c_refresh(void) {
     return state.overriden[6].f();
 }
 static bool _c_suspend(void) {
-    if (!flags.noexterm) { putstr(_DALT, false); flush(); }
+    if (!flags.noexterm && !flags.quit_alt) { putstr(_DALT, false); flush(); }
     bool r = state.overriden[7].f();
     if (!flags.noexterm) { putstr(_EALT, false); flush(); }
     return r;
@@ -207,7 +208,7 @@ void fancy_del(void) {
     git_libgit2_shutdown();
     #endif
 
-    if (!flags.noexterm) { putstr(_DALT, false); flush(); }
+    if (!flags.noexterm && !flags.quit_alt) { putstr(_DALT, false); flush(); }
 
     command_map[CTRL('E')] = state.overriden[0];
     command_map[CTRL('Y')] = state.overriden[1];
@@ -225,6 +226,7 @@ bool fancy_toggle(char flag) {
         case 'F': TOGGLE(flags.classify); return true;
         case 'T': TOGGLE(flags.noexterm); return true;
         case 'j': TOGGLE(flags.join);     return true;
+        case 'q': TOGGLE(flags.quit_alt); return true;
     }
     return toggle_gflag(flag);
 }
