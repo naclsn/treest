@@ -845,6 +845,15 @@ static bool c_help(void) {
     if (a < 128 && command_map[a].h) {
         // YYY: deal with long lines?
         putstr(command_map[a].h);
+        if ('"' == a) {
+            for (int k = 0; k < 128; k++)
+                if (register_map[k]) {
+                    putln();
+                    char tmp[7] = {'\t', '\'', (char)k, '\'', ':', ' ', '\0'};
+                    putstr(tmp);
+                    putstr(register_map[k]);
+                }
+        }
     } else putstr("! not a command");
     putln();
     return false;
@@ -860,7 +869,7 @@ struct Command command_map[128] = {
     [CTRL('R')]={c_reload,               "reload the directory at the cursor"},
     [CTRL('Z')]={c_suspend,              "suspend"},
     ['!']      ={c_shell,                "execute a shell command"},
-    ['"']      ={c_register,             "fill or empty a register"},
+    ['"']      ={c_register,             "fill or empty a register, use `?\"` to see used registers content"},
     ['#']      ={c_ignore,               "(comment) ignore input until the end of line"},
     ['$']      ={c_findendswith,         "find the next node which name ends with"},
     ['(']      ={c_if,                   "run commands if"},

@@ -26,8 +26,200 @@ Print the version successfully.
 \fB\-\-printer=\fINAME\fR
 Change for the specified printer.
 .TP
+\fB\-\-ignore=\fISHELLPAT\fR
+Add the given shell pattern to the ignore list.  See also
+\fBfnmatch\fR(3).
+.TP
+\fB\-\-rcfile=\fIFILE\fR
+Once ready but before reading from stdin, read from the
+provided file first.
+.TP
 \fB\-\-\fILONGOPTIONS\fR
 Other options are forwarded to the last specified printer.
+
+.SH FLAGS
+.PP
+These are the common default flags.  Although they can be
+overriden by the selected printer, they usually keep the
+same meaning.
+.TS
+tab (@);
+l lx.
+A@T{
+--almost-all
+T}
+B@T{
+--ignore-backups
+T}
+I@T{
+toggle the filtering by ignored patterns
+T}
+S@T{
+sort by size
+T}
+X@T{
+sort by extension
+T}
+c@T{
+sort by ctime
+T}
+d@T{
+sort directories first
+T}
+r@T{
+reverse sorting order
+T}
+t@T{
+sort by mtime
+T}
+u@T{
+sort by atime
+T}
+w@T{
+toggle watch mode: watches are set on every unfolded
+directories (see the \fBinotify(7)\fR)
+T}
+.TE
+
+.SH COMMANDS
+.PP
+The following commands are read from the user input.
+Note that from any prompt or pending state, \fB'^['\fR
+(\fBESC\fR) should bring it back to "normal mode" (except
+when using \fBreadline\fR(3) with a tty true user input).
+.TS
+tab (@);
+l lx.
+^C@T{
+quit
+T}
+^H@T{
+toggle the ignore global flag
+T}
+^L@T{
+refresh the view
+T}
+^N@T{
+go to the next visible node
+T}
+^P@T{
+go to the previous visible node
+T}
+^R@T{
+reload the directory at the cursor
+T}
+^Z@T{
+suspend
+T}
+!@T{
+execute a shell command
+T}
+"@T{
+fill or empty a register, use `?"` to see used registers content
+T}
+#@T{
+(comment) ignore input until the end of line
+T}
+$@T{
+find the next node which name ends with
+T}
+(@T{
+run commands if
+T}
+)@T{
+run commands ifnot
+T}
+-@T{
+toggle a flag
+T}
+\.@T{
+re-run the last command
+T}
+/@T{
+find the next node which name contains
+T}
+:@T{
+execute a printer command
+T}
+;@T{
+refresh the view
+T}
+\= @T{
+fold recursively at the cursor
+T}
+?@T{
+print help for a given command
+T}
+C@T{
+fold at the given path
+T}
+H@T{
+fold at the cursor
+T}
+L@T{
+unfold at the cursor
+T}
+N@T{
+continue search backward
+T}
+O@T{
+unfold at the given path
+T}
+Q@T{
+quit with an exit code (by default indicating failure)
+T}
+[@T{
+go to the parent's first child
+T}
+\\@T{
+run a register as a sequence of commands
+T}
+]@T{
+go to the parent's last child
+T}
+^@T{
+find the next node which name starts with
+T}
+`@T{
+go to the root
+T}
+c@T{
+go to and fold at the given path
+T}
+h@T{
+go to the parent directory
+T}
+j@T{
+go to the next node
+T}
+k@T{
+go to the previous node
+T}
+l@T{
+go to the directory's first child (unfold if needed)
+T}
+n@T{
+continue search forward
+T}
+o@T{
+go to and unfold at the given path
+T}
+q@T{
+quit
+T}
+{@T{
+run commands while
+T}
+|@T{
+pipe content into a shell command
+T}
+}@T{
+run commands whilenot
+T}
+~@T{
+reload at the root (read the whole tree from file system)
+T}
+.TE
 
 .SH PRINTERS
 .PP
@@ -37,18 +229,26 @@ flags are silently ignored.  The default printer is
 
 .TP
 \fBascii\fR
-blablabla
+F - classify
+P - relative
+i - index
+l - link_dir
+
 .TP
 \fBfancy\fR
 blablabla
-
-.SH COMMANDS
-.PP
-The following commands should be available.  Note that
-from any prompt or pending state, \fB'^['\fR (\fBESC\fR)
-should bring it back to "normal mode" (except when using
-\fIreadline\fR with a tty input).
+C - colors
+F - classify
+T - noexterm
+j - join
+q - quit_alt
 blablabla
+E - z1down
+Y - z1up
+D - zdown
+U - zup
+F - zforward
+B - zbackward
 
 .SH AUTHOR
 Grenier Celestin

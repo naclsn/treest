@@ -4,7 +4,7 @@ Stateful tree view of a root directory.
 
 ![./screenshot.png](./screenshot.png)
 
-> Example of `--printer=fancy -Fcj` with [trapd00r/LS_COLORS](https://github.com/trapd00r/LS_COLORS/).
+> Example of `--printer=fancy -FCj` with [trapd00r/LS_COLORS](https://github.com/trapd00r/LS_COLORS/).
 
 ### Getting Started
 
