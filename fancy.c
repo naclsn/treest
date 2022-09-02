@@ -73,6 +73,7 @@ static struct {
     bool next_is_first_onscreen;
     struct Command overriden[8];
     int line_len;
+    bool no_clear;
 } state = {
     .ls_colors = {
         .rs="0",
@@ -158,9 +159,15 @@ static bool _c_refresh(void) {
     return state.overriden[6].f();
 }
 static bool _c_suspend(void) {
-    if (!flags.noexterm && !flags.quit_alt) { putstr(_DALT, false); flush(); }
+    if (!flags.noexterm) {
+        putstr(_DALT, false);
+        if (flags.quit_alt) {
+          state.no_clear = true;
+          _c_refresh();
+        }
+        else flush();
+    }
     bool r = state.overriden[7].f();
-    if (!flags.noexterm) { putstr(_EALT, false); flush(); }
     return r;
 }
 
@@ -177,8 +184,6 @@ void fancy_init(void) {
         state.winsize.ws_col = USHRT_MAX;
         state.winsize.ws_row = USHRT_MAX;
     }
-
-    if (!flags.noexterm) { putstr(_EALT, false); flush(); }
 
     state.overriden[0] = command_map[CTRL('E')];
     state.overriden[1] = command_map[CTRL('Y')];
@@ -199,6 +204,15 @@ void fancy_init(void) {
 }
 
 void fancy_del(void) {
+    if (!flags.noexterm) {
+        putstr(_DALT, false);
+        if (flags.quit_alt) {
+          state.no_clear = true;
+          _c_refresh();
+        }
+        else flush();
+    }
+
     for (size_t k = 0; k < state.ls_colors.ext_count; k++) free(state.ls_colors.ext[k]);
     for (size_t k = 0; k < state.ls_colors.exa_count; k++) free(state.ls_colors.exa[k]);
     free(state.ls_colors.ext);
@@ -209,8 +223,6 @@ void fancy_del(void) {
     git_repository_free(state.repo);
     git_libgit2_shutdown();
     #endif
-
-    if (!flags.noexterm && !flags.quit_alt) { putstr(_DALT, false); flush(); }
 
     command_map[CTRL('E')] = state.overriden[0];
     command_map[CTRL('Y')] = state.overriden[1];
@@ -253,7 +265,10 @@ bool fancy_filter(struct Node* node) {
 void fancy_begin(void) {
     state.depth = -1;
     state.indents = 0;
-    putstr(!flags.noexterm ? _CX : _CL, false);
+
+    if (state.no_clear) state.no_clear = false;
+    else putstr(!flags.noexterm ? _EALT _CX : _CL, false);
+
     state.wincurr = 0;
     state.next_is_first_onscreen = false;
     state.line_len = 0;
