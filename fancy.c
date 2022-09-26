@@ -208,7 +208,11 @@ void fancy_del(void) {
         putstr(_DALT, false);
         if (flags.quit_alt) {
           state.no_clear = true;
-          _c_refresh();
+          // _c_refresh();
+          // force refresh to full size upon no-clear quitting
+          state.winsize.ws_col = USHRT_MAX;
+          state.winsize.ws_row = USHRT_MAX;
+          state.overriden[6].f();
         }
         else flush();
     }
