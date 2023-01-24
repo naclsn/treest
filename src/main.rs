@@ -15,26 +15,10 @@ enum FileKind {
 }
 
 #[derive(Debug)]
-struct File {
-    kind: FileKind,
-}
-
-#[derive(Debug)]
-struct Dir {
-    unfolded: bool,
-    children: Vec<Node>,
-}
-
-#[derive(Debug)]
-struct Link {
-    target: Box<Node>,
-}
-
-#[derive(Debug)]
 enum NodeInfo {
-    Dir(Dir),
-    Link(Link),
-    File(File),
+    Dir { unfolded: bool, children: Vec<Node> },
+    Link { target: Box<Node> },
+    File { kind: FileKind },
 }
 
 #[derive(Debug)]
@@ -49,14 +33,14 @@ impl fmt::Display for Node {
         let ident = "   ".repeat(depth);
         let name = self.path.file_name().unwrap().to_str().unwrap();
         match &self.info {
-            NodeInfo::Dir(dir) => {
+            NodeInfo::Dir { unfolded, children } => {
                 write!(f, "{ident}{name}/",)?;
-                if dir.unfolded {
-                    if dir.children.is_empty() {
+                if *unfolded {
+                    if children.is_empty() {
                         writeln!(f, " (/)")
                     } else {
                         writeln!(f)?;
-                        dir.children
+                        children
                             .iter()
                             .map(|ch| write!(f, "{:.*}", depth + 1, ch))
                             .collect()
@@ -65,8 +49,10 @@ impl fmt::Display for Node {
                     writeln!(f)
                 }
             }
-            NodeInfo::Link(link) => writeln!(f, "{ident}{name}@ -> {}", link.target),
-            NodeInfo::File(file) => match file.kind {
+
+            NodeInfo::Link { target } => writeln!(f, "{ident}{name}@ -> {}", target),
+
+            NodeInfo::File { kind } => match kind {
                 FileKind::NamedPipe => writeln!(f, "{ident}{name}|"),
                 FileKind::Socket => writeln!(f, "{ident}{name}="),
                 FileKind::Executable => writeln!(f, "{ident}{name}*"),
@@ -77,45 +63,48 @@ impl fmt::Display for Node {
 }
 
 impl Node {
+    fn new(path: path::PathBuf, meta: fs::Metadata) -> io::Result<Node> {
+        Ok(Node {
+            // YYY: fields not in order so the `path.clone()` only
+            // occurs when needed (in the `is_link` branch)
+            info: if meta.is_dir() {
+                NodeInfo::Dir {
+                    unfolded: false,
+                    children: Vec::new(),
+                }
+            } else if meta.is_symlink() {
+                NodeInfo::Link {
+                    target: Box::new({
+                        let realpath = fs::read_link(path.clone())?;
+                        Node::new(realpath.clone(), fs::symlink_metadata(realpath)?)?
+                    }),
+                }
+            } else {
+                NodeInfo::File {
+                    kind: FileKind::Regular,
+                }
+            },
+            path,
+        })
+    }
+
     fn unfold(&mut self) -> io::Result<()> {
         match &mut self.info {
-            NodeInfo::Dir(dir) => {
-                dir.children = fs::read_dir(self.path.clone())?
-                    .map(|maybe_it| {
-                        maybe_it
-                            .and_then(|it| it.file_type().map(|ft| (it.path(), ft)))
-                            .map(|(path, ft)| {
-                                Node {
-                                    path,
-                                    info: if ft.is_dir() {
-                                        NodeInfo::Dir(Dir {
-                                            unfolded: false,
-                                            children: Vec::new(),
-                                        })
-                                    } else if ft.is_symlink() {
-                                        NodeInfo::Link(Link {
-                                            // ZZZ: todo
-                                            target: Box::new(Node {
-                                                path: path::PathBuf::new(),
-                                                info: NodeInfo::File(File {
-                                                    kind: FileKind::Regular,
-                                                }),
-                                            }),
-                                        })
-                                    } else {
-                                        NodeInfo::File(File {
-                                            kind: FileKind::Regular,
-                                        })
-                                    },
-                                }
-                            })
+            NodeInfo::Dir { unfolded, children } => {
+                *children = fs::read_dir(self.path.clone())?
+                    .map(|maybe_ent| {
+                        maybe_ent.and_then(|ent| {
+                            ent.metadata().and_then(|meta| Node::new(ent.path(), meta))
+                        })
                     })
                     .collect::<Result<Vec<Node>, _>>()?;
-                dir.unfolded = true;
+                *unfolded = true;
                 Ok(())
             }
-            NodeInfo::Link(link) => link.target.unfold(),
-            NodeInfo::File(file) => Err(io::Error::new(
+
+            NodeInfo::Link { target } => target.unfold(),
+
+            NodeInfo::File { .. } => Err(io::Error::new(
                 io::ErrorKind::Other,
                 format!(
                     "(NotADirectory) cannot unfold file as {}",
@@ -129,10 +118,10 @@ impl Node {
 fn main() {
     let mut root = Node {
         path: env::current_dir().unwrap(),
-        info: NodeInfo::Dir(Dir {
+        info: NodeInfo::Dir {
             unfolded: false,
             children: Vec::new(),
-        }),
+        },
     };
     root.unfold().expect("could not unfold root");
 
@@ -140,8 +129,11 @@ fn main() {
     println!("---");
 
     match &mut root.info {
-        NodeInfo::Dir(dir) => {
-            for ch in &mut dir.children {
+        NodeInfo::Dir {
+            unfolded: _,
+            children,
+        } => {
+            for ch in children {
                 ch.unfold().ok();
             }
         }
