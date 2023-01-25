@@ -1,3 +1,4 @@
+use serde_json;
 use std::env;
 
 mod tree;
@@ -10,4 +11,5 @@ fn main() {
     }
 
     print!("{root}");
+    print!("{}", serde_json::to_string(&root).unwrap());
 }

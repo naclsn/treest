@@ -1,9 +1,10 @@
+use serde; // TODO: i really dont like it, it has no other way but to put the full paths where just the component would be enough
 use std::fmt;
 use std::fs;
 use std::io;
 use std::path;
 
-#[derive(Debug)]
+#[derive(serde::Serialize, serde::Deserialize, Debug)]
 enum FileKind {
     NamedPipe,
     CharDevice,
@@ -13,20 +14,20 @@ enum FileKind {
     Executable,
 }
 
-#[derive(Debug)]
+#[derive(serde::Serialize, serde::Deserialize, Debug)]
 enum NodeInfo {
     Dir { unfolded: bool, children: Vec<Node> },
     Link { target: Box<Node> },
     File { kind: FileKind },
 }
 
-#[derive(Debug)]
+#[derive(serde::Serialize, serde::Deserialize, Debug)]
 pub struct Node {
     path: path::PathBuf,
     info: NodeInfo,
 }
 
-#[derive(Debug)]
+#[derive(serde::Serialize, serde::Deserialize, Debug)]
 pub struct Tree {
     root: Node,
 }
@@ -54,7 +55,7 @@ impl fmt::Display for Node {
                 }
             }
 
-            NodeInfo::Link { target } => writeln!(f, "{ident}{name}@ -> {}", target),
+            NodeInfo::Link { target } => write!(f, "{ident}{name}@ -> {}", target),
 
             NodeInfo::File { kind } => match kind {
                 FileKind::NamedPipe => writeln!(f, "{ident}{name}|"),
@@ -119,7 +120,7 @@ impl Node {
         })
     }
 
-    fn unfold(&mut self) -> io::Result<&mut Vec<Node>> {
+    pub fn unfold(&mut self) -> io::Result<&mut Vec<Node>> {
         match &mut self.info {
             NodeInfo::Dir { unfolded, children } => {
                 if !*unfolded {
