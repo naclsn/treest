@@ -1,42 +1,44 @@
-use crate::node;
-use serde;
-use std::fmt;
-use std::io;
-use std::path;
+use crate::node::Node;
+use serde::{Deserialize, Serialize};
+use std::{
+    fmt::{self, Display, Formatter},
+    io,
+    path::{Component, PathBuf},
+};
 
-#[derive(serde::Serialize, serde::Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct Tree {
-    root: node::Node,
+    root: Node,
 }
 
-impl fmt::Display for Tree {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+impl Display for Tree {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         write!(f, "{}", self.root)
     }
 }
 
 impl Tree {
-    pub fn new(path: path::PathBuf) -> io::Result<Tree> {
-        let mut root = node::Node::new_root(path);
+    pub fn new(path: PathBuf) -> io::Result<Tree> {
+        let mut root = Node::new_root(path);
         root.unfold()?;
 
         Ok(Tree { root })
     }
 
-    pub fn at(&mut self, path: path::PathBuf) -> io::Result<&mut node::Node> {
+    pub fn at(&mut self, path: PathBuf) -> io::Result<&mut Node> {
         let mut cursor = &mut self.root;
         for co in path.components() {
             cursor = match co {
-                path::Component::Prefix(_) | path::Component::RootDir => Err(io::Error::new(
+                Component::Prefix(_) | Component::RootDir => Err(io::Error::new(
                     io::ErrorKind::Other,
                     "not supported: absolute paths",
                 )),
 
-                path::Component::CurDir => Ok(cursor),
+                Component::CurDir => Ok(cursor),
 
-                path::Component::ParentDir => todo!("parent dir"),
+                Component::ParentDir => todo!("parent dir"),
 
-                path::Component::Normal(path_comp) => cursor
+                Component::Normal(path_comp) => cursor
                     .unfold()?
                     .iter_mut()
                     .find(|ch| match ch.as_path().file_name() {
@@ -49,7 +51,7 @@ impl Tree {
         Ok(cursor)
     }
 
-    pub fn unfold_at(&mut self, path: path::PathBuf) -> io::Result<&mut Vec<node::Node>> {
+    pub fn unfold_at(&mut self, path: PathBuf) -> io::Result<&mut Vec<Node>> {
         self.at(path)?.unfold()
     }
 }

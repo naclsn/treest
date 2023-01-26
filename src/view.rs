@@ -1,24 +1,22 @@
-use crate::node;
-use crate::tree;
-use std::io;
-use std::path;
+use crate::{node::Node, tree::Tree};
+use std::{io, path::PathBuf};
 
 // #[derive(serde::Serialize, serde::Deserialize, Debug)]
 #[derive(Debug)]
 pub struct View<'tree> {
-    cursor: &'tree mut node::Node,
-    selection: Vec<&'tree node::Node>,
+    cursor: &'tree mut Node,
+    selection: Vec<&'tree Node>,
 }
 
 impl View<'_> {
-    pub fn new<'tree>(root: &'tree mut tree::Tree) -> View<'tree> {
+    pub fn new<'tree>(root: &'tree mut Tree) -> View<'tree> {
         View {
             cursor: root.at("".into()).unwrap(),
             selection: vec![],
         }
     }
 
-    pub fn down(mut self, file_name: path::PathBuf) -> io::Result<Self> {
+    pub fn down(mut self, file_name: PathBuf) -> io::Result<Self> {
         let ostr = Some(file_name.as_os_str());
         self.cursor = self
             .cursor

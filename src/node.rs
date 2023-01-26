@@ -1,10 +1,12 @@
-use serde;
-use std::fmt;
-use std::fs;
-use std::io;
-use std::path;
+use serde::{Deserialize, Serialize};
+use std::{
+    fmt::{self, Display, Formatter},
+    fs::{read_dir, read_link, symlink_metadata, Metadata},
+    io,
+    path::{Path, PathBuf},
+};
 
-#[derive(serde::Serialize, serde::Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug)]
 enum FileKind {
     NamedPipe,
     CharDevice,
@@ -14,29 +16,32 @@ enum FileKind {
     Executable,
 }
 
-#[derive(serde::Serialize, serde::Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug)]
 enum NodeInfo {
     Dir { unfolded: bool, children: Vec<Node> },
     Link { target: Box<Node> },
     File { kind: FileKind },
 }
 
-#[derive(serde::Serialize, serde::Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct Node {
-    path: path::PathBuf,
+    path: PathBuf,
     marked: bool,
     info: NodeInfo,
 }
 
-impl fmt::Display for Node {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+impl Display for Node {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         let depth = f.precision().unwrap_or(0);
         let ident = "   ".repeat(depth);
 
-        let name = if self.marked {
-            format!("[{}]", self.path.file_name().unwrap().to_str().unwrap())
-        } else {
-            self.path.file_name().unwrap().to_str().unwrap().to_string()
+        let name = {
+            let tmp = self.path.file_name().unwrap().to_str().unwrap();
+            if self.marked {
+                format!("[{}]", tmp)
+            } else {
+                tmp.to_string()
+            }
         };
 
         match &self.info {
@@ -70,8 +75,8 @@ impl fmt::Display for Node {
 }
 
 #[cfg(unix)]
-impl From<fs::Metadata> for FileKind {
-    fn from(meta: fs::Metadata) -> FileKind {
+impl From<Metadata> for FileKind {
+    fn from(meta: Metadata) -> FileKind {
         use std::os::unix::fs::FileTypeExt;
         use std::os::unix::fs::PermissionsExt;
         let ft = meta.file_type();
@@ -92,38 +97,37 @@ impl From<fs::Metadata> for FileKind {
 }
 
 #[cfg(windows)]
-impl From<fs::Metadata> for FileKind {
-    fn from(meta: fs::Metadata) -> FileKind {
+impl From<Metadata> for FileKind {
+    fn from(meta: Metadata) -> FileKind {
         FileKind::Regular
     }
 }
 
 impl Node {
-    pub fn new(path: path::PathBuf, meta: fs::Metadata) -> io::Result<Node> {
+    pub fn new(path: PathBuf, meta: Metadata) -> io::Result<Node> {
+        let info = if meta.is_dir() {
+            NodeInfo::Dir {
+                unfolded: false,
+                children: Vec::new(),
+            }
+        } else if meta.is_symlink() {
+            NodeInfo::Link {
+                target: Box::new({
+                    let realpath = read_link(path.clone())?;
+                    Node::new(realpath.clone(), symlink_metadata(realpath)?)?
+                }),
+            }
+        } else {
+            NodeInfo::File { kind: meta.into() }
+        };
         Ok(Node {
-            // YYY: fields not in order so the `path.clone()` only
-            // occurs when needed (in the `is_link` branch)
-            info: if meta.is_dir() {
-                NodeInfo::Dir {
-                    unfolded: false,
-                    children: Vec::new(),
-                }
-            } else if meta.is_symlink() {
-                NodeInfo::Link {
-                    target: Box::new({
-                        let realpath = fs::read_link(path.clone())?;
-                        Node::new(realpath.clone(), fs::symlink_metadata(realpath)?)?
-                    }),
-                }
-            } else {
-                NodeInfo::File { kind: meta.into() }
-            },
             path,
             marked: false,
+            info,
         })
     }
 
-    pub fn new_root(path: path::PathBuf) -> Node {
+    pub fn new_root(path: PathBuf) -> Node {
         Node {
             path,
             marked: false,
@@ -134,7 +138,7 @@ impl Node {
         }
     }
 
-    pub fn as_path(&self) -> &path::Path {
+    pub fn as_path(&self) -> &Path {
         self.path.as_path()
     }
 
@@ -149,7 +153,7 @@ impl Node {
         match &mut self.info {
             NodeInfo::Dir { unfolded, children } => {
                 if !*unfolded {
-                    *children = fs::read_dir(self.path.clone())?
+                    *children = read_dir(self.path.clone())?
                         .map(|maybe_ent| {
                             maybe_ent.and_then(|ent| {
                                 ent.metadata().and_then(|meta| Node::new(ent.path(), meta))
