@@ -7,8 +7,6 @@ use std::path;
 #[derive(serde::Serialize, serde::Deserialize, Debug)]
 pub struct Tree {
     root: node::Node,
-    // cursor: &Node,
-    // selection: Vec<&Node>,
 }
 
 impl fmt::Display for Tree {
@@ -21,11 +19,8 @@ impl Tree {
     pub fn new(path: path::PathBuf) -> io::Result<Tree> {
         let mut root = node::Node::new_root(path);
         root.unfold()?;
-        Ok(Tree {
-            root,
-            // cursor: root,
-            // selection: vec![],
-        })
+
+        Ok(Tree { root })
     }
 
     pub fn at(&mut self, path: path::PathBuf) -> io::Result<&mut node::Node> {
