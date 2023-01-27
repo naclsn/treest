@@ -18,7 +18,7 @@ enum FileKind {
 
 #[derive(Serialize, Deserialize, Debug)]
 enum NodeInfo {
-    Dir { unfolded: bool, children: Vec<Node> },
+    Dir { loaded: bool, children: Vec<Node> },
     Link { target: Box<Node> },
     File { kind: FileKind },
 }
@@ -26,7 +26,6 @@ enum NodeInfo {
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Node {
     path: PathBuf,
-    marked: bool,
     info: NodeInfo,
 }
 
@@ -35,19 +34,12 @@ impl Display for Node {
         let depth = f.precision().unwrap_or(0);
         let ident = "   ".repeat(depth);
 
-        let name = {
-            let tmp = self.path.file_name().unwrap().to_str().unwrap();
-            if self.marked {
-                format!("[{}]", tmp)
-            } else {
-                tmp.to_string()
-            }
-        };
+        let name = self.path.file_name().unwrap().to_str().unwrap();
 
         match &self.info {
-            NodeInfo::Dir { unfolded, children } => {
+            NodeInfo::Dir { loaded, children } => {
                 write!(f, "{ident}{name}/",)?;
-                if *unfolded {
+                if *loaded {
                     if children.is_empty() {
                         writeln!(f, " (/)")
                     } else {
@@ -107,7 +99,7 @@ impl Node {
     pub fn new(path: PathBuf, meta: Metadata) -> io::Result<Node> {
         let info = if meta.is_dir() {
             NodeInfo::Dir {
-                unfolded: false,
+                loaded: false,
                 children: Vec::new(),
             }
         } else if meta.is_symlink() {
@@ -122,7 +114,6 @@ impl Node {
         };
         Ok(Node {
             path,
-            marked: false,
             info,
         })
     }
@@ -130,9 +121,8 @@ impl Node {
     pub fn new_root(path: PathBuf) -> Node {
         Node {
             path,
-            marked: false,
             info: NodeInfo::Dir {
-                unfolded: false,
+                loaded: false,
                 children: Vec::new(),
             },
         }
@@ -142,17 +132,10 @@ impl Node {
         self.path.as_path()
     }
 
-    pub fn mark(&mut self, ed: bool) {
-        self.marked = ed;
-    }
-    // pub fn marked(&self) -> bool {
-    //     self.marked
-    // }
-
-    pub fn unfold(&mut self) -> io::Result<&mut Vec<Node>> {
+    pub fn children(&mut self) -> io::Result<&mut Vec<Node>> {
         match &mut self.info {
-            NodeInfo::Dir { unfolded, children } => {
-                if !*unfolded {
+            NodeInfo::Dir { loaded, children } => {
+                if !*loaded {
                     *children = read_dir(self.path.clone())?
                         .map(|maybe_ent| {
                             maybe_ent.and_then(|ent| {
@@ -160,12 +143,12 @@ impl Node {
                             })
                         })
                         .collect::<Result<Vec<Node>, _>>()?;
-                    *unfolded = true;
+                    *loaded = true;
                 }
                 Ok(children)
             }
 
-            NodeInfo::Link { target } => target.unfold(),
+            NodeInfo::Link { target } => target.children(),
 
             NodeInfo::File { .. } => Err(io::Error::new(
                 io::ErrorKind::Other,

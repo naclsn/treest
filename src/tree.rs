@@ -1,4 +1,10 @@
-use crate::node::Node;
+use crate::{node::Node, view::View};
+use tui::{
+    buffer::Buffer,
+    layout::Rect,
+    style::Style,
+    widgets::StatefulWidget,
+};
 use serde::{Deserialize, Serialize};
 use std::{
     fmt::{self, Display, Formatter},
@@ -17,12 +23,18 @@ impl Display for Tree {
     }
 }
 
+impl StatefulWidget for &mut Tree {
+    type State = View;
+
+    fn render(self, area: Rect, buf: &mut Buffer, state: &mut Self::State) {
+        buf.set_string(2, 2, "coucoucoucoucoucoucoucoucoucoucoucoucoucoucoucoucoucoucoucoucoucoucoucou", Style::default());
+        self.at("".into());
+    }
+}
+
 impl Tree {
     pub fn new(path: PathBuf) -> io::Result<Tree> {
-        let mut root = Node::new_root(path);
-        root.unfold()?;
-
-        Ok(Tree { root })
+        Ok(Tree { root: Node::new_root(path) })
     }
 
     pub fn at(&mut self, path: PathBuf) -> io::Result<&mut Node> {
@@ -39,7 +51,7 @@ impl Tree {
                 Component::ParentDir => todo!("parent dir"),
 
                 Component::Normal(path_comp) => cursor
-                    .unfold()?
+                    .children()?
                     .iter_mut()
                     .find(|ch| match ch.as_path().file_name() {
                         Some(ch_head) => path_comp == ch_head,
@@ -49,9 +61,5 @@ impl Tree {
             }?
         }
         Ok(cursor)
-    }
-
-    pub fn unfold_at(&mut self, path: PathBuf) -> io::Result<&mut Vec<Node>> {
-        self.at(path)?.unfold()
     }
 }

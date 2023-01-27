@@ -49,13 +49,14 @@ fn main() -> Result<(), Box<dyn Error>> {
 
 fn run_app<B: Backend>(terminal: &mut Terminal<B>) -> io::Result<()> {
     let mut root = Tree::new(current_dir().unwrap()).expect("could not unfold root");
-
-    let view = View::new(&mut root)
-        .down("src".into())?
-        .down("main.rs".into())?;
+    // let views = vec![View::new()];
+    let mut view = View::new();
 
     loop {
-        terminal.draw(|f| ui(f, &root /*&view*/))?;
+        terminal.draw(|f| {
+            // ui(f, root);
+            f.render_stateful_widget(&mut root, f.size(), &mut view);
+        })?;
 
         if let Event::Key(key) = event::read()? {
             if let KeyCode::Char('q') = key.code {
@@ -65,7 +66,7 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>) -> io::Result<()> {
     }
 }
 
-fn ui<B: Backend>(f: &mut Frame<B>, t: &Tree) {
+fn ui<B: Backend>(f: &mut Frame<B>, t: Tree) -> Tree {
     let size = f.size();
 
     let block = Block::default()
@@ -74,4 +75,6 @@ fn ui<B: Backend>(f: &mut Frame<B>, t: &Tree) {
         .title_alignment(Alignment::Center)
         .border_type(BorderType::Rounded);
     f.render_widget(block, size);
+
+    todo!()
 }
