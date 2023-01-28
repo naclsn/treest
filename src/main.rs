@@ -39,43 +39,35 @@ fn main() -> Result<(), Box<dyn Error>> {
 }
 
 fn run_app<B: Backend>(terminal: &mut Terminal<B>) -> io::Result<()> {
-    let mut tree = Tree::new(current_dir().unwrap()).expect("could not unfold root");
-    // let views = vec![View::new()];
+    let mut tree = Tree::new(current_dir().unwrap())?;
+
     let mut view = View::new(&mut tree.root);
-
-    // NOTE: (temporary obvsly) opens root, first child and it first child too
-    // (this works on my setup because at 0 is `.git/` and at 0 of it is `hooks/`)
     view.root.unfold(&mut tree.root)?;
-    view.root.children[0]
-        .1
-        .unfold(tree.root.loaded_children_mut().unwrap().get_mut(0).unwrap())?;
-    view.root.children[0].1.children[0].1.unfold(
-        tree.root
-            .loaded_children_mut()
-            .unwrap()
-            .get_mut(0)
-            .unwrap()
-            .loaded_children_mut()
-            .unwrap()
-            .get_mut(0)
-            .unwrap(),
-    )?;
-
-    view.enter(); // enter root (cursor is on `.git/`)
-    view.enter(); // enter `.git/` (cursor is on `.git/hooks/`)
-    view.mark(); // mark `.git/hooks/`
-    view.next(); // move to next child of `.git/` (on my setup this was `.git/info/`)
 
     loop {
         terminal.draw(|f| {
-            // ui(f, tree);
             f.render_stateful_widget(&mut tree, f.size(), &mut view);
         })?;
 
         if let Event::Key(key) = event::read()? {
-            if let KeyCode::Char('q') = key.code {
-                return Ok(());
-            }
+            match key.code {
+                KeyCode::Char('q') => return Ok(()),
+
+                KeyCode::Char('H') => view.fold(),
+                KeyCode::Char('L') => view.unfold(&mut tree),
+
+                KeyCode::Char('h') | KeyCode::Left => view.leave(),
+                KeyCode::Char('j') | KeyCode::Down => view.next(),
+                KeyCode::Char('k') | KeyCode::Up => view.prev(),
+                KeyCode::Char('l') | KeyCode::Right => {
+                    view.unfold(&mut tree);
+                    view.enter();
+                }
+
+                KeyCode::Char(' ') => view.toggle_marked(),
+
+                _ => (),
+            } // match key.code
         }
-    }
+    } // loop term.draw
 }
