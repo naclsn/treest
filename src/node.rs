@@ -7,7 +7,7 @@ use std::{
 };
 
 #[derive(Serialize, Deserialize, Debug)]
-enum FileKind {
+pub enum FileKind {
     NamedPipe,
     CharDevice,
     BlockDevice,
@@ -17,7 +17,7 @@ enum FileKind {
 }
 
 #[derive(Serialize, Deserialize, Debug)]
-enum NodeInfo {
+pub enum NodeInfo {
     Dir { loaded: bool, children: Vec<Node> },
     Link { target: Box<Node> },
     File { kind: FileKind },
@@ -25,8 +25,8 @@ enum NodeInfo {
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Node {
-    path: PathBuf,
-    info: NodeInfo,
+    pub path: PathBuf,
+    pub info: NodeInfo,
 }
 
 impl Display for Node {
@@ -112,10 +112,7 @@ impl Node {
         } else {
             NodeInfo::File { kind: meta.into() }
         };
-        Ok(Node {
-            path,
-            info,
-        })
+        Ok(Node { path, info })
     }
 
     pub fn new_root(path: PathBuf) -> Node {
@@ -132,7 +129,27 @@ impl Node {
         self.path.as_path()
     }
 
-    pub fn children(&mut self) -> io::Result<&mut Vec<Node>> {
+    pub fn loaded_children(&self) -> Option<&Vec<Node>> {
+        match &self.info {
+            NodeInfo::Dir { loaded, children } if *loaded => Some(children),
+
+            NodeInfo::Link { target } => target.loaded_children(),
+
+            _ => None,
+        }
+    }
+
+    pub fn loaded_children_mut(&mut self) -> Option<&mut Vec<Node>> {
+        match &mut self.info {
+            NodeInfo::Dir { loaded, children } if *loaded => Some(children),
+
+            NodeInfo::Link { target } => target.loaded_children_mut(),
+
+            _ => None,
+        }
+    }
+
+    pub fn load_children(&mut self) -> io::Result<&mut Vec<Node>> {
         match &mut self.info {
             NodeInfo::Dir { loaded, children } => {
                 if !*loaded {
@@ -142,13 +159,13 @@ impl Node {
                                 ent.metadata().and_then(|meta| Node::new(ent.path(), meta))
                             })
                         })
-                        .collect::<Result<Vec<Node>, _>>()?;
+                        .collect::<Result<_, _>>()?;
                     *loaded = true;
                 }
                 Ok(children)
             }
 
-            NodeInfo::Link { target } => target.children(),
+            NodeInfo::Link { target } => target.load_children(),
 
             NodeInfo::File { .. } => Err(io::Error::new(
                 io::ErrorKind::Other,

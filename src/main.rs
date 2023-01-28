@@ -48,14 +48,19 @@ fn main() -> Result<(), Box<dyn Error>> {
 }
 
 fn run_app<B: Backend>(terminal: &mut Terminal<B>) -> io::Result<()> {
-    let mut root = Tree::new(current_dir().unwrap()).expect("could not unfold root");
+    let mut tree = Tree::new(current_dir().unwrap()).expect("could not unfold root");
     // let views = vec![View::new()];
-    let mut view = View::new();
+    let mut view = View::new(&mut tree.root);
+
+    view.root.unfold(&mut tree.root)?;
+    view.root.children[0]
+        .1
+        .unfold(tree.root.loaded_children_mut().unwrap().get_mut(0).unwrap())?;
 
     loop {
         terminal.draw(|f| {
-            // ui(f, root);
-            f.render_stateful_widget(&mut root, f.size(), &mut view);
+            // ui(f, tree);
+            f.render_stateful_widget(&mut tree, f.size(), &mut view);
         })?;
 
         if let Event::Key(key) = event::read()? {
