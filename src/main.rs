@@ -52,10 +52,27 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>) -> io::Result<()> {
     // let views = vec![View::new()];
     let mut view = View::new(&mut tree.root);
 
+    // NOTE: (temporary obvsly) opens root, first child and it first child too
+    // (this works on my setup because at 0 is `.git/` and at 0 of it is `hooks/`)
     view.root.unfold(&mut tree.root)?;
     view.root.children[0]
         .1
         .unfold(tree.root.loaded_children_mut().unwrap().get_mut(0).unwrap())?;
+    view.root.children[0].1.children[0].1.unfold(
+        tree.root
+            .loaded_children_mut()
+            .unwrap()
+            .get_mut(0)
+            .unwrap()
+            .loaded_children_mut()
+            .unwrap()
+            .get_mut(0)
+            .unwrap(),
+    )?;
+
+    view.enter(); // enter root (cursor is on `.git/`)
+    view.enter(); // enter `.git/` (cursor is on `.git/hooks`)
+    view.next(); // move to next child of `.git/` (on my setup this was `.git/info/`)
 
     loop {
         terminal.draw(|f| {

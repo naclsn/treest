@@ -21,53 +21,85 @@ impl Display for Tree {
     }
 }
 
+fn render_r(
+    tree_node: &Node,
+    state_node: &State,
+    buf: &mut Buffer,
+    (indent, line): (&mut u16, &mut u16),
+    cursor_path: Option<&[usize]>,
+) {
+    let is_cursor = if let Some(v) = cursor_path {
+        v.is_empty()
+    } else {
+        false
+    };
+
+    // this node
+    {
+        let name = {
+            let file_name = tree_node.path.file_name().unwrap().to_str().unwrap();
+            if is_cursor {
+                format!("> {}", file_name)
+            } else {
+                file_name.to_string()
+            }
+        };
+        buf.set_string(*indent * 3, *line, name, Style::default());
+        *line += 1;
+    }
+
+    // recurse
+    if state_node.unfolded {
+        *indent += 1;
+        let chs = tree_node.loaded_children().unwrap();
+        for (in_state_idx, (tree_node, state_node)) in state_node
+            .children
+            .iter()
+            .map(|(in_node_idx, stt)| (chs.get(*in_node_idx).unwrap(), stt))
+            .enumerate()
+        {
+            render_r(
+                tree_node,
+                state_node,
+                buf,
+                (indent, line),
+                cursor_path.and_then(|p_slice| {
+                    if 0 == p_slice.len() {
+                        return None;
+                    }
+                    let (head, tail) = p_slice.split_at(1);
+                    if in_state_idx == head[0] {
+                        return Some(tail);
+                    }
+                    None
+                }),
+            );
+        }
+        *indent -= 1;
+    };
+}
+
 impl StatefulWidget for &mut Tree {
     type State = View;
 
-    fn render(self, area: Rect, buf: &mut Buffer, state: &mut Self::State) {
+    fn render(self, _area: Rect, buf: &mut Buffer, state: &mut View) {
         let mut line = 0;
-        let mut indent = 0u16;
+        let mut indent = 0;
 
-        let tree_node = &mut self.root;
-        let state_node = &state.root;
+        render_r(
+            &self.root,
+            &state.root,
+            buf,
+            (&mut indent, &mut line),
+            Some(&state.cursor),
+        );
 
-        // this node
-        {
-            let name = tree_node.path.file_name().unwrap().to_str().unwrap();
-            buf.set_string(indent, line, name, Style::default());
-            line += 1;
-        }
-
-        // recurse
-        if state_node.unfolded {
-            indent += 1;
-            let chs = tree_node.load_children().unwrap();
-            for (tree_node, state_node) in state
-                .root
-                .children
-                .iter()
-                .map(|(idx, stt)| (chs.get(*idx).unwrap(), stt))
-            {
-                // this node
-                {
-                    let name = tree_node.path.file_name().unwrap().to_str().unwrap();
-                    buf.set_string(indent, line, name, Style::default());
-                    line += 1;
-                }
-
-                // recurse
-                if state_node.unfolded {
-                    indent += 1;
-                    // ...
-                    buf.set_string(indent, line, "---", Style::default());
-                    line += 1;
-                    indent -= 1;
-                }
-            }
-            indent -= 1;
-        };
-
-        buf.set_string(indent, line, "===", Style::default());
+        buf.set_string(
+            indent,
+            line,
+            format!("=== {:?}", state.cursor),
+            Style::default(),
+        );
     }
 }
 
