@@ -1,5 +1,5 @@
 use crate::{node::Node, tree::Tree};
-use std::{io, path::PathBuf};
+use std::io;
 
 #[derive(Debug)]
 pub struct State {
@@ -52,7 +52,23 @@ impl View {
         }
     }
 
-    pub fn at_cursor<'a>(&'a self, tree: &'a Tree) -> (&'a Node, &'a State) {
+    pub fn at_cursor(&self) -> &State {
+        self.cursor
+            .iter()
+            .fold(&self.root, |acc_state, in_state_idx| {
+                &acc_state.children[*in_state_idx].1
+            })
+    }
+
+    pub fn at_cursor_mut(&mut self) -> &mut State {
+        self.cursor
+            .iter()
+            .fold(&mut self.root, |acc_state, in_state_idx| {
+                &mut acc_state.children[*in_state_idx].1
+            })
+    }
+
+    pub fn at_cursor_pair<'a>(&'a self, tree: &'a Tree) -> (&'a Node, &'a State) {
         self.cursor.iter().fold(
             (&tree.root, &self.root),
             |(acc_node, acc_state): (&Node, &State), in_state_idx| {
@@ -79,24 +95,7 @@ impl View {
         self.cursor.last_mut().map(|idx| *idx -= 1);
     }
 
-    // pub fn down(mut self, file_name: PathBuf) -> io::Result<Self> {
-    //     let ostr = Some(file_name.as_os_str());
-    //     self.cursor = self
-    //         .cursor
-    //         .unfold()?
-    //         .iter_mut()
-    //         .find(|ch| ch.as_path().file_name() == ostr)
-    //         .ok_or(io::Error::from(io::ErrorKind::NotFound))?;
-    //     Ok(self)
-    // }
-
-    // pub fn up(mut self) -> io::Result<Self> {
-    //     self.cursor = todo!("self.cursor.parent()");
-    // }
-
-    //     pub fn mark(mut self) {
-    //         self.cursor.mark(true);
-    //         self.selection.push(self.cursor);
-    //         // self
-    //     }
+    pub fn mark(&mut self) {
+        self.at_cursor_mut().marked = true;
+    }
 }

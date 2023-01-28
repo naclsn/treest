@@ -37,11 +37,16 @@ fn render_r(
     // this node
     {
         let name = {
-            let file_name = tree_node.path.file_name().unwrap().to_str().unwrap();
+            let file_name_base = tree_node.path.file_name().unwrap().to_str().unwrap();
+            let file_name = if state_node.marked {
+                format!("[{file_name_base}]")
+            } else {
+                file_name_base.to_string()
+            };
             if is_cursor {
                 format!("> {}", file_name)
             } else {
-                file_name.to_string()
+                file_name
             }
         };
         buf.set_string(*indent * 3, *line, name, Style::default());

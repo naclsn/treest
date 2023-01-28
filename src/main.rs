@@ -8,19 +8,10 @@ use crossterm::{
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
-use serde_json;
-use std::{
-    env::{args_os, current_dir},
-    error::Error,
-    io,
-};
+use std::{env::current_dir, error::Error, io};
 use tui::{
     backend::{Backend, CrosstermBackend},
-    layout::{Alignment, Constraint, Direction, Layout},
-    style::{Color, Modifier, Style},
-    text::Span,
-    widgets::{Block, BorderType, Borders},
-    Frame, Terminal,
+    Terminal,
 };
 
 fn main() -> Result<(), Box<dyn Error>> {
@@ -71,7 +62,8 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>) -> io::Result<()> {
     )?;
 
     view.enter(); // enter root (cursor is on `.git/`)
-    view.enter(); // enter `.git/` (cursor is on `.git/hooks`)
+    view.enter(); // enter `.git/` (cursor is on `.git/hooks/`)
+    view.mark(); // mark `.git/hooks/`
     view.next(); // move to next child of `.git/` (on my setup this was `.git/info/`)
 
     loop {
@@ -86,17 +78,4 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>) -> io::Result<()> {
             }
         }
     }
-}
-
-fn ui<B: Backend>(f: &mut Frame<B>, t: Tree) -> Tree {
-    let size = f.size();
-
-    let block = Block::default()
-        .borders(Borders::ALL)
-        .title("heyo")
-        .title_alignment(Alignment::Center)
-        .border_type(BorderType::Rounded);
-    f.render_widget(block, size);
-
-    todo!()
 }
