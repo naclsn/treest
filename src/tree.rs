@@ -8,7 +8,12 @@ use std::{
     io,
     path::{Component, PathBuf},
 };
-use tui::{buffer::Buffer, layout::Rect, style::Style, widgets::StatefulWidget};
+use tui::{
+    buffer::Buffer,
+    layout::Rect,
+    style::{Modifier, Style},
+    widgets::StatefulWidget,
+};
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Tree {
@@ -37,19 +42,26 @@ fn render_r(
     // this node
     {
         let name = {
-            let file_name_base = tree_node.path.file_name().unwrap().to_str().unwrap();
-            let file_name = if state_node.marked {
+            let file_name_base = tree_node.decorated();
+            if state_node.marked {
                 format!("[{file_name_base}]")
             } else {
-                file_name_base.to_string()
-            };
-            if is_cursor {
-                format!("> {}", file_name)
-            } else {
-                file_name
+                file_name_base
             }
         };
-        buf.set_string(*indent * 3, *line, name, Style::default());
+
+        let style = tree_node.style();
+
+        buf.set_string(
+            *indent * 3,
+            *line,
+            name,
+            if is_cursor {
+                style.add_modifier(Modifier::REVERSED)
+            } else {
+                style
+            },
+        );
         *line += 1;
     }
 

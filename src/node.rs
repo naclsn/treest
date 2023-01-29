@@ -5,6 +5,7 @@ use std::{
     io,
     path::{Path, PathBuf},
 };
+use tui::style::{Color, Modifier, Style};
 
 #[derive(Serialize, Deserialize, Debug)]
 pub enum FileKind {
@@ -174,6 +175,42 @@ impl Node {
                     self.path.display()
                 ),
             )),
+        }
+    }
+
+    pub fn decorated(&self) -> String {
+        let r = self.path.file_name().unwrap().to_str().unwrap();
+        match &self.info {
+            NodeInfo::Dir { .. } => format!("{r}/"),
+            NodeInfo::Link { target } => format!("{r}@ -> {}", target.decorated()), // target could get its own color
+            NodeInfo::File { kind } => match kind {
+                FileKind::NamedPipe => format!("{r}|"),
+                FileKind::Socket => format!("{r}="),
+                FileKind::Executable => format!("{r}*"),
+                _ => r.to_string(),
+            },
+        }
+    }
+
+    pub fn style(&self) -> Style {
+        let r = Style::default();
+        match &self.info {
+            NodeInfo::Dir { .. } => r.fg(Color::Blue).add_modifier(Modifier::BOLD),
+            NodeInfo::Link { target: _ } => r.fg(Color::Cyan).add_modifier(Modifier::BOLD), // LS_COLOR allows using target's
+            NodeInfo::File { kind } => match kind {
+                FileKind::NamedPipe => r.fg(Color::Yellow).bg(Color::Black),
+                FileKind::CharDevice => r
+                    .fg(Color::Yellow)
+                    .bg(Color::Black)
+                    .add_modifier(Modifier::BOLD),
+                FileKind::BlockDevice => r
+                    .fg(Color::Yellow)
+                    .bg(Color::Black)
+                    .add_modifier(Modifier::BOLD),
+                FileKind::Regular => r,
+                FileKind::Socket => r.fg(Color::Magenta).add_modifier(Modifier::BOLD),
+                FileKind::Executable => r.fg(Color::Green).add_modifier(Modifier::BOLD),
+            },
         }
     }
 }
