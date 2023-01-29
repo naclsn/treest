@@ -178,17 +178,24 @@ impl Node {
         }
     }
 
-    pub fn decorated(&self) -> String {
-        let r = self.path.file_name().unwrap().to_str().unwrap();
+    pub fn file_name(&self) -> &str {
+        self.path.file_name().unwrap().to_str().unwrap()
+    }
+
+    pub fn decoration(&self) -> String {
         match &self.info {
-            NodeInfo::Dir { .. } => format!("{r}/"),
-            NodeInfo::Link { target } => format!("{r}@ -> {}", target.decorated()), // target could get its own color
+            NodeInfo::Dir { .. } => "/".to_string(),
+            NodeInfo::Link { target } => {
+                // target could get its own color
+                format!("@ -> {}{}", target.file_name(), target.decoration())
+            }
             NodeInfo::File { kind } => match kind {
-                FileKind::NamedPipe => format!("{r}|"),
-                FileKind::Socket => format!("{r}="),
-                FileKind::Executable => format!("{r}*"),
-                _ => r.to_string(),
-            },
+                FileKind::NamedPipe => "|",
+                FileKind::Socket => "=",
+                FileKind::Executable => "*",
+                _ => "",
+            }
+            .to_string(),
         }
     }
 
