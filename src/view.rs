@@ -155,9 +155,9 @@ impl View {
         self.at_cursor_mut().fold();
     }
 
-    pub fn unfold(&mut self, tree: &mut Tree) {
+    pub fn unfold(&mut self, tree: &mut Tree) -> io::Result<()> {
         let (node, state) = self.at_cursor_pair_mut(tree);
-        state.unfold(node).unwrap();
+        state.unfold(node)
     }
 
     pub fn unfolded(&self) -> bool {

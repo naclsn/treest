@@ -20,7 +20,7 @@ pub enum FileKind {
 #[derive(Serialize, Deserialize, Debug)]
 pub enum NodeInfo {
     Dir { loaded: bool, children: Vec<Node> },
-    Link { target: Box<Node> },
+    Link { target: Result<Box<Node>, PathBuf> },
     File { kind: FileKind },
 }
 
@@ -55,7 +55,13 @@ impl Display for Node {
                 }
             }
 
-            NodeInfo::Link { target } => write!(f, "{ident}{name}@ -> {}", target),
+            NodeInfo::Link { target } => {
+                write!(f, "{ident}{name}@ -> ")?;
+                match target {
+                    Ok(node) => write!(f, "{node}"),
+                    Err(path) => write!(f, "~{}~", path.to_string_lossy()),
+                }
+            }
 
             NodeInfo::File { kind } => match kind {
                 FileKind::NamedPipe => writeln!(f, "{ident}{name}|"),
@@ -105,10 +111,13 @@ impl Node {
             }
         } else if meta.is_symlink() {
             NodeInfo::Link {
-                target: Box::new({
+                target: {
                     let realpath = read_link(path.clone())?;
-                    Node::new(realpath.clone(), symlink_metadata(realpath)?)?
-                }),
+                    symlink_metadata(realpath.clone())
+                        .and_then(|lnmeta| Node::new(realpath.clone(), lnmeta))
+                        .map(|node| Box::new(node))
+                        .map_err(|_| realpath)
+                },
             }
         } else {
             NodeInfo::File { kind: meta.into() }
@@ -134,7 +143,7 @@ impl Node {
         match &self.info {
             NodeInfo::Dir { loaded, children } if *loaded => Some(children),
 
-            NodeInfo::Link { target } => target.loaded_children(),
+            NodeInfo::Link { target: Ok(target) } => target.loaded_children(),
 
             _ => None,
         }
@@ -144,7 +153,7 @@ impl Node {
         match &mut self.info {
             NodeInfo::Dir { loaded, children } if *loaded => Some(children),
 
-            NodeInfo::Link { target } => target.loaded_children_mut(),
+            NodeInfo::Link { target: Ok(target) } => target.loaded_children_mut(),
 
             _ => None,
         }
@@ -166,13 +175,22 @@ impl Node {
                 Ok(children)
             }
 
-            NodeInfo::Link { target } => target.load_children(),
+            NodeInfo::Link { target } => match target {
+                Ok(node) => node.load_children(),
+                Err(path) => Err(io::Error::new(
+                    io::ErrorKind::Other,
+                    format!(
+                        "(NotADirectory) cannot unfold file at {}",
+                        path.to_string_lossy()
+                    ),
+                )),
+            },
 
             NodeInfo::File { .. } => Err(io::Error::new(
                 io::ErrorKind::Other,
                 format!(
                     "(NotADirectory) cannot unfold file at {}",
-                    self.path.display()
+                    self.path.to_string_lossy()
                 ),
             )),
         }
@@ -189,10 +207,10 @@ impl Node {
     pub fn decoration(&self) -> String {
         match &self.info {
             NodeInfo::Dir { .. } => "/".to_string(),
-            NodeInfo::Link { target } => {
-                // target could get its own color
-                format!("@ -> {}{}", target.file_name(), target.decoration())
-            }
+            NodeInfo::Link { target } => match target {
+                Ok(node) => format!("@ -> {}{}", node.file_name(), node.decoration()), // YYY: target could get its own color...
+                Err(path) => format!("@ ~> {}", path.to_string_lossy()),
+            },
             NodeInfo::File { kind } => match kind {
                 FileKind::NamedPipe => "|",
                 FileKind::Socket => "=",
@@ -207,7 +225,13 @@ impl Node {
         let r = Style::default();
         match &self.info {
             NodeInfo::Dir { .. } => r.fg(Color::Blue).add_modifier(Modifier::BOLD),
-            NodeInfo::Link { target: _ } => r.fg(Color::Cyan).add_modifier(Modifier::BOLD), // LS_COLOR allows using target's
+            NodeInfo::Link { target } => match target {
+                Ok(_node) => r.fg(Color::Cyan).add_modifier(Modifier::BOLD), // LS_COLOR allows using target's
+                Err(_path) => r
+                    .fg(Color::Red)
+                    .bg(Color::Black)
+                    .add_modifier(Modifier::CROSSED_OUT),
+            },
             NodeInfo::File { kind } => match kind {
                 FileKind::NamedPipe => r.fg(Color::Yellow).bg(Color::Black),
                 FileKind::CharDevice => r

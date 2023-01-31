@@ -12,6 +12,7 @@ use std::{env::current_dir, error::Error, io};
 use tui::{
     backend::{Backend, CrosstermBackend},
     layout::{Constraint, Direction, Layout},
+    widgets::{Block, Borders},
     Terminal,
 };
 
@@ -54,12 +55,21 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>) -> io::Result<()> {
         terminal.draw(|f| {
             let chunks = Layout::default()
                 .direction(Direction::Vertical)
-                .margin(1)
+                //.margin(1)
                 .constraints([Constraint::Percentage(50), Constraint::Percentage(50)].as_ref())
                 .split(f.size());
 
-            f.render_stateful_widget(&mut tree, chunks[0], &mut view_a);
-            f.render_stateful_widget(&mut tree, chunks[1], &mut view_b);
+            let surr_a = Block::default().borders(Borders::ALL);
+            if 0 == which {
+                f.render_widget(surr_a.clone(), chunks[0]);
+            }
+            f.render_stateful_widget(&mut tree, surr_a.inner(chunks[0]), &mut view_a);
+
+            let surr_b = Block::default().borders(Borders::ALL);
+            if 1 == which {
+                f.render_widget(surr_b.clone(), chunks[1]);
+            }
+            f.render_stateful_widget(&mut tree, surr_b.inner(chunks[1]), &mut view_b);
         })?;
 
         let view = match which {
@@ -73,15 +83,17 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>) -> io::Result<()> {
                 KeyCode::Char('q') => return Ok(()),
 
                 KeyCode::Char('H') => view.fold(),
-                KeyCode::Char('L') => view.unfold(&mut tree),
+                KeyCode::Char('L') => match view.unfold(&mut tree) {
+                    _ => (),
+                },
 
                 KeyCode::Char('h') | KeyCode::Left => view.leave(),
                 KeyCode::Char('j') | KeyCode::Down => view.next(),
                 KeyCode::Char('k') | KeyCode::Up => view.prev(),
-                KeyCode::Char('l') | KeyCode::Right => {
-                    view.unfold(&mut tree);
-                    view.enter();
-                }
+                KeyCode::Char('l') | KeyCode::Right => match view.unfold(&mut tree) {
+                    Ok(()) => view.enter(),
+                    Err(_) => (),
+                },
 
                 KeyCode::Char(' ') => view.toggle_marked(),
 
