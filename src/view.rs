@@ -123,7 +123,9 @@ impl View {
     }
 
     pub fn enter(&mut self) {
-        self.cursor.push(0);
+        if !self.at_cursor().children.is_empty() {
+            self.cursor.push(0);
+        }
     }
 
     pub fn leave(&mut self) {

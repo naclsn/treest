@@ -53,10 +53,6 @@ fn render_r(
         };
 
         let file_name = tree_node.file_name();
-
-        // not grapheme counts 'cause not sure how the
-        // buffer deals with that; this is the safe approach
-        // (and more complex names may be cropped early)
         let run_len = file_name.len();
         let avail_len = (width - *indent) as usize;
 
@@ -69,21 +65,31 @@ fn render_r(
             }
         };
 
+        let deco = tree_node.decoration();
+        let deco_empty = if state_node.unfolded && state_node.children.is_empty() {
+            " (/)"
+        } else {
+            ""
+        };
+
         if run_len < 15 {
             let c = Spans::from(vec![
                 Span::styled(file_name, sty),
-                Span::raw(tree_node.decoration()),
+                Span::raw(deco),
+                Span::raw(deco_empty),
             ]);
 
             buf.set_spans(*indent, *line, &c, width - *indent);
         } else {
             let ext = tree_node.extension().unwrap_or("");
+            let cut = 1 + ext.len() + deco.len() + deco_empty.len();
 
             let c = Spans::from(vec![
-                Span::styled(&file_name[..avail_len - (1 + ext.len())], sty),
+                Span::styled(&file_name[..avail_len - cut], sty),
                 Span::styled("\u{2026}", sty),
                 Span::styled(ext, sty),
-                Span::raw(tree_node.decoration()),
+                Span::raw(deco),
+                Span::raw(deco_empty),
             ]);
 
             buf.set_spans(*indent, *line, &c, width - *indent);
