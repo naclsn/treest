@@ -34,11 +34,14 @@ const BRANCH_LAST: &str = "\u{2514}\u{2500}\u{2500}"; // _AN _HZ _HZ " ";
 const _TOP_OFFSCRN: &str = "\u{2506}\u{a0}\u{a0}"; // _UP _SP _SP " ";
 const _BOT_OFFSCRN: &str = "\u{2506}\u{a0}\u{a0}"; // _DW _SP _SP " ";
 
+const INDENT_W: u16 = 4;
+
 fn render_r(
     tree_node: &Node,
     state_node: &State,
     buf: &mut Buffer,
     (indent, line): (&mut u16, &mut u16),
+    (width, height): (u16, u16),
     cursor_path: Option<&[usize]>,
 ) {
     // this node
@@ -49,25 +52,49 @@ fn render_r(
             false
         };
 
-        let c = Spans::from(vec![
-            Span::styled(tree_node.file_name(), {
-                let style = tree_node.style();
-                if is_cursor {
-                    style.add_modifier(Modifier::REVERSED)
-                } else {
-                    style
-                }
-            }),
-            Span::raw(tree_node.decoration()),
-        ]);
+        let file_name = tree_node.file_name();
 
-        buf.set_spans(*indent * 4, *line, &c, 14);
+        // not grapheme counts 'cause not sure how the
+        // buffer deals with that; this is the safe approach
+        // (and more complex names may be cropped early)
+        let run_len = file_name.len();
+        let avail_len = (width - *indent) as usize;
+
+        let sty = {
+            let style = tree_node.style();
+            if is_cursor {
+                style.add_modifier(Modifier::REVERSED)
+            } else {
+                style
+            }
+        };
+
+        if run_len < 15 {
+            let c = Spans::from(vec![
+                Span::styled(file_name, sty),
+                Span::raw(tree_node.decoration()),
+            ]);
+
+            buf.set_spans(*indent, *line, &c, width - *indent);
+        } else {
+            let ext = tree_node.extension().unwrap_or("");
+
+            let c = Spans::from(vec![
+                Span::styled(&file_name[..avail_len - (1 + ext.len())], sty),
+                Span::styled("\u{2026}", sty),
+                Span::styled(ext, sty),
+                Span::raw(tree_node.decoration()),
+            ]);
+
+            buf.set_spans(*indent, *line, &c, width - *indent);
+        }
+
         *line += 1;
     }
 
     // recurse
     if state_node.unfolded && !state_node.children.is_empty() {
-        *indent += 1;
+        *indent += INDENT_W;
 
         let count = state_node.children.len();
         let chs = tree_node.loaded_children().unwrap();
@@ -81,7 +108,7 @@ fn render_r(
             let is_last = in_state_idx == count - 1;
 
             buf.set_string(
-                (*indent - 1) * 4,
+                *indent - INDENT_W,
                 *line,
                 if is_last { BRANCH_LAST } else { BRANCH },
                 Style::default(),
@@ -93,6 +120,7 @@ fn render_r(
                 state_node,
                 buf,
                 (indent, line),
+                (width, height),
                 cursor_path.and_then(|p_slice| {
                     if p_slice.is_empty() {
                         return None;
@@ -108,7 +136,7 @@ fn render_r(
             if !is_last {
                 for k in p_line + 1..*line {
                     buf.set_string(
-                        (*indent - 1) * 4,
+                        *indent - INDENT_W,
                         k,
                         INDENT, //if is_last { INDENT_LAST } else { INDENT },
                         Style::default(),
@@ -117,22 +145,24 @@ fn render_r(
             }
         }
 
-        *indent -= 1;
+        *indent -= INDENT_W;
     };
 }
 
 impl StatefulWidget for &mut Tree {
     type State = View;
 
-    fn render(self, _area: Rect, buf: &mut Buffer, state: &mut View) {
-        let mut line = 0;
-        let mut indent = 0;
+    fn render(self, area: Rect, buf: &mut Buffer, state: &mut View) {
+        let mut indent = area.x;
+        let mut line = area.y;
 
         render_r(
             &self.root,
             &state.root,
             buf,
+            // XXX: y u just not pass the `area`?
             (&mut indent, &mut line),
+            (area.width, area.height),
             Some(&state.cursor),
         );
 

@@ -182,6 +182,10 @@ impl Node {
         self.path.file_name().unwrap().to_str().unwrap()
     }
 
+    pub fn extension(&self) -> Option<&str> {
+        self.path.extension().and_then(|ostr| ostr.to_str())
+    }
+
     pub fn decoration(&self) -> String {
         match &self.info {
             NodeInfo::Dir { .. } => "/".to_string(),

@@ -11,6 +11,7 @@ use crossterm::{
 use std::{env::current_dir, error::Error, io};
 use tui::{
     backend::{Backend, CrosstermBackend},
+    layout::{Constraint, Direction, Layout},
     Terminal,
 };
 
@@ -41,13 +42,31 @@ fn main() -> Result<(), Box<dyn Error>> {
 fn run_app<B: Backend>(terminal: &mut Terminal<B>) -> io::Result<()> {
     let mut tree = Tree::new(current_dir().unwrap())?;
 
-    let mut view = View::new(&mut tree.root);
-    view.root.unfold(&mut tree.root)?;
+    let mut view_a = View::new(&mut tree.root);
+    view_a.root.unfold(&mut tree.root)?;
+
+    let mut view_b = View::new(&mut tree.root);
+    view_b.root.unfold(&mut tree.root)?;
+
+    let mut which = 0;
 
     loop {
         terminal.draw(|f| {
-            f.render_stateful_widget(&mut tree, f.size(), &mut view);
+            let chunks = Layout::default()
+                .direction(Direction::Vertical)
+                .margin(1)
+                .constraints([Constraint::Percentage(50), Constraint::Percentage(50)].as_ref())
+                .split(f.size());
+
+            f.render_stateful_widget(&mut tree, chunks[0], &mut view_a);
+            f.render_stateful_widget(&mut tree, chunks[1], &mut view_b);
         })?;
+
+        let view = match which {
+            0 => &mut view_a,
+            1 => &mut view_b,
+            _ => panic!(),
+        };
 
         if let Event::Key(key) = event::read()? {
             match key.code {
@@ -65,6 +84,8 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>) -> io::Result<()> {
                 }
 
                 KeyCode::Char(' ') => view.toggle_marked(),
+
+                KeyCode::Char('w') => which = 1 - which,
 
                 _ => (),
             } // match key.code
