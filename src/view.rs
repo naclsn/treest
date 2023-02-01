@@ -2,7 +2,7 @@ use crate::{node::Node, tree::Tree};
 use serde::{Deserialize, Serialize};
 use std::io;
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct State {
     pub unfolded: bool,
     pub marked: bool,
@@ -53,13 +53,13 @@ impl State {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Offset {
     pub shift: i32,  // horizontally
     pub scroll: i32, // vertically
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct View {
     pub root: State,
     pub cursor: Vec<usize>,
@@ -69,7 +69,7 @@ pub struct View {
 }
 
 impl View {
-    pub fn new(root: &mut Node) -> View {
+    pub fn new(root: &Node) -> View {
         View {
             root: State::new(root),
             cursor: Vec::new(),

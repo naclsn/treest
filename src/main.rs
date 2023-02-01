@@ -1,8 +1,10 @@
+mod app;
+mod commands;
 mod node;
 mod tree;
 mod view;
 
-use crate::{tree::Tree, view::View};
+use crate::{app::App, tree::Tree, view::View};
 use crossterm::{
     event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode},
     execute,
@@ -12,8 +14,7 @@ use serde_json;
 use std::{env::current_dir, error::Error, io};
 use tui::{
     backend::{Backend, CrosstermBackend},
-    layout::{Constraint, Direction, Layout},
-    widgets::{Block, Borders},
+    layout::Direction,
     Terminal,
 };
 
@@ -43,56 +44,35 @@ fn main() -> Result<(), Box<dyn Error>> {
 }
 
 fn run_app<B: Backend>(terminal: &mut Terminal<B>) -> io::Result<String> {
-    let mut tree = Tree::new(current_dir().unwrap())?;
-
-    let mut view_a = View::new(&mut tree.root);
-    view_a.root.unfold(&mut tree.root)?;
-
-    let mut view_b = View::new(&mut tree.root);
-    view_b.root.unfold(&mut tree.root)?;
-
-    let mut which = 0;
-    let mut split: Option<Direction> = None;
+    let mut app = App::new(current_dir().unwrap())?;
 
     loop {
-        terminal.draw(|f| match split.clone() {
-            Some(direction) => {
-                let chunks = Layout::default()
-                    .direction(direction)
-                    .constraints([Constraint::Percentage(50), Constraint::Percentage(50)].as_ref())
-                    .split(f.size());
+        terminal.draw(|f| app.draw(f))?;
 
-                let surr_a = Block::default().borders(Borders::ALL);
-                if 0 == which {
-                    f.render_widget(surr_a.clone(), chunks[0]);
+        // if do_event(&mut tree, view, &mut which, &mut split)? {
+        //     break;
+        // }
+
+        if let Event::Key(key) = event::read()? {
+            match key.code {
+                KeyCode::Char('q') => break,
+
+                KeyCode::Char('w') => {
+                    if let Event::Key(key) = event::read()? {
+                        match key.code {
+                            KeyCode::Char('s') => app = app.split_horizontal(),
+                            KeyCode::Char('v') => app = app.split_vertical(),
+                            _ => (),
+                        }
+                    }
                 }
-                f.render_stateful_widget(&mut tree, surr_a.inner(chunks[0]), &mut view_a);
 
-                let surr_b = Block::default().borders(Borders::ALL);
-                if 1 == which {
-                    f.render_widget(surr_b.clone(), chunks[1]);
-                }
-                f.render_stateful_widget(&mut tree, surr_b.inner(chunks[1]), &mut view_b);
+                _ => (),
             }
-            None => {
-                f.render_stateful_widget(&mut tree, f.size(), &mut view_a);
-            }
-        })?;
-
-        let view = match which {
-            0 => &mut view_a,
-            1 => &mut view_b,
-            _ => unreachable!(),
-        };
-
-        if do_event(&mut tree, view, &mut which, &mut split)? {
-            break;
         }
     } // loop
 
-    return Ok(format!("tree: {}\n", serde_json::to_string(&tree)?)
-        + &format!("view_a: {}\n", serde_json::to_string(&view_a)?)
-        + &format!("view_b: {}\n", serde_json::to_string(&view_b)?));
+    Ok(serde_json::to_string(&app)?)
 }
 
 fn do_event(

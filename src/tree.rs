@@ -194,7 +194,7 @@ fn render_r(
     };
 }
 
-impl StatefulWidget for &mut Tree {
+impl StatefulWidget for &Tree {
     type State = View;
 
     fn render(self, area: Rect, buf: &mut Buffer, state: &mut View) {
