@@ -1,6 +1,6 @@
 use crate::{
     node::Node,
-    view::{State, View},
+    view::{Offset, State, View},
 };
 use serde::{Deserialize, Serialize};
 use std::{
@@ -11,7 +11,7 @@ use std::{
 use tui::{
     buffer::Buffer,
     layout::Rect,
-    style::{Modifier, Style},
+    style::{Color, Modifier, Style},
     text::{Span, Spans},
     widgets::StatefulWidget,
 };
@@ -27,13 +27,12 @@ impl Display for Tree {
     }
 }
 
-const INDENT: &str = "\u{2502}\u{a0}\u{a0}"; // "|  "
-const BRANCH: &str = "\u{251c}\u{2500}\u{2500}"; // "|--"
-const BRANCH_LAST: &str = "\u{2514}\u{2500}\u{2500}"; // "L--"
-const _TOP_OFFSCRN: &str = "\u{2506}\u{a0}\u{a0}"; // ...
-const _BOT_OFFSCRN: &str = "\u{2506}\u{a0}\u{a0}"; // ...
-
-const INDENT_W: u16 = 4;
+const INDENT: &str = "\u{2502}\u{a0}\u{a0}"; //          "|  "
+const BRANCH: &str = "\u{251c}\u{2500}\u{2500}"; //      "|--"
+const BRANCH_LAST: &str = "\u{2514}\u{2500}\u{2500}"; // "`--"
+const _TOP_OFFSCRN: &str = "\u{2506}\u{a0}\u{a0}"; //     ...
+const _BOT_OFFSCRN: &str = "\u{2506}\u{a0}\u{a0}"; //     ...
+const INDENT_WIDTH: u16 = 4;
 
 fn render_name(
     tree_node: &Node,
@@ -48,11 +47,15 @@ fn render_name(
     }
 
     let file_name = tree_node.file_name();
-    let run_len = file_name.len();
-    let avail_len = (area.width - indent) as usize;
-
     let sty = {
-        let style = tree_node.style();
+        let style = if state_node.marked {
+            Style::default()
+                .fg(Color::Yellow)
+                .bg(Color::Black)
+                .add_modifier(Modifier::BOLD)
+        } else {
+            tree_node.style()
+        };
         if is_cursor {
             style.add_modifier(Modifier::REVERSED)
         } else {
@@ -61,30 +64,36 @@ fn render_name(
     };
 
     let deco = tree_node.decoration();
-    let deco_empty = if state_node.unfolded && state_node.children.is_empty() {
+
+    let raw_prefix = Span::styled(if state_node.marked { " " } else { "" }, sty);
+    let raw_suffix = Span::raw(if state_node.unfolded && state_node.children.is_empty() {
         " (/)"
     } else {
         ""
-    };
+    });
 
+    let run_len = file_name.len();
+    let avail_len = (area.width - indent) as usize;
     if run_len < avail_len {
         let c = Spans::from(vec![
+            raw_prefix,
             Span::styled(file_name, sty),
             Span::raw(deco),
-            Span::raw(deco_empty),
+            raw_suffix,
         ]);
 
         buf.set_spans(area.x + indent, area.y + line, &c, area.width - indent);
     } else {
         let ext = tree_node.extension().unwrap_or("");
-        let cut = 1 + ext.len() + deco.len() + deco_empty.len();
+        let cut = 1 + ext.len() + deco.len() + raw_prefix.width() + raw_suffix.width();
 
         let c = Spans::from(vec![
+            raw_prefix,
             Span::styled(&file_name[..avail_len - cut], sty),
             Span::styled("\u{2026}", sty),
             Span::styled(ext, sty),
             Span::raw(deco),
-            Span::raw(deco_empty),
+            raw_suffix,
         ]);
 
         buf.set_spans(area.x + indent, area.y + line, &c, area.width - indent);
@@ -95,7 +104,7 @@ fn render_r(
     tree_node: &Node,
     state_node: &State,
     buf: &mut Buffer,
-    (indent, line): (&mut i32, &mut i32),
+    curr: &mut Offset,
     area: Rect,
     cursor_path: Option<&[usize]>,
 ) {
@@ -103,12 +112,12 @@ fn render_r(
     // that's normal rust, or there's a bigger problem
 
     // this node
-    if 0 <= *indent && 0 <= *line {
+    if 0 <= curr.shift && 0 <= curr.scroll {
         render_name(
             tree_node,
             state_node,
             buf,
-            (*indent as u16, *line as u16),
+            (curr.shift as u16, curr.scroll as u16),
             area,
             if let Some(v) = cursor_path {
                 v.is_empty()
@@ -117,11 +126,11 @@ fn render_r(
             },
         );
     }
-    *line += 1;
+    curr.scroll += 1;
 
     // recurse
     if state_node.unfolded && !state_node.children.is_empty() {
-        *indent += INDENT_W as i32;
+        curr.shift += INDENT_WIDTH as i32;
 
         let count = state_node.children.len();
         let chs = tree_node.loaded_children().unwrap();
@@ -132,27 +141,27 @@ fn render_r(
             .map(|(in_node_idx, stt)| (chs.get(*in_node_idx).unwrap(), stt))
             .enumerate()
         {
-            if area.height as i32 <= *line {
+            if area.height as i32 <= curr.scroll {
                 break;
             }
 
             let is_last = in_state_idx == count - 1;
 
-            if INDENT_W as i32 <= *indent && 0 <= *line {
+            if INDENT_WIDTH as i32 <= curr.shift && 0 <= curr.scroll {
                 buf.set_string(
-                    area.x + (*indent as u16) - INDENT_W,
-                    area.y + (*line as u16),
+                    area.x + (curr.shift as u16) - INDENT_WIDTH,
+                    area.y + (curr.scroll as u16),
                     if is_last { BRANCH_LAST } else { BRANCH },
                     Style::default(),
                 );
             }
 
-            let p_line = *line;
+            let p_line = curr.scroll;
             render_r(
                 tree_node,
                 state_node,
                 buf,
-                (indent, line),
+                curr,
                 area,
                 cursor_path.and_then(|p_slice| {
                     if p_slice.is_empty() {
@@ -168,10 +177,10 @@ fn render_r(
 
             if !is_last {
                 let start = if p_line + 1 < 0 { 0 } else { p_line + 1 };
-                for k in start..*line {
-                    if INDENT_W as i32 <= *indent {
+                for k in start..curr.scroll {
+                    if INDENT_WIDTH as i32 <= curr.shift {
                         buf.set_string(
-                            area.x + (*indent as u16) - INDENT_W,
+                            area.x + (curr.shift as u16) - INDENT_WIDTH,
                             area.y + (k as u16),
                             INDENT,
                             Style::default(),
@@ -181,7 +190,7 @@ fn render_r(
             }
         }
 
-        *indent -= INDENT_W as i32;
+        curr.shift -= INDENT_WIDTH as i32;
     };
 }
 
@@ -191,30 +200,18 @@ impl StatefulWidget for &mut Tree {
     fn render(self, area: Rect, buf: &mut Buffer, state: &mut View) {
         let stride = 3;
 
-        let c_off = state.cursor_offset();
-        if c_off.scroll - 1 < stride {
-            state.offset.scroll += c_off.scroll - 1 - stride;
-        } else if (area.height as i32) - stride < c_off.scroll {
-            state.offset.scroll += c_off.scroll - 1 - ((area.height as i32) - stride - 1);
-        }
-        if state.offset.scroll < 0 {
-            state.offset.scroll = 0;
-        } else {
-            let total = state.visible_height() as i32;
-            if total - (area.height as i32) < state.offset.scroll {
-                state.offset.scroll = total - area.height as i32;
-            }
-        }
-        // state.ensure_cursor_within(area.width as i32, stride);
+        state.ensure_cursor_within(area.height as i32, stride);
 
-        let mut indent = -(state.offset.shift as i32);
-        let mut line = -(state.offset.scroll as i32);
+        let mut origin = Offset {
+            shift: -state.offset.shift,
+            scroll: -state.offset.scroll,
+        };
 
         render_r(
             &self.root,
             &state.root,
             buf,
-            (&mut indent, &mut line),
+            &mut origin,
             area,
             Some(&state.cursor),
         );

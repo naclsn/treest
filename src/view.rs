@@ -1,7 +1,8 @@
 use crate::{node::Node, tree::Tree};
+use serde::{Deserialize, Serialize};
 use std::io;
 
-#[derive(Debug)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct State {
     pub unfolded: bool,
     pub marked: bool,
@@ -13,7 +14,7 @@ impl State {
         State {
             unfolded: false,
             marked: false,
-            children: node.loaded_children().map_or(vec![], |chs| {
+            children: node.loaded_children().map_or(Vec::new(), |chs| {
                 chs.iter()
                     .enumerate()
                     .map(|(idx, ch)| (idx, State::new(ch)))
@@ -52,14 +53,13 @@ impl State {
     }
 }
 
-#[derive(Debug)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct Offset {
     pub shift: i32,  // horizontally
     pub scroll: i32, // vertically
 }
 
-// #[derive(serde::Serialize, serde::Deserialize, Debug)]
-#[derive(Debug)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct View {
     pub root: State,
     pub cursor: Vec<usize>,
@@ -72,7 +72,7 @@ impl View {
     pub fn new(root: &mut Node) -> View {
         View {
             root: State::new(root),
-            cursor: vec![],
+            cursor: Vec::new(),
             offset: Offset {
                 shift: 0,
                 scroll: 0,
@@ -117,15 +117,15 @@ impl View {
         self.fit_offset(height);
     }
 
-    pub fn fit_offset(&mut self, height: i32) {
+    pub fn fit_offset(&mut self, _height: i32) {
         if self.offset.scroll < 0 {
             self.offset.scroll = 0;
-        } else {
-            let total = self.visible_height() as i32;
-            if height < total && total - height < self.offset.scroll {
-                self.offset.scroll = total - height;
-            }
-        }
+        } /*else {
+              let total = self.visible_height() as i32;
+              if height < total && total - height < self.offset.scroll {
+                  self.offset.scroll = total - height;
+              }
+          }*/
     }
 
     pub fn at_cursor(&self) -> &State {

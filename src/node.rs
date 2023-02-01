@@ -208,7 +208,7 @@ impl Node {
         match &self.info {
             NodeInfo::Dir { .. } => "/".to_string(),
             NodeInfo::Link { target } => match target {
-                Ok(node) => format!("@ -> {}{}", node.file_name(), node.decoration()), // YYY: target could get its own color...
+                Ok(node) => format!("@ -> {}{}", node.file_name(), node.decoration()),
                 Err(path) => format!("@ ~> {}", path.to_string_lossy()),
             },
             NodeInfo::File { kind } => match kind {
