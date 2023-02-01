@@ -45,6 +45,8 @@ impl State {
 pub struct View {
     pub root: State,
     pub cursor: Vec<usize>,
+    pub scroll: usize,
+    pub shift: usize,
     // cursor: &'tree Node,
     // selection: Vec<State>,
 }
@@ -54,6 +56,8 @@ impl View {
         View {
             root: State::new(root),
             cursor: vec![],
+            scroll: 0,
+            shift: 0,
             // selection: vec![],
         }
     }

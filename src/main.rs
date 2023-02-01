@@ -99,6 +99,29 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>) -> io::Result<()> {
 
                 KeyCode::Char('w') => which = 1 - which,
 
+                KeyCode::Char('y') => {
+                    if 0 < view.scroll {
+                        view.scroll -= 1
+                    }
+                }
+                KeyCode::Char('e') => {
+                    if true {
+                        // TODO: max scrolling
+                        view.scroll += 1
+                    }
+                }
+                KeyCode::Char('Y') => {
+                    if 0 < view.shift {
+                        view.shift -= 1
+                    }
+                }
+                KeyCode::Char('E') => {
+                    if true {
+                        // TODO: max shifting
+                        view.shift += 1
+                    }
+                }
+
                 _ => (),
             } // match key.code
         }

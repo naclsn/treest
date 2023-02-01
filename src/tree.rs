@@ -95,32 +95,33 @@ fn render_r(
     tree_node: &Node,
     state_node: &State,
     buf: &mut Buffer,
-    (indent, line): (&mut u16, &mut u16),
+    (indent, line): (&mut i32, &mut i32),
     area: Rect,
     cursor_path: Option<&[usize]>,
 ) {
-    // if area.height <= *line + 1 {
-    //     return;
-    // }
+    // XXX: too many numeric type conversion, either
+    // that's normal rust, or there's a bigger problem
 
     // this node
-    render_name(
-        tree_node,
-        state_node,
-        buf,
-        (*indent, *line),
-        area,
-        if let Some(v) = cursor_path {
-            v.is_empty()
-        } else {
-            false
-        },
-    );
+    if 0 <= *indent && 0 <= *line {
+        render_name(
+            tree_node,
+            state_node,
+            buf,
+            (*indent as u16, *line as u16),
+            area,
+            if let Some(v) = cursor_path {
+                v.is_empty()
+            } else {
+                false
+            },
+        );
+    }
     *line += 1;
 
     // recurse
     if state_node.unfolded && !state_node.children.is_empty() {
-        *indent += INDENT_W;
+        *indent += INDENT_W as i32;
 
         let count = state_node.children.len();
         let chs = tree_node.loaded_children().unwrap();
@@ -131,18 +132,20 @@ fn render_r(
             .map(|(in_node_idx, stt)| (chs.get(*in_node_idx).unwrap(), stt))
             .enumerate()
         {
-            if area.height <= *line {
+            if area.height as i32 <= *line {
                 break;
             }
 
             let is_last = in_state_idx == count - 1;
 
-            buf.set_string(
-                area.x + *indent - INDENT_W,
-                area.y + *line,
-                if is_last { BRANCH_LAST } else { BRANCH },
-                Style::default(),
-            );
+            if INDENT_W as i32 <= *indent && 0 <= *line {
+                buf.set_string(
+                    area.x + (*indent as u16) - INDENT_W,
+                    area.y + (*line as u16),
+                    if is_last { BRANCH_LAST } else { BRANCH },
+                    Style::default(),
+                );
+            }
 
             let p_line = *line;
             render_r(
@@ -164,18 +167,21 @@ fn render_r(
             );
 
             if !is_last {
-                for k in p_line + 1..*line {
-                    buf.set_string(
-                        area.x + *indent - INDENT_W,
-                        area.y + k,
-                        INDENT,
-                        Style::default(),
-                    );
+                let start = if p_line + 1 < 0 { 0 } else { p_line + 1 };
+                for k in start..*line {
+                    if INDENT_W as i32 <= *indent {
+                        buf.set_string(
+                            area.x + (*indent as u16) - INDENT_W,
+                            area.y + (k as u16),
+                            INDENT,
+                            Style::default(),
+                        );
+                    }
                 }
             }
         }
 
-        *indent -= INDENT_W;
+        *indent -= INDENT_W as i32;
     };
 }
 
@@ -183,8 +189,8 @@ impl StatefulWidget for &mut Tree {
     type State = View;
 
     fn render(self, area: Rect, buf: &mut Buffer, state: &mut View) {
-        let mut indent = 0;
-        let mut line = 0;
+        let mut indent = -(state.shift as i32);
+        let mut line = -(state.scroll as i32);
 
         render_r(
             &self.root,
