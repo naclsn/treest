@@ -50,26 +50,36 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>) -> io::Result<()> {
     view_b.root.unfold(&mut tree.root)?;
 
     let mut which = 0;
+    let mut split: Option<Direction> = None;
 
     loop {
         terminal.draw(|f| {
-            let chunks = Layout::default()
-                .direction(Direction::Vertical)
-                //.margin(1)
-                .constraints([Constraint::Percentage(50), Constraint::Percentage(50)].as_ref())
-                .split(f.size());
+            match split.clone() {
+                Some(direction) => {
+                    let chunks = Layout::default()
+                        .direction(direction)
+                        //.margin(1)
+                        .constraints(
+                            [Constraint::Percentage(50), Constraint::Percentage(50)].as_ref(),
+                        )
+                        .split(f.size());
 
-            let surr_a = Block::default().borders(Borders::ALL);
-            if 0 == which {
-                f.render_widget(surr_a.clone(), chunks[0]);
-            }
-            f.render_stateful_widget(&mut tree, surr_a.inner(chunks[0]), &mut view_a);
+                    let surr_a = Block::default().borders(Borders::ALL);
+                    if 0 == which {
+                        f.render_widget(surr_a.clone(), chunks[0]);
+                    }
+                    f.render_stateful_widget(&mut tree, surr_a.inner(chunks[0]), &mut view_a);
 
-            let surr_b = Block::default().borders(Borders::ALL);
-            if 1 == which {
-                f.render_widget(surr_b.clone(), chunks[1]);
+                    let surr_b = Block::default().borders(Borders::ALL);
+                    if 1 == which {
+                        f.render_widget(surr_b.clone(), chunks[1]);
+                    }
+                    f.render_stateful_widget(&mut tree, surr_b.inner(chunks[1]), &mut view_b);
+                }
+                None => {
+                    f.render_stateful_widget(&mut tree, f.size(), &mut view_a);
+                }
             }
-            f.render_stateful_widget(&mut tree, surr_b.inner(chunks[1]), &mut view_b);
         })?;
 
         let view = match which {
@@ -97,28 +107,47 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>) -> io::Result<()> {
 
                 KeyCode::Char(' ') => view.toggle_marked(),
 
-                KeyCode::Char('w') => which = 1 - which,
+                KeyCode::Char('w') => {
+                    if let Event::Key(key) = event::read()? {
+                        match key.code {
+                            KeyCode::Char('s') => split = Some(Direction::Vertical),
+                            KeyCode::Char('v') => split = Some(Direction::Horizontal),
+                            KeyCode::Char('w') => {
+                                if split.is_some() {
+                                    which = 1 - which;
+                                }
+                            }
+                            KeyCode::Char('q') => split = None,
+                            KeyCode::Char('t') => match split {
+                                Some(Direction::Horizontal) => split = Some(Direction::Vertical),
+                                Some(Direction::Vertical) => split = Some(Direction::Horizontal),
+                                None => (),
+                            },
+                            _ => (),
+                        }
+                    }
+                }
 
                 KeyCode::Char('y') => {
-                    if 0 < view.scroll {
-                        view.scroll -= 1
+                    if 0 < view.offset.scroll {
+                        view.offset.scroll -= 1
                     }
                 }
                 KeyCode::Char('e') => {
                     if true {
                         // TODO: max scrolling
-                        view.scroll += 1
+                        view.offset.scroll += 1
                     }
                 }
                 KeyCode::Char('Y') => {
-                    if 0 < view.shift {
-                        view.shift -= 1
+                    if 0 < view.offset.shift {
+                        view.offset.shift -= 1
                     }
                 }
                 KeyCode::Char('E') => {
                     if true {
                         // TODO: max shifting
-                        view.shift += 1
+                        view.offset.shift += 1
                     }
                 }
 

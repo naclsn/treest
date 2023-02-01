@@ -189,8 +189,26 @@ impl StatefulWidget for &mut Tree {
     type State = View;
 
     fn render(self, area: Rect, buf: &mut Buffer, state: &mut View) {
-        let mut indent = -(state.shift as i32);
-        let mut line = -(state.scroll as i32);
+        let stride = 3;
+
+        let c_off = state.cursor_offset();
+        if c_off.scroll - 1 < stride {
+            state.offset.scroll += c_off.scroll - 1 - stride;
+        } else if (area.height as i32) - stride < c_off.scroll {
+            state.offset.scroll += c_off.scroll - 1 - ((area.height as i32) - stride - 1);
+        }
+        if state.offset.scroll < 0 {
+            state.offset.scroll = 0;
+        } else {
+            let total = state.visible_height() as i32;
+            if total - (area.height as i32) < state.offset.scroll {
+                state.offset.scroll = total - area.height as i32;
+            }
+        }
+        // state.ensure_cursor_within(area.width as i32, stride);
+
+        let mut indent = -(state.offset.shift as i32);
+        let mut line = -(state.offset.scroll as i32);
 
         render_r(
             &self.root,
@@ -200,13 +218,6 @@ impl StatefulWidget for &mut Tree {
             area,
             Some(&state.cursor),
         );
-
-        // buf.set_string(
-        //     area.x + indent,
-        //     area.y + line,
-        //     format!("=== {:?}", state.cursor),
-        //     Style::default(),
-        // );
     }
 }
 

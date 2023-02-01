@@ -22,6 +22,18 @@ impl State {
         }
     }
 
+    pub fn visible_height(&self) -> usize {
+        if self.unfolded {
+            1 + self
+                .children
+                .iter()
+                .map(|(_, ch)| ch.visible_height())
+                .sum::<usize>()
+        } else {
+            1
+        }
+    }
+
     pub fn unfold(&mut self, node: &mut Node) -> io::Result<()> {
         if self.children.is_empty() {
             self.children = node.load_children().map(|chs| {
@@ -40,13 +52,18 @@ impl State {
     }
 }
 
+#[derive(Debug)]
+pub struct Offset {
+    pub shift: i32,  // horizontally
+    pub scroll: i32, // vertically
+}
+
 // #[derive(serde::Serialize, serde::Deserialize, Debug)]
 #[derive(Debug)]
 pub struct View {
     pub root: State,
     pub cursor: Vec<usize>,
-    pub scroll: usize,
-    pub shift: usize,
+    pub offset: Offset,
     // cursor: &'tree Node,
     // selection: Vec<State>,
 }
@@ -56,9 +73,58 @@ impl View {
         View {
             root: State::new(root),
             cursor: vec![],
-            scroll: 0,
-            shift: 0,
+            offset: Offset {
+                shift: 0,
+                scroll: 0,
+            },
             // selection: vec![],
+        }
+    }
+
+    pub fn cursor_offset(&self) -> Offset {
+        let acc = self
+            .cursor
+            .iter()
+            .fold((&self.root, 1), |(state, acc), idx| {
+                let r = 1
+                    + acc
+                    + state.children[0..*idx]
+                        .iter()
+                        .map(|(_, ch)| ch.visible_height())
+                        .sum::<usize>();
+                let s = &state.children[*idx].1;
+                (s, r)
+            })
+            .1;
+        let len = self.cursor.len() as i32;
+        Offset {
+            shift: len * 4 - self.offset.shift,
+            scroll: acc as i32 - self.offset.scroll,
+        }
+    }
+
+    pub fn visible_height(&self) -> usize {
+        self.root.visible_height()
+    }
+
+    pub fn ensure_cursor_within(&mut self, height: i32, stride: i32) {
+        let c_off = self.cursor_offset();
+        if c_off.scroll - 1 < stride {
+            self.offset.scroll += c_off.scroll - 1 - stride;
+        } else if height - stride < c_off.scroll {
+            self.offset.scroll += c_off.scroll - 1 - (height - stride - 1);
+        }
+        self.fit_offset(height);
+    }
+
+    pub fn fit_offset(&mut self, height: i32) {
+        if self.offset.scroll < 0 {
+            self.offset.scroll = 0;
+        } else {
+            let total = self.visible_height() as i32;
+            if height < total && total - height < self.offset.scroll {
+                self.offset.scroll = total - height;
+            }
         }
     }
 
