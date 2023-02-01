@@ -1,4 +1,5 @@
-use crate::{Tree, View};
+use crate::{commands::CommandMap, tree::Tree, view::View};
+use crossterm::event::{Event, KeyCode, KeyModifiers};
 use serde::{Deserialize, Serialize};
 use std::{io, iter, path::PathBuf};
 use tui::{
@@ -19,6 +20,13 @@ pub struct App {
     tree: Tree,
     views: ViewTree,
     focus: Vec<usize>,
+
+    #[serde(skip_serializing, skip_deserializing)]
+    bindings: CommandMap,
+    #[serde(skip_serializing, skip_deserializing)]
+    pending: Vec<char>,
+    #[serde(skip_serializing, skip_deserializing)]
+    quit: bool,
 }
 
 fn draw_r<B: Backend>(
@@ -80,7 +88,7 @@ fn draw_r<B: Backend>(
 }
 
 impl App {
-    pub fn new(path: PathBuf) -> io::Result<App> {
+    pub fn new(path: PathBuf, bindings: CommandMap) -> io::Result<App> {
         let mut tree = Tree::new(path)?;
         let mut view = View::new(&tree.root);
         view.root.unfold(&mut tree.root)?;
@@ -88,7 +96,17 @@ impl App {
             tree,
             views: ViewTree::Leaf(view),
             focus: Vec::new(),
+            bindings,
+            pending: Vec::new(),
+            quit: false,
         })
+    }
+
+    pub fn finish(&mut self) {
+        self.quit = true;
+    }
+    pub fn done(&self) -> bool {
+        self.quit
     }
 
     pub fn draw<B: Backend>(&mut self, f: &mut Frame<'_, B>) {
@@ -98,6 +116,32 @@ impl App {
                 draw_r(&mut self.views, &self.tree, f, f.size(), Some(&self.focus))
             }
         }
+    }
+
+    pub fn do_event(mut self, event: Event) -> App {
+        if let Event::Key(key) = event {
+            if let KeyCode::Char(c) = key.code {
+                // ZZZ: hard-coded for now
+                if 'c' == c && key.modifiers.contains(KeyModifiers::CONTROL) {
+                    self.finish();
+                    return self;
+                }
+
+                self.pending.push(c);
+                let (maybe_action, continues) = self.bindings.try_get_action(&self.pending);
+
+                if let Some(action) = maybe_action {
+                    self.pending.clear();
+                    return action(self);
+                }
+                if !continues {
+                    self.pending.clear();
+                }
+            } else if let KeyCode::Esc = key.code {
+                self.pending.clear();
+            }
+        }
+        self
     }
 
     pub fn focused(&self) -> &View {

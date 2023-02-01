@@ -4,7 +4,7 @@ mod node;
 mod tree;
 mod view;
 
-use crate::{app::App, tree::Tree, view::View};
+use crate::{app::App, commands::CommandMap, tree::Tree, view::View};
 use crossterm::{
     event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode},
     execute,
@@ -44,33 +44,12 @@ fn main() -> Result<(), Box<dyn Error>> {
 }
 
 fn run_app<B: Backend>(terminal: &mut Terminal<B>) -> io::Result<String> {
-    let mut app = App::new(current_dir().unwrap())?;
+    let mut app = App::new(current_dir().unwrap(), CommandMap::default())?;
 
-    loop {
+    while !app.done() {
         terminal.draw(|f| app.draw(f))?;
-
-        // if do_event(&mut tree, view, &mut which, &mut split)? {
-        //     break;
-        // }
-
-        if let Event::Key(key) = event::read()? {
-            match key.code {
-                KeyCode::Char('q') => break,
-
-                KeyCode::Char('w') => {
-                    if let Event::Key(key) = event::read()? {
-                        match key.code {
-                            KeyCode::Char('s') => app = app.split_horizontal(),
-                            KeyCode::Char('v') => app = app.split_vertical(),
-                            _ => (),
-                        }
-                    }
-                }
-
-                _ => (),
-            }
-        }
-    } // loop
+        app = app.do_event(event::read()?);
+    }
 
     Ok(serde_json::to_string(&app)?)
 }
@@ -104,7 +83,7 @@ fn do_event(
             KeyCode::Char('g') => {
                 if let Event::Key(key) = event::read()? {
                     match key.code {
-                        KeyCode::Char('g') => view.cursor = Vec::new(),
+                        KeyCode::Char('g') => view.cursor.clear(),
                         _ => (),
                     }
                 }
