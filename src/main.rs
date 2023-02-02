@@ -1,5 +1,6 @@
 mod app;
 mod commands;
+mod line;
 mod node;
 mod tree;
 mod view;

@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::{
     fmt::{self, Display, Formatter},
-    fs::{read_dir, read_link, symlink_metadata, Metadata},
+    fs::{metadata, read_dir, read_link, symlink_metadata, Metadata},
     io,
     path::{Path, PathBuf},
 };
@@ -27,6 +27,8 @@ pub enum NodeInfo {
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Node {
     pub path: PathBuf,
+    #[serde(skip_serializing, skip_deserializing)]
+    pub meta: Option<Metadata>,
     pub info: NodeInfo,
 }
 
@@ -74,8 +76,8 @@ impl Display for Node {
 }
 
 #[cfg(unix)]
-impl From<Metadata> for FileKind {
-    fn from(meta: Metadata) -> FileKind {
+impl From<&Metadata> for FileKind {
+    fn from(meta: &Metadata) -> FileKind {
         use std::os::unix::fs::FileTypeExt;
         use std::os::unix::fs::PermissionsExt;
         let ft = meta.file_type();
@@ -96,8 +98,8 @@ impl From<Metadata> for FileKind {
 }
 
 #[cfg(windows)]
-impl From<Metadata> for FileKind {
-    fn from(meta: Metadata) -> FileKind {
+impl From<&Metadata> for FileKind {
+    fn from(meta: &Metadata) -> FileKind {
         FileKind::Regular
     }
 }
@@ -120,14 +122,23 @@ impl Node {
                 },
             }
         } else {
-            NodeInfo::File { kind: meta.into() }
+            NodeInfo::File {
+                kind: (&meta).into(),
+            }
         };
-        Ok(Node { path, info })
+
+        Ok(Node {
+            path,
+            meta: Some(meta),
+            info,
+        })
     }
 
     pub fn new_root(path: PathBuf) -> Node {
+        let meta = metadata(path.clone()).ok();
         Node {
             path,
+            meta,
             info: NodeInfo::Dir {
                 loaded: false,
                 children: Vec::new(),

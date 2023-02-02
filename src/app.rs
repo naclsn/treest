@@ -1,4 +1,9 @@
-use crate::{commands::CommandMap, tree::Tree, view::View};
+use crate::{
+    commands::CommandMap,
+    line::{Line, Status},
+    tree::Tree,
+    view::View,
+};
 use crossterm::event::{Event, KeyCode, KeyModifiers};
 use serde::{Deserialize, Serialize};
 use std::{io, iter, path::PathBuf};
@@ -24,7 +29,8 @@ pub struct App {
     #[serde(skip_serializing, skip_deserializing)]
     bindings: CommandMap,
     #[serde(skip_serializing, skip_deserializing)]
-    pending: Vec<char>,
+    status: Status,
+    // pending: Vec<char>,
     #[serde(skip_serializing, skip_deserializing)]
     quit: bool,
 }
@@ -97,7 +103,8 @@ impl App {
             views: ViewTree::Leaf(view),
             focus: Vec::new(),
             bindings: CommandMap::default(),
-            pending: Vec::new(),
+            status: Status::default(),
+            // pending: Vec::new(),
             quit: false,
         })
     }
@@ -127,16 +134,18 @@ impl App {
             }
         }
 
-        // TODO: have available:
-        // - pending mode
-        // - abs/rel root path, stat/mod, ...
-        // - abs/rel current node path, stat/mod, ...
-        // - (running background tasks?)
-        // - ...
-        f.render_widget(
-            Block::default().title(self.tree.root.path.to_string_lossy().to_string()),
-            line,
+        let (pair, status) = (
+            {
+                //self.focused_and_tree() // y this no work! rust?
+                let ViewTree::Leaf(r) = self.focus.iter().fold(&self.views, |acc, idx| {
+                    let ViewTree::Split(chs, _) = acc else { unreachable!() };
+                    chs.get(*idx).unwrap()
+                }) else { unreachable!() };
+                (r, &self.tree)
+            },
+            &mut self.status,
         );
+        f.render_stateful_widget(Line::new(pair), line, status);
     }
 
     pub fn do_event(mut self, event: Event) -> App {
@@ -148,18 +157,18 @@ impl App {
                     return self;
                 }
 
-                self.pending.push(c);
-                let (maybe_action, continues) = self.bindings.try_get_action(&self.pending);
+                self.status.push_pending(c);
+                let (may, continues) = self.bindings.try_get_action(&self.status.get_pending());
 
-                if let Some(action) = maybe_action {
-                    self.pending.clear();
+                if let Some(action) = may {
+                    self.status.clear_pending();
                     return action(self, &[]);
                 }
                 if !continues {
-                    self.pending.clear();
+                    self.status.clear_pending();
                 }
             } else if let KeyCode::Esc = key.code {
-                self.pending.clear();
+                self.status.clear_pending();
             }
         }
         self
