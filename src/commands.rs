@@ -2,20 +2,27 @@ use crate::app::App;
 use lazy_static::lazy_static;
 use std::{collections::HashMap, default::Default};
 
-type Action = fn(App /*, &[&str]*/) -> App;
+type Action = fn(App, &[&str]) -> App;
 
-#[derive(Debug)]
 enum Command {
     Immediate(Action),
     Pending(HashMap<char, Command>),
 }
 
-#[derive(Debug)]
 pub struct CommandMap(HashMap<char, Command>);
 
 macro_rules! make_map_one {
     ($key:literal => $func:ident) => {
         ($key, Command::Immediate($func))
+    };
+    ($key:literal => ($func:ident, $($bound:literal),+)) => {
+        ($key, Command::Immediate(|app, args| {
+            let bound = &[$($bound),+];
+            let mut all = Vec::with_capacity(bound.len() + args.len());
+            all.extend_from_slice(bound);
+            all.extend_from_slice(args);
+            $func(app, &all)
+        }))
     };
     ($key:literal => [$(($key2:literal, $value:tt),)*]) => {
         ($key, Command::Pending(make_map!($(($key2, $value),)*)))
@@ -35,7 +42,10 @@ impl Default for CommandMap {
         CommandMap(make_map!(
             ('q', quit),
             ('Q', quit),
-            ('w', [('s', split_horizontal), ('v', split_vertical),]),
+            (
+                'w',
+                [('s', (split, "horizontal")), ('v', (split, "vertical")),]
+            ),
             ('?', help),
             (':', command),
             ('h', leave_node),
@@ -69,7 +79,6 @@ impl CommandMap {
     }
 }
 
-#[derive(Debug)]
 pub struct StaticCommand {
     name: &'static str,
     doc: &'static str,
@@ -88,8 +97,8 @@ macro_rules! make_lst_one {
         )
     };
     ($name:ident = $action:expr) => {
-        fn $name(app: App) -> App {
-            $action(app)
+        fn $name(app: App, args: &[&str]) -> App {
+            $action(app, args)
         }
     };
 }
@@ -106,27 +115,32 @@ macro_rules! make_lst {
 }
 
 make_lst!(
-    help = ("help", |app: App| {
+    help = ("help", |app: App, _| {
         for (_, com) in COMMAND_MAP.iter() {
             println!("{}:\n\t{}", com.name, com.doc);
         }
         app
     }),
-    command = ("command", |app: App| {
-        if let Some(com) = COMMAND_MAP.get("help") {
+    command = ("command", |app: App, args: &[&str]| {
+        if let Some(com) = COMMAND_MAP.get(args[0]) {
             let action = com.action;
-            action(app)
+            action(app, &args[1..])
         } else {
             app
         }
     }),
-    quit = ("quit", |mut app: App| {
+    quit = ("quit", |mut app: App, _| {
         app.finish();
         app
     }),
-    split_horizontal = ("split_horizontal", App::split_horizontal),
-    split_vertical = ("split_vertical", App::split_vertical),
-    enter_node = ("enter_node", |mut app: App| {
+    split = ("split", |app: App, args: &[&str]| {
+        match args.get(0) {
+            Some(&"horizontal") => app.split_horizontal(),
+            Some(&"vertical") => app.split_vertical(),
+            _ => app,
+        }
+    }),
+    enter_node = ("enter_node", |mut app: App, _| {
         let (view, tree) = app.focused_and_tree_mut();
         match view.unfold(tree) {
             Ok(()) => view.enter(),
@@ -134,15 +148,15 @@ make_lst!(
         }
         app
     }),
-    leave_node = ("leave_node", |mut app: App| {
+    leave_node = ("leave_node", |mut app: App, _| {
         app.focused_mut().leave();
         app
     }),
-    next_node = ("next_node", |mut app: App| {
+    next_node = ("next_node", |mut app: App, _| {
         app.focused_mut().next();
         app
     }),
-    prev_node = ("prev_node", |mut app: App| {
+    prev_node = ("prev_node", |mut app: App, _| {
         app.focused_mut().prev();
         app
     }),

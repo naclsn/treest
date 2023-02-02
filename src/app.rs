@@ -114,21 +114,28 @@ impl App {
     }
 
     pub fn draw<B: Backend>(&mut self, f: &mut Frame<'_, B>) {
-        let xyz = Layout::default()
+        let main0_line1 = Layout::default()
             .direction(Direction::Vertical)
             .constraints([Constraint::Min(0), Constraint::Length(1)].as_ref())
             .split(f.size());
+        let (main, line) = (main0_line1[0], main0_line1[1]);
 
         match &mut self.views {
-            ViewTree::Leaf(view) => f.render_stateful_widget(&self.tree, xyz[0], view),
+            ViewTree::Leaf(view) => f.render_stateful_widget(&self.tree, main, view),
             ViewTree::Split(_, _) => {
-                draw_r(&mut self.views, &self.tree, f, xyz[0], Some(&self.focus))
+                draw_r(&mut self.views, &self.tree, f, main, Some(&self.focus))
             }
         }
 
+        // TODO: have available:
+        // - pending mode
+        // - abs/rel root path, stat/mod, ...
+        // - abs/rel current node path, stat/mod, ...
+        // - (running background tasks?)
+        // - ...
         f.render_widget(
             Block::default().title(self.tree.root.path.to_string_lossy().to_string()),
-            xyz[1],
+            line,
         );
     }
 
@@ -146,7 +153,7 @@ impl App {
 
                 if let Some(action) = maybe_action {
                     self.pending.clear();
-                    return action(self);
+                    return action(self, &[]);
                 }
                 if !continues {
                     self.pending.clear();
