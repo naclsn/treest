@@ -15,7 +15,7 @@ enum ViewTree {
     Split(Vec<ViewTree>, u8), // XXX: tui::layout::Direction not serializable?
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize)]
 pub struct App {
     tree: Tree,
     views: ViewTree,
@@ -88,7 +88,7 @@ fn draw_r<B: Backend>(
 }
 
 impl App {
-    pub fn new(path: PathBuf, bindings: CommandMap) -> io::Result<App> {
+    pub fn new(path: PathBuf) -> io::Result<App> {
         let mut tree = Tree::new(path)?;
         let mut view = View::new(&tree.root);
         view.root.unfold(&mut tree.root)?;
@@ -96,10 +96,14 @@ impl App {
             tree,
             views: ViewTree::Leaf(view),
             focus: Vec::new(),
-            bindings,
+            bindings: CommandMap::default(),
             pending: Vec::new(),
             quit: false,
         })
+    }
+
+    pub fn set_bindings(&mut self, bindings: CommandMap) {
+        self.bindings = bindings;
     }
 
     pub fn finish(&mut self) {
@@ -110,6 +114,7 @@ impl App {
     }
 
     pub fn draw<B: Backend>(&mut self, f: &mut Frame<'_, B>) {
+        // TODO: bottom line (status line ish)
         match &mut self.views {
             ViewTree::Leaf(view) => f.render_stateful_widget(&self.tree, f.size(), view),
             ViewTree::Split(_, _) => {

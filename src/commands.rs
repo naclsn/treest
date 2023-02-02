@@ -103,12 +103,20 @@ macro_rules! make_lst {
 }
 
 make_lst! {
-    help: "help" = |mut app: App| {
+    help: "help" = |app: App| {
         for (_, com) in every_commands() {
             println!("{}:\n\t{}", com.name, com.doc);
         }
-        app.finish();
         app
+    };
+
+    command: "command" = |app: App| {
+        if let Some(com) = every_commands().get("help") {
+            let action = com.action;
+            action(app)
+        } else {
+            app
+        }
     };
 
     quit: "quit" = |mut app: App| {

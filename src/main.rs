@@ -4,7 +4,7 @@ mod node;
 mod tree;
 mod view;
 
-use crate::{app::App, commands::CommandMap, tree::Tree, view::View};
+use crate::{app::App, tree::Tree, view::View};
 use crossterm::{
     event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode},
     execute,
@@ -15,25 +15,38 @@ use std::{env::current_dir, error::Error, io};
 use tui::{
     backend::{Backend, CrosstermBackend},
     layout::Direction,
-    Terminal,
+    terminal::Terminal,
 };
 
+struct TerminalWrap<B: Backend + io::Write>(Terminal<B>);
+
+impl<W: io::Write> TerminalWrap<CrosstermBackend<W>> {
+    fn new(mut bla: W) -> Result<TerminalWrap<CrosstermBackend<W>>, Box<dyn Error>> {
+        enable_raw_mode()?;
+        execute!(bla, EnterAlternateScreen, EnableMouseCapture)?;
+        let backend = CrosstermBackend::new(bla);
+        let terminal = Terminal::new(backend)?;
+        Ok(TerminalWrap(terminal))
+    }
+}
+
+impl<B: Backend + io::Write> Drop for TerminalWrap<B> {
+    fn drop(&mut self) {
+        disable_raw_mode().unwrap();
+        execute!(
+            self.0.backend_mut(),
+            LeaveAlternateScreen,
+            DisableMouseCapture
+        )
+        .unwrap();
+        self.0.show_cursor().unwrap();
+    }
+}
+
 fn main() -> Result<(), Box<dyn Error>> {
-    enable_raw_mode()?;
-    let mut stdout = io::stdout();
-    execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
-    let backend = CrosstermBackend::new(stdout);
-    let mut terminal = Terminal::new(backend)?;
-
-    let res = run_app(&mut terminal);
-
-    disable_raw_mode()?;
-    execute!(
-        terminal.backend_mut(),
-        LeaveAlternateScreen,
-        DisableMouseCapture
-    )?;
-    terminal.show_cursor()?;
+    let mut terminal = TerminalWrap::new(io::stderr())?;
+    let res = run_app(&mut terminal.0);
+    drop(terminal);
 
     match res {
         Ok(ser) => println!("{ser}"),
@@ -44,7 +57,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 }
 
 fn run_app<B: Backend>(terminal: &mut Terminal<B>) -> io::Result<String> {
-    let mut app = App::new(current_dir().unwrap(), CommandMap::default())?;
+    let mut app = App::new(current_dir()?)?;
 
     while !app.done() {
         terminal.draw(|f| app.draw(f))?;
