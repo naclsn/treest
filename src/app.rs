@@ -162,7 +162,7 @@ impl App {
 
                 if let Some(action) = may {
                     self.status.clear_pending();
-                    return action(self, &[]);
+                    return action.apply(self, &[]);
                 }
                 if !continues {
                     self.status.clear_pending();

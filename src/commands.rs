@@ -2,7 +2,25 @@ use crate::app::App;
 use lazy_static::lazy_static;
 use std::{collections::HashMap, default::Default};
 
-type Action = fn(App, &[&str]) -> App;
+pub enum Action {
+    Fn(fn(App, &[&str]) -> App),
+    Bind(fn(App, &[&str]) -> App, Vec<String>),
+    Chain(Vec<Action>),
+}
+
+impl Action {
+    pub fn apply(&self, app: App, args: &[&str]) -> App {
+        match self {
+            Action::Fn(func) => func(app, args),
+            Action::Bind(func, bound) => {
+                let mut v: Vec<_> = bound.iter().map(String::as_str).collect();
+                v.extend_from_slice(args);
+                func(app, &v)
+            }
+            Action::Chain(funcs) => funcs.iter().fold(app, |acc, cur| cur.apply(acc, args)),
+        }
+    }
+}
 
 enum Command {
     Immediate(Action),
@@ -12,20 +30,20 @@ enum Command {
 pub struct CommandMap(HashMap<char, Command>);
 
 macro_rules! make_map_one {
-    ($key:literal => $func:ident) => {
-        ($key, Command::Immediate($func))
-    };
-    ($key:literal => ($func:ident, $($bound:literal),+)) => {
-        ($key, Command::Immediate(|app, args| {
-            let bound = &[$($bound),+];
-            let mut all = Vec::with_capacity(bound.len() + args.len());
-            all.extend_from_slice(bound);
-            all.extend_from_slice(args);
-            $func(app, &all)
-        }))
-    };
     ($key:literal => [$(($key2:literal, $value:tt),)*]) => {
         ($key, Command::Pending(make_map!($(($key2, $value),)*)))
+    };
+    ($key:literal => $action:tt) => {
+        ($key, Command::Immediate(make_map_one!(@ $action)))
+    };
+    (@ $func:ident) => {
+        Action::Fn($func)
+    };
+    (@ ($func:ident, $($bound:literal),+)) => {
+        Action::Bind($func, vec![$($bound.to_string()),+])
+    };
+    (@ ($($funcs:ident),*)) => {
+        Action::Chain(vec![$(make_map_one!(@ $funcs)),*])
     };
 }
 
@@ -39,7 +57,7 @@ macro_rules! make_map {
 
 impl Default for CommandMap {
     fn default() -> CommandMap {
-        CommandMap(make_map!(
+        CommandMap(make_map![
             ('q', quit),
             ('Q', quit),
             (
@@ -52,7 +70,8 @@ impl Default for CommandMap {
             ('l', enter_node),
             ('j', next_node),
             ('k', prev_node),
-        ))
+            (' ', (toggle_marked, next_node)),
+        ])
     }
 }
 
@@ -82,7 +101,7 @@ impl CommandMap {
 pub struct StaticCommand {
     name: &'static str,
     doc: &'static str,
-    action: Action,
+    action: fn(App, &[&str]) -> App,
 }
 
 macro_rules! make_lst_one {
@@ -158,6 +177,10 @@ make_lst!(
     }),
     prev_node = ("prev_node", |mut app: App, _| {
         app.focused_mut().prev();
+        app
+    }),
+    toggle_marked = ("toggle_marked", |mut app: App, _| {
+        app.focused_mut().toggle_marked();
         app
     }),
 );
