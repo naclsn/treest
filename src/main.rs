@@ -49,7 +49,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     drop(terminal);
 
     match res {
-        Ok(ser) => println!("{ser}"),
+        Ok(_ser) => (), //println!("{ser}"),
         Err(err) => println!("{:?}", err),
     }
 

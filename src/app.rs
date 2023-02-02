@@ -17,7 +17,7 @@ enum ViewTree {
 
 #[derive(Serialize, Deserialize)]
 pub struct App {
-    tree: Tree,
+    pub tree: Tree,
     views: ViewTree,
     focus: Vec<usize>,
 
@@ -114,13 +114,22 @@ impl App {
     }
 
     pub fn draw<B: Backend>(&mut self, f: &mut Frame<'_, B>) {
-        // TODO: bottom line (status line ish)
+        let xyz = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([Constraint::Min(0), Constraint::Length(1)].as_ref())
+            .split(f.size());
+
         match &mut self.views {
-            ViewTree::Leaf(view) => f.render_stateful_widget(&self.tree, f.size(), view),
+            ViewTree::Leaf(view) => f.render_stateful_widget(&self.tree, xyz[0], view),
             ViewTree::Split(_, _) => {
-                draw_r(&mut self.views, &self.tree, f, f.size(), Some(&self.focus))
+                draw_r(&mut self.views, &self.tree, f, xyz[0], Some(&self.focus))
             }
         }
+
+        f.render_widget(
+            Block::default().title(self.tree.root.path.to_string_lossy().to_string()),
+            xyz[1],
+        );
     }
 
     pub fn do_event(mut self, event: Event) -> App {
@@ -150,14 +159,35 @@ impl App {
     }
 
     pub fn focused(&self) -> &View {
-        let ViewTree::Leaf(r) = &self
-            .focus
-            .iter()
-            .fold(&self.views, |acc, idx| {
-                let ViewTree::Split(chs, _) = acc else { unreachable!() };
-                chs.get(*idx).unwrap()
-            }) else { unreachable!() };
+        let ViewTree::Leaf(r) = self.focus.iter().fold(&self.views, |acc, idx| {
+            let ViewTree::Split(chs, _) = acc else { unreachable!() };
+            chs.get(*idx).unwrap()
+        }) else { unreachable!() };
         r
+    }
+
+    pub fn focused_mut(&mut self) -> &mut View {
+        let ViewTree::Leaf(r) = self.focus.iter().fold(&mut self.views, |acc, idx| {
+            let ViewTree::Split(chs, _) = acc else { unreachable!() };
+            chs.get_mut(*idx).unwrap()
+        }) else { unreachable!() };
+        r
+    }
+
+    pub fn focused_and_tree(&self) -> (&View, &Tree) {
+        let ViewTree::Leaf(r) = self.focus.iter().fold(&self.views, |acc, idx| {
+            let ViewTree::Split(chs, _) = acc else { unreachable!() };
+            chs.get(*idx).unwrap()
+        }) else { unreachable!() };
+        (r, &self.tree)
+    }
+
+    pub fn focused_and_tree_mut(&mut self) -> (&mut View, &mut Tree) {
+        let ViewTree::Leaf(r) = self.focus.iter().fold(&mut self.views, |acc, idx| {
+            let ViewTree::Split(chs, _) = acc else { unreachable!() };
+            chs.get_mut(*idx).unwrap()
+        }) else { unreachable!() };
+        (r, &mut self.tree)
     }
 
     pub fn split_horizontal(mut self) -> Self {

@@ -1,4 +1,5 @@
 use crate::app::App;
+use lazy_static::lazy_static;
 use std::{collections::HashMap, default::Default};
 
 type Action = fn(App /*, &[&str]*/) -> App;
@@ -16,13 +17,13 @@ macro_rules! make_map_one {
     ($key:literal => $func:ident) => {
         ($key, Command::Immediate($func))
     };
-    ($key:literal => {$($key2:literal => $value:tt,)*}) => {
-        ($key, Command::Pending(make_map!($($key2 => $value,)*)))
+    ($key:literal => [$(($key2:literal, $value:tt),)*]) => {
+        ($key, Command::Pending(make_map!($(($key2, $value),)*)))
     };
 }
 
 macro_rules! make_map {
-    ($($key:literal => $value:tt,)*) => {
+    ($(($key:literal, $value:tt),)*) => {
         HashMap::from([
             $(make_map_one!($key => $value),)*
         ])
@@ -32,13 +33,15 @@ macro_rules! make_map {
 impl Default for CommandMap {
     fn default() -> CommandMap {
         CommandMap(make_map!(
-            'q' => quit,
-            'Q' => quit,
-            'w' => {
-                's' => split_horizontal,
-                'v' => split_vertical,
-            },
-            '?' => help,
+            ('q', quit),
+            ('Q', quit),
+            ('w', [('s', split_horizontal), ('v', split_vertical),]),
+            ('?', help),
+            (':', command),
+            ('h', leave_node),
+            ('l', enter_node),
+            ('j', next_node),
+            ('k', prev_node),
         ))
     }
 }
@@ -92,43 +95,55 @@ macro_rules! make_lst_one {
 }
 
 macro_rules! make_lst {
-    ($($name:ident: $doc:literal = $action:expr;)*) => {
+    ($($name:ident = ($doc:literal, $action:expr),)*) => {
         $(make_lst_one!($name = $action);)*
 
-        // TODO: https://crates.io/crates/phf or https://crates.io/crates/lazy_static
-        fn every_commands() -> HashMap<&'static str, StaticCommand> {
-            HashMap::from([$(make_lst_one!($name: $doc),)*])
+        lazy_static! {
+            static ref COMMAND_MAP: HashMap<&'static str, StaticCommand> =
+                HashMap::from([$(make_lst_one!($name: $doc),)*]);
         }
     };
 }
 
-make_lst! {
-    help: "help" = |app: App| {
-        for (_, com) in every_commands() {
+make_lst!(
+    help = ("help", |app: App| {
+        for (_, com) in COMMAND_MAP.iter() {
             println!("{}:\n\t{}", com.name, com.doc);
         }
         app
-    };
-
-    command: "command" = |app: App| {
-        if let Some(com) = every_commands().get("help") {
+    }),
+    command = ("command", |app: App| {
+        if let Some(com) = COMMAND_MAP.get("help") {
             let action = com.action;
             action(app)
         } else {
             app
         }
-    };
-
-    quit: "quit" = |mut app: App| {
+    }),
+    quit = ("quit", |mut app: App| {
         app.finish();
         app
-    };
-
-    split_horizontal: "split_horizontal" = |app: App| {
-        app.split_horizontal()
-    };
-
-    split_vertical: "split_vertical" = |app: App| {
-        app.split_vertical()
-    };
-}
+    }),
+    split_horizontal = ("split_horizontal", App::split_horizontal),
+    split_vertical = ("split_vertical", App::split_vertical),
+    enter_node = ("enter_node", |mut app: App| {
+        let (view, tree) = app.focused_and_tree_mut();
+        match view.unfold(tree) {
+            Ok(()) => view.enter(),
+            Err(_) => (),
+        }
+        app
+    }),
+    leave_node = ("leave_node", |mut app: App| {
+        app.focused_mut().leave();
+        app
+    }),
+    next_node = ("next_node", |mut app: App| {
+        app.focused_mut().next();
+        app
+    }),
+    prev_node = ("prev_node", |mut app: App| {
+        app.focused_mut().prev();
+        app
+    }),
+);
