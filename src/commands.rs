@@ -2,6 +2,7 @@ use crate::app::App;
 use lazy_static::lazy_static;
 use std::{collections::HashMap, default::Default};
 
+#[derive(Clone)]
 pub enum Action {
     Fn(fn(App, &[&str]) -> App),
     Bind(fn(App, &[&str]) -> App, Vec<String>),
@@ -22,11 +23,13 @@ impl Action {
     }
 }
 
+#[derive(Clone)]
 enum Command {
     Immediate(Action),
     Pending(HashMap<char, Command>),
 }
 
+#[derive(Clone)]
 pub struct CommandMap(HashMap<char, Command>);
 
 macro_rules! make_map_one {
@@ -42,8 +45,8 @@ macro_rules! make_map_one {
     (@ ($func:ident, $($bound:literal),+)) => {
         Action::Bind($func, vec![$($bound.to_string()),+])
     };
-    (@ ($($funcs:ident),*)) => {
-        Action::Chain(vec![$(make_map_one!(@ $funcs)),*])
+    (@ ($($actions:tt),*)) => {
+        Action::Chain(vec![$(make_map_one!(@ $actions)),*])
     };
 }
 

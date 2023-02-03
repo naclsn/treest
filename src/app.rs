@@ -158,9 +158,10 @@ impl App {
                 }
 
                 self.status.push_pending(c);
-                let (may, continues) = self.bindings.try_get_action(&self.status.get_pending());
+                let crap = self.bindings.clone(); // XXX: this should not be needed
+                let (may, continues) = crap.try_get_action(&self.status.get_pending());
 
-                if let Some(action) = may {
+                if let Some(action) = may.clone() {
                     self.status.clear_pending();
                     return action.apply(self, &[]);
                 }
