@@ -1,6 +1,7 @@
 use crate::app::App;
 use lazy_static::lazy_static;
 use std::{collections::HashMap, default::Default};
+use tui::layout::Direction;
 
 #[derive(Clone)]
 pub enum Action {
@@ -48,6 +49,9 @@ macro_rules! make_map_one {
     (@ ($($actions:tt),*)) => {
         Action::Chain(vec![$(make_map_one!(@ $actions)),*])
     };
+    (@ $action:expr) => {
+        $action
+    };
 }
 
 macro_rules! make_map {
@@ -65,19 +69,48 @@ impl Default for CommandMap {
             ('Q', quit),
             (
                 'w',
-                [('s', (split, "horizontal")), ('v', (split, "vertical")),]
+                [
+                    ('s', (split, "horizontal")),
+                    ('v', (split, "vertical")),
+                    ('t', transpose_splits),
+                    ('q', close_split),
+                    ('h', to_view_right),
+                    ('l', to_view_left),
+                    ('j', to_view_down),
+                    ('k', to_view_up),
+                    // ('h', move_view_right),
+                    // ('l', move_view_left),
+                    // ('j', move_view_down),
+                    // ('k', move_view_up),
+                ]
             ),
             ('?', help),
             (':', command),
+            ('H', fold_node),
+            ('L', unfold_node),
             ('h', leave_node),
             ('l', enter_node),
             ('j', next_node),
             ('k', prev_node),
             (' ', (toggle_marked, next_node)),
+            (
+                'g',
+                [('g', {
+                    Action::Fn(|mut app: App, _| {
+                        app.focused_mut().cursor.clear();
+                        app
+                    })
+                }),]
+            ),
+            ('y', (scroll_view, "-3")),
+            ('e', (scroll_view, "3")),
+            ('Y', (shift_view, "-3")),
+            ('E', (shift_view, "3")),
         ])
     }
 }
 
+// TODO: handle mouse events and modifier keys
 impl CommandMap {
     pub fn try_get_action(&self, key_path: &[char]) -> (Option<&Action>, bool) {
         if key_path.is_empty() {
@@ -157,10 +190,29 @@ make_lst!(
     }),
     split = ("split", |app: App, args: &[&str]| {
         match args.get(0) {
-            Some(&"horizontal") => app.split_horizontal(),
-            Some(&"vertical") => app.split_vertical(),
+            Some(&"horizontal") => app.view_split(Direction::Horizontal),
+            Some(&"vertical") => app.view_split(Direction::Vertical),
             _ => app,
         }
+    }),
+    close_split = ("close_split", |mut app: App, _| {
+        app.view_close();
+        app
+    }),
+    transpose_splits = ("transpose_splits", |mut app: App, _| {
+        app.view_transpose();
+        app
+    }),
+    fold_node = ("fold_node", |mut app: App, _| {
+        app.focused_mut().fold();
+        app
+    }),
+    unfold_node = ("unfold_node", |mut app: App, _| {
+        let (view, tree) = app.focused_and_tree_mut();
+        match view.unfold(tree) {
+            _ => (),
+        }
+        app
     }),
     enter_node = ("enter_node", |mut app: App, _| {
         let (view, tree) = app.focused_and_tree_mut();
@@ -184,6 +236,32 @@ make_lst!(
     }),
     toggle_marked = ("toggle_marked", |mut app: App, _| {
         app.focused_mut().toggle_marked();
+        app
+    }),
+    scroll_view = ("scroll_view", |mut app: App, args: &[&str]| {
+        let by = args.get(0).map_or(Ok(1), |n| n.parse()).unwrap_or(1);
+        app.focused_mut().offset.scroll += by;
+        app
+    }),
+    shift_view = ("shift_view", |mut app: App, args: &[&str]| {
+        let by = args.get(0).map_or(Ok(1), |n| n.parse()).unwrap_or(1);
+        app.focused_mut().offset.shift += by;
+        app
+    }),
+    to_view_right = ("to_view_right", |mut app: App, _| {
+        app.to_view_right();
+        app
+    }),
+    to_view_left = ("to_view_left", |mut app: App, _| {
+        app.to_view_left();
+        app
+    }),
+    to_view_down = ("to_view_down", |mut app: App, _| {
+        app.to_view_down();
+        app
+    }),
+    to_view_up = ("to_view_up", |mut app: App, _| {
+        app.to_view_up();
         app
     }),
 );

@@ -10,11 +10,12 @@ use std::{io, iter, path::PathBuf};
 use tui::{
     backend::Backend,
     layout::{Constraint, Direction, Layout, Rect},
+    style::{Color, Style},
     terminal::Frame,
     widgets::{Block, Borders},
 };
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 enum ViewTree {
     Leaf(View),
     Split(Vec<ViewTree>, u8), // XXX: tui::layout::Direction not serializable?
@@ -30,7 +31,6 @@ pub struct App {
     bindings: CommandMap,
     #[serde(skip_serializing, skip_deserializing)]
     status: Status,
-    // pending: Vec<char>,
     #[serde(skip_serializing, skip_deserializing)]
     quit: bool,
 }
@@ -42,15 +42,17 @@ fn draw_r<B: Backend>(
     area: Rect,
     focus_path: Option<&[usize]>,
 ) {
-    let is_focus = if let Some(v) = focus_path {
-        v.is_empty()
+    let (is_focus, next_focus) = if let Some(v) = focus_path {
+        (v.is_empty(), 1 == v.len())
     } else {
-        false
+        (false, false)
     };
 
     match view_node {
         ViewTree::Leaf(view) => {
-            let surround = Block::default().borders(Borders::ALL);
+            let surround = Block::default()
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(Color::Gray));
             if is_focus {
                 f.render_widget(surround.clone(), area);
             }
@@ -58,6 +60,12 @@ fn draw_r<B: Backend>(
         }
 
         ViewTree::Split(children, dir) => {
+            if next_focus {
+                let surround = Block::default()
+                    .borders(Borders::ALL)
+                    .border_style(Style::default().fg(Color::DarkGray));
+                f.render_widget(surround.clone(), area);
+            }
             let chunks = Layout::default()
                 .direction(if 0 == *dir {
                     Direction::Vertical
@@ -171,6 +179,10 @@ impl App {
             } else if let KeyCode::Esc = key.code {
                 self.status.clear_pending();
             }
+        } else if let Event::Mouse(mouse) = event {
+            match mouse.kind {
+                _ => (),
+            }
         }
         self
     }
@@ -207,27 +219,169 @@ impl App {
         (r, &mut self.tree)
     }
 
-    pub fn split_horizontal(mut self) -> Self {
+    fn focused_group(&self) -> Option<&ViewTree> {
+        if self.focus.is_empty() {
+            return None;
+        }
+        let len = self.focus.len();
+        Some(
+            self.focus
+                .iter()
+                .take(len - 1)
+                .fold(&self.views, |acc, idx| {
+                    let ViewTree::Split(chs, _) = acc else { unreachable!() };
+                    chs.get(*idx).unwrap()
+                }),
+        )
+    }
+
+    fn focused_group_mut(&mut self) -> Option<&mut ViewTree> {
+        if self.focus.is_empty() {
+            return None;
+        }
+        let len = self.focus.len();
+        Some(
+            self.focus
+                .iter()
+                .take(len - 1)
+                .fold(&mut self.views, |acc, idx| {
+                    let ViewTree::Split(chs, _) = acc else { unreachable!() };
+                    chs.get_mut(*idx).unwrap()
+                }),
+        )
+    }
+
+    pub fn view_split(mut self, d: Direction) -> Self {
         let niw = ViewTree::Leaf(self.focused().clone());
+        let d = match d {
+            Direction::Horizontal => 0,
+            Direction::Vertical => 1,
+        };
         match &mut self.views {
-            ViewTree::Split(children, 0) => children.push(niw),
+            ViewTree::Split(children, already) if d == *already => children.push(niw),
             ViewTree::Leaf(_) | ViewTree::Split(_, _) => {
-                self.views = ViewTree::Split(vec![self.views, niw], 0);
+                self.views = ViewTree::Split(vec![self.views, niw], d);
                 self.focus.push(0);
             }
         }
         self
     }
 
-    pub fn split_vertical(mut self) -> Self {
-        let niw = ViewTree::Leaf(self.focused().clone());
-        match &mut self.views {
-            ViewTree::Split(children, 1) => children.push(niw),
-            ViewTree::Leaf(_) | ViewTree::Split(_, _) => {
-                self.views = ViewTree::Split(vec![self.views, niw], 1);
-                self.focus.push(0);
-            }
+    pub fn view_transpose(&mut self) {
+        let gr = self.focused_group_mut();
+        match gr {
+            Some(ViewTree::Split(_, d)) => *d = 1 - *d,
+            _ => (),
         }
-        self
+    }
+
+    pub fn view_close(&mut self) {
+        if self.focus.is_empty() {
+            return;
+        }
+        let len = self.focus.len();
+        let at = self.focus[len - 1];
+        let gr = self.focused_group_mut();
+        match gr {
+            Some(ViewTree::Split(v, _)) => {
+                v.remove(at);
+                match v.len() {
+                    0 => unreachable!("should not have a split with a single leaf"),
+                    1 => {
+                        let last = v[0].clone();
+                        let was_at = self.focus.pop().unwrap();
+                        if let Some(ViewTree::Split(v, _)) = self.focused_group_mut() {
+                            v[was_at] = last;
+                        } else {
+                            self.views = last;
+                        }
+                    }
+                    _ => {
+                        if 0 < at {
+                            self.focus[len - 1] = at - 1;
+                        }
+                    }
+                }
+            }
+            _ => (), // YYY: quit on last view close? I prefer no
+        }
+    }
+
+    // c'est un peut bourin tout ca..
+    pub fn to_view_right(&mut self) {
+        let len = self.focus.len();
+        let gr = self.focused_group();
+        match gr {
+            Some(ViewTree::Split(_, 1)) => {
+                if 0 < self.focus[len - 1] {
+                    self.focus[len - 1] -= 1;
+                    // while let Some(ViewTree::Split(_, _)) = self.focused_group() {
+                    //     self.focus.push(0);
+                    // }
+                } else {
+                    //self.focus.pop();
+                    // TODO: recurse, then go down to most likely leaf
+                }
+            }
+            _ => (),
+        }
+    }
+    pub fn to_view_left(&mut self) {
+        let len = self.focus.len();
+        let gr = self.focused_group();
+        match gr {
+            Some(ViewTree::Split(v, 1)) => {
+                if self.focus[len - 1] + 1 < v.len() {
+                    self.focus[len - 1] += 1;
+                    // let niw = self.focus[len - 1];
+                    // while let Some(ViewTree::Split(v, _)) = self.focused_group() {
+                    //     if let ViewTree::Split(_, _) = v[niw] {
+                    //         panic!("{:?}", false);
+                    //     }
+                    //     self.focus.push(0);
+                    // }
+                } else {
+                    //self.focus.pop();
+                    // TODO: recurse, then go down to most likely leaf
+                }
+            }
+            _ => (),
+        }
+    }
+    pub fn to_view_down(&mut self) {
+        let len = self.focus.len();
+        let gr = self.focused_group();
+        match gr {
+            Some(ViewTree::Split(v, 0)) => {
+                if self.focus[len - 1] + 1 < v.len() {
+                    self.focus[len - 1] += 1;
+                    // while let Some(ViewTree::Split(_, _)) = self.focused_group() {
+                    //     self.focus.push(0);
+                    // }
+                } else {
+                    //self.focus.pop();
+                    // TODO: recurse, then go down to most likely leaf
+                }
+            }
+            _ => (),
+        }
+    }
+    pub fn to_view_up(&mut self) {
+        let len = self.focus.len();
+        let gr = self.focused_group();
+        match gr {
+            Some(ViewTree::Split(_, 0)) => {
+                if 0 < self.focus[len - 1] {
+                    self.focus[len - 1] -= 1;
+                    // while let Some(ViewTree::Split(_, _)) = self.focused_group() {
+                    //     self.focus.push(0);
+                    // }
+                } else {
+                    //self.focus.pop();
+                    // TODO: recurse, then go down to most likely leaf
+                }
+            }
+            _ => (),
+        }
     }
 }
