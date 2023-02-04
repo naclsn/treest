@@ -1,6 +1,6 @@
-use crate::app::App;
+use crate::{app::App, line::Message};
 use lazy_static::lazy_static;
-use std::{collections::HashMap, default::Default};
+use std::{collections::HashMap, default::Default, process::Command as SysCommand};
 use tui::layout::Direction;
 
 #[derive(Clone)]
@@ -186,9 +186,27 @@ make_lst!(
             app
         }
     }),
-    shell = ("shell", |_, args: &[&str]| {
-        // TODO
-        todo!("shell {:?}", args)
+    shell = ("shell", |mut app: App, args: &[&str]| {
+        match args {
+            [h, t @ ..] => match SysCommand::new(h).args(t).output() {
+                Ok(res) => {
+                    if res.status.success() {
+                        app.message(Message::Info(
+                            String::from_utf8_lossy(&res.stdout).to_string(),
+                        ));
+                    } else {
+                        app.message(Message::Warning(
+                            String::from_utf8_lossy(&res.stderr).to_string(),
+                        ));
+                    }
+                }
+                Err(err) => {
+                    app.message(Message::Error(format!("{}", err)));
+                }
+            },
+            _ => (), //app.message(Message::Error("no command given".to_string())),
+        }
+        app
     }),
     prompt = ("prompt", |mut app: App, args: &[&str]| {
         match (args.get(0), args.get(1).and_then(|n| COMMAND_MAP.get(n))) {

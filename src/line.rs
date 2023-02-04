@@ -9,16 +9,24 @@ use tui::{
     widgets::StatefulWidget,
 };
 
+pub enum Message {
+    Info(String),
+    Warning(String),
+    Error(String),
+}
+
 pub struct Prompt {
     prompt: String,
     cursor: usize,
     content: String,
     action: Action,
+    render_shift: usize,
 }
 
 #[derive(Default)]
 pub struct Status {
     pending: Vec<char>,
+    message: Option<Message>,
     input: Option<Prompt>,
     history: Vec<String>, //HashMap<String, String>, // TODO: hist per prompt (ie. not same for eg. ':' and '!')
     history_location: usize,
@@ -119,16 +127,59 @@ impl StatefulWidget for Line<'_> {
     type State = Status;
 
     fn render(self, area: Rect, buf: &mut Buffer, state: &mut Status) {
-        if let Some(p) = &state.input {
+        if let Some(p) = &mut state.input {
             buf.set_spans(
                 area.x + 2,
                 area.y,
-                &Spans::from(vec![
-                    Span::styled(&*p.prompt, Style::default().fg(Color::DarkGray)),
-                    Span::raw(&p.content),
-                ]),
+                &Spans::from({
+                    let mut v = vec![Span::styled(
+                        &*p.prompt,
+                        Style::default().fg(Color::DarkGray),
+                    )];
+
+                    let avail = area.width as usize - 2 - p.prompt.len() - 2;
+
+                    if p.content.len() < avail {
+                        v.push(Span::raw(&p.content));
+                    } else {
+                        // update render_shift so as to keep cursor in view
+                        if 0 < p.cursor && p.cursor < p.render_shift + 1 {
+                            p.render_shift = p.cursor - 1;
+                        }
+                        if p.render_shift + avail - 1 < p.cursor {
+                            p.render_shift = p.cursor - avail + 1;
+                        }
+
+                        let cut_start = if 0 < p.render_shift {
+                            // need for ... at start
+                            v.push(Span::raw("\u{2026}"));
+                            p.render_shift + 1
+                        } else {
+                            // no need for ... at start
+                            p.render_shift
+                        };
+                        let cut_end = cut_start + avail;
+
+                        if p.content.len() < cut_start + avail {
+                            // no need for ... at end
+                            v.push(Span::raw(&p.content[cut_start..p.content.len()]));
+                        } else {
+                            // need for ... at end
+                            v.push(Span::raw(&p.content[cut_start..cut_end - 1]));
+                            v.push(Span::raw("\u{2026}"));
+                        }
+                    }
+                    v
+                }),
                 area.width,
             );
+        } else if let Some(m) = &state.message {
+            let (text, style) = match m {
+                Message::Info(text) => (text, Style::default()),
+                Message::Warning(text) => (text, Style::default().fg(Color::Yellow)),
+                Message::Error(text) => (text, Style::default().fg(Color::Red)),
+            };
+            buf.set_string(area.x, area.y, text, style);
         } else {
             {
                 let (node, _) = self.focused.at_cursor_pair(self.tree);
@@ -144,7 +195,7 @@ impl StatefulWidget for Line<'_> {
                         Span::styled(node.file_name(), node.style()),
                         Span::raw(node.decoration()),
                     ]),
-                    area.width,
+                    area.width - 1,
                 );
             }
 
@@ -169,7 +220,11 @@ impl Status {
     pub fn cursor_shift(&self) -> Option<u16> {
         self.input
             .as_ref()
-            .map(|p| (2 + p.prompt.len() + p.cursor) as u16)
+            .map(|p| (2 + p.prompt.len() + p.cursor - p.render_shift as usize) as u16)
+    }
+
+    pub fn message(&mut self, message: Message) {
+        self.message = Some(message);
     }
 
     pub fn prompt(&mut self, prompt: String, action: Action) {
@@ -178,11 +233,15 @@ impl Status {
             cursor: 0,
             content: String::new(),
             action,
+            render_shift: 0,
         });
     }
 
     pub fn do_event(&mut self, event: &Event) -> (Option<(Action, Vec<String>)>, bool) {
         let Some(p) = &mut self.input else { return (None, false); };
+
+        // YYY: maybe not right away, when is it stored in a registed is not thought out yet
+        self.message = None;
 
         if let Event::Key(key) = event {
             match key.code {

@@ -1,6 +1,6 @@
 use crate::{
     commands::{Action, CommandMap},
-    line::{Line, Status},
+    line::{Line, Message, Status},
     tree::Tree,
     view::View,
 };
@@ -157,6 +157,10 @@ impl App {
         self.status
             .cursor_shift()
             .map(|s| f.set_cursor(line.x + s, line.y));
+    }
+
+    pub fn message(&mut self, message: Message) {
+        self.status.message(message);
     }
 
     pub fn prompt(&mut self, prompt: String, action: Action) {
