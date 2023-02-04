@@ -106,6 +106,8 @@ impl Default for CommandMap {
             ('e', (scroll_view, "3")),
             ('Y', (shift_view, "-3")),
             ('E', (shift_view, "3")),
+            (':', (prompt, ":", "command")),
+            ('!', (prompt, "!", "shell")),
         ])
     }
 }
@@ -183,6 +185,17 @@ make_lst!(
         } else {
             app
         }
+    }),
+    shell = ("shell", |_, args: &[&str]| {
+        // TODO
+        todo!("shell {:?}", args)
+    }),
+    prompt = ("prompt", |mut app: App, args: &[&str]| {
+        match (args.get(0), args.get(1).and_then(|n| COMMAND_MAP.get(n))) {
+            (Some(prompt), Some(then)) => app.prompt(prompt.to_string(), Action::Fn(then.action)),
+            _ => (),
+        }
+        app
     }),
     quit = ("quit", |mut app: App, _| {
         app.finish();

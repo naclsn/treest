@@ -1,5 +1,5 @@
 use crate::{
-    commands::CommandMap,
+    commands::{Action, CommandMap},
     line::{Line, Status},
     tree::Tree,
     view::View,
@@ -154,9 +154,24 @@ impl App {
             &mut self.status,
         );
         f.render_stateful_widget(Line::new(pair), line, status);
+        self.status
+            .cursor_shift()
+            .map(|s| f.set_cursor(line.x + s, line.y));
     }
 
-    pub fn do_event(mut self, event: Event) -> App {
+    pub fn prompt(&mut self, prompt: String, action: Action) {
+        self.status.prompt(prompt, action);
+    }
+
+    pub fn do_event(mut self, event: &Event) -> App {
+        let (prompt_action, event_consumed) = self.status.do_event(&event);
+        if let Some((action, args)) = prompt_action {
+            return action.apply(self, &args.iter().map(|s| s.as_str()).collect::<Vec<_>>());
+        }
+        if event_consumed {
+            return self;
+        }
+
         if let Event::Key(key) = event {
             if let KeyCode::Char(c) = key.code {
                 // ZZZ: hard-coded for now

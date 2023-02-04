@@ -16,7 +16,7 @@ use std::{
     env::current_dir,
     error::Error,
     io::{self, Write},
-    panic,
+    // panic,
 };
 use tui::{
     backend::{Backend, CrosstermBackend},
@@ -73,7 +73,7 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>) -> io::Result<String> {
 
     while !app.done() {
         terminal.draw(|f| app.draw(f))?;
-        app = app.do_event(event::read()?);
+        app = app.do_event(&event::read()?);
     }
 
     Ok(serde_json::to_string(&app)?)

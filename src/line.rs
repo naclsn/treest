@@ -1,17 +1,27 @@
-use crate::{tree::Tree, view::View};
+use crate::{commands::Action, tree::Tree, view::View};
+use crossterm::event::{Event, KeyCode};
 use std::fs::Metadata;
 use tui::{
     buffer::Buffer,
     layout::Rect,
-    style::Style,
+    style::{Color, Style},
     text::{Span, Spans},
     widgets::StatefulWidget,
 };
 
+pub struct Prompt {
+    prompt: String,
+    cursor: usize,
+    content: String,
+    action: Action,
+}
+
 #[derive(Default)]
 pub struct Status {
     pending: Vec<char>,
-    input: String,
+    input: Option<Prompt>,
+    history: Vec<String>, //HashMap<String, String>, // TODO: hist per prompt (ie. not same for eg. ':' and '!')
+    history_location: usize,
 }
 
 impl Status {
@@ -109,32 +119,141 @@ impl StatefulWidget for Line<'_> {
     type State = Status;
 
     fn render(self, area: Rect, buf: &mut Buffer, state: &mut Status) {
-        {
-            let (node, _) = self.focused.at_cursor_pair(self.tree);
+        if let Some(p) = &state.input {
             buf.set_spans(
-                area.x + 1,
+                area.x + 2,
                 area.y,
                 &Spans::from(vec![
-                    Span::raw(match &node.meta {
-                        Some(meta) => meta_to_string(meta),
-                        None => "- no meta - ".to_string(),
-                    }),
-                    Span::raw(" "),
-                    Span::styled(node.file_name(), node.style()),
-                    Span::raw(node.decoration()),
+                    Span::styled(&*p.prompt, Style::default().fg(Color::DarkGray)),
+                    Span::raw(&p.content),
                 ]),
                 area.width,
             );
+        } else {
+            {
+                let (node, _) = self.focused.at_cursor_pair(self.tree);
+                buf.set_spans(
+                    area.x + 1,
+                    area.y,
+                    &Spans::from(vec![
+                        Span::raw(match &node.meta {
+                            Some(meta) => meta_to_string(meta),
+                            None => "- no meta - ".to_string(),
+                        }),
+                        Span::raw(" "),
+                        Span::styled(node.file_name(), node.style()),
+                        Span::raw(node.decoration()),
+                    ]),
+                    area.width,
+                );
+            }
+
+            if !state.pending.is_empty() {
+                buf.set_string(
+                    area.x + area.width - state.pending.len() as u16 - 1,
+                    area.y,
+                    state.pending.iter().collect::<String>(),
+                    Style::default(),
+                );
+            }
+        }
+    }
+}
+
+fn split_line_args(c: &String) -> Vec<String> {
+    // TODO
+    c.split(" ").map(String::from).collect()
+}
+
+impl Status {
+    pub fn cursor_shift(&self) -> Option<u16> {
+        self.input
+            .as_ref()
+            .map(|p| (2 + p.prompt.len() + p.cursor) as u16)
+    }
+
+    pub fn prompt(&mut self, prompt: String, action: Action) {
+        self.input = Some(Prompt {
+            prompt,
+            cursor: 0,
+            content: String::new(),
+            action,
+        });
+    }
+
+    pub fn do_event(&mut self, event: &Event) -> (Option<(Action, Vec<String>)>, bool) {
+        let Some(p) = &mut self.input else { return (None, false); };
+
+        if let Event::Key(key) = event {
+            match key.code {
+                KeyCode::Char(c) => {
+                    p.content.insert(p.cursor as usize, c);
+                    p.cursor += 1;
+                }
+                KeyCode::Backspace => {
+                    if 0 < p.cursor {
+                        p.cursor -= 1;
+                        p.content.remove(p.cursor as usize);
+                    }
+                }
+                KeyCode::Delete => {
+                    if p.cursor < p.content.len() {
+                        p.content.remove(p.cursor as usize);
+                    }
+                }
+
+                KeyCode::Left => {
+                    if 0 < p.cursor {
+                        p.cursor -= 1
+                    }
+                }
+                KeyCode::Right => {
+                    if p.cursor < p.content.len() {
+                        p.cursor += 1
+                    }
+                }
+                KeyCode::Home => p.cursor = 0,
+                KeyCode::End => p.cursor = p.content.len(),
+
+                KeyCode::Down | KeyCode::PageDown => {
+                    if self.history_location + 1 < self.history.len() {
+                        self.history_location += 1;
+                        p.content.replace_range(
+                            0..p.content.len(),
+                            &self.history[self.history_location],
+                        );
+                        p.cursor = p.content.len();
+                    }
+                }
+                KeyCode::Up | KeyCode::PageUp => {
+                    if 0 < self.history_location {
+                        self.history_location -= 1;
+                        p.content.replace_range(
+                            0..p.content.len(),
+                            &self.history[self.history_location],
+                        );
+                        p.cursor = p.content.len();
+                    }
+                }
+
+                KeyCode::Enter => {
+                    let action = p.action.clone();
+                    let args = split_line_args(&p.content);
+                    self.history.push(p.content.clone());
+                    self.history_location = self.history.len();
+                    self.input = None;
+                    return (Some((action, args)), true);
+                }
+                KeyCode::Esc => {
+                    self.input = None;
+                    return (None, true);
+                }
+
+                _ => (),
+            }
         }
 
-        if !state.pending.is_empty() {
-            buf.set_string(
-                area.x + area.width - state.pending.len() as u16 - 1,
-                area.y,
-                state.pending.iter().collect::<String>(),
-                Style::default(),
-            );
-        }
+        return (None, true);
     }
 }
 
