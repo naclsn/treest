@@ -251,20 +251,41 @@ impl App {
         )
     }
 
-    pub fn view_split(mut self, d: Direction) -> Self {
-        let niw = ViewTree::Leaf(self.focused().clone());
+    pub fn view_split(&mut self, d: Direction) {
         let d = match d {
             Direction::Horizontal => 0,
             Direction::Vertical => 1,
         };
-        match &mut self.views {
-            ViewTree::Split(children, already) if d == *already => children.push(niw),
-            ViewTree::Leaf(_) | ViewTree::Split(_, _) => {
-                self.views = ViewTree::Split(vec![self.views, niw], d);
-                self.focus.push(0);
-            }
+
+        if self.focus.is_empty() {
+            let niw = self.views.clone();
+            self.views = ViewTree::Split(vec![self.views.clone(), niw], d);
+            self.focus.push(1);
+            return;
         }
-        self
+
+        let len = self.focus.len();
+        let last = self.focus[len - 1];
+
+        let Some(ViewTree::Split(chs, already)) = self.focused_group_mut() else { return; };
+        let ViewTree::Leaf(cur) = &chs[last] else { return; };
+        let niw = ViewTree::Leaf(cur.clone());
+
+        if d == *already {
+            // adding a split within one of same direction:
+            // insert it after current and make it current
+            chs.insert(last + 1, niw);
+            self.focus[len - 1] += 1;
+        } else {
+            // creating a split of different direction
+            // in-place of the current one, that takes
+            // the current one as first child
+            // (ie. somewhat same as when focus is empty)
+            chs[last] = ViewTree::Split(vec![chs[last].clone(), niw], d);
+            self.focus.push(1);
+        }
+
+        // self
     }
 
     pub fn view_transpose(&mut self) {
@@ -275,6 +296,7 @@ impl App {
         }
     }
 
+    // FIXME: `wvwswhwq`
     pub fn view_close(&mut self) {
         if self.focus.is_empty() {
             return;
@@ -307,81 +329,65 @@ impl App {
         }
     }
 
-    // c'est un peut bourin tout ca..
-    pub fn to_view_right(&mut self) {
-        let len = self.focus.len();
-        let gr = self.focused_group();
-        match gr {
-            Some(ViewTree::Split(_, 1)) => {
-                if 0 < self.focus[len - 1] {
-                    self.focus[len - 1] -= 1;
-                    // while let Some(ViewTree::Split(_, _)) = self.focused_group() {
-                    //     self.focus.push(0);
-                    // }
-                } else {
-                    //self.focus.pop();
-                    // TODO: recurse, then go down to most likely leaf
-                }
-            }
-            _ => (),
+    // for now movement should only be +1 or -1
+    // eg moving 'left' in a d=1(Horizontal) split is +1
+    // FIXME: this is still not it: `wswvwswjwj`
+    pub fn to_view(&mut self, d: Direction, movement: i8) {
+        if self.focus.is_empty() {
+            return ();
         }
-    }
-    pub fn to_view_left(&mut self) {
-        let len = self.focus.len();
-        let gr = self.focused_group();
-        match gr {
-            Some(ViewTree::Split(v, 1)) => {
-                if self.focus[len - 1] + 1 < v.len() {
-                    self.focus[len - 1] += 1;
-                    // let niw = self.focus[len - 1];
-                    // while let Some(ViewTree::Split(v, _)) = self.focused_group() {
-                    //     if let ViewTree::Split(_, _) = v[niw] {
-                    //         panic!("{:?}", false);
-                    //     }
-                    //     self.focus.push(0);
-                    // }
-                } else {
-                    //self.focus.pop();
-                    // TODO: recurse, then go down to most likely leaf
+
+        let d = match d {
+            Direction::Horizontal => 1,
+            Direction::Vertical => 0,
+        };
+
+        let mut stack = Vec::new();
+
+        // step 1: go down while stacking up, till focus
+        // step 2: go up while not good direction or edge
+        // step 3: (in while>match>Some..>if) update self.focus
+
+        self.focus.iter().fold(&self.views, |acc, idx| {
+            stack.push(acc);
+            let ViewTree::Split(chs, _) = acc else { unreachable!() };
+            chs.get(*idx).unwrap()
+        });
+
+        while {
+            match stack.last() {
+                Some(ViewTree::Split(v, already)) if d == *already => {
+                    let now_focus_len = stack.len();
+                    let now_focus_last = self.focus[now_focus_len - 1] as i32 + movement as i32;
+
+                    let fitting = 0 <= now_focus_last && now_focus_last < v.len() as i32;
+                    if fitting {
+                        let now_focus_last = now_focus_last as usize;
+                        self.focus.truncate(now_focus_len);
+                        self.focus[now_focus_len - 1] = now_focus_last;
+
+                        // the new focus might not be a leaf yet
+                        let mut a = &v[now_focus_last];
+                        while let ViewTree::Split(v, dd) = a {
+                            // not even sure this is possible
+                            a = &v[if d == *dd {
+                                let border = if 0 < movement { v.len() - 1 } else { 0 };
+                                self.focus.push(border);
+                                border
+                            } else {
+                                self.focus.push(0);
+                                0
+                            }];
+                        }
+
+                        return;
+                    }
+
+                    stack.pop();
+                    false
                 }
+                _ => stack.pop().is_some(),
             }
-            _ => (),
-        }
-    }
-    pub fn to_view_down(&mut self) {
-        let len = self.focus.len();
-        let gr = self.focused_group();
-        match gr {
-            Some(ViewTree::Split(v, 0)) => {
-                if self.focus[len - 1] + 1 < v.len() {
-                    self.focus[len - 1] += 1;
-                    // while let Some(ViewTree::Split(_, _)) = self.focused_group() {
-                    //     self.focus.push(0);
-                    // }
-                } else {
-                    //self.focus.pop();
-                    // TODO: recurse, then go down to most likely leaf
-                }
-            }
-            _ => (),
-        }
-    }
-    pub fn to_view_up(&mut self) {
-        let len = self.focus.len();
-        let gr = self.focused_group();
-        match gr {
-            Some(ViewTree::Split(_, 0)) => {
-                if 0 < self.focus[len - 1] {
-                    self.focus[len - 1] -= 1;
-                    // while let Some(ViewTree::Split(_, _)) = self.focused_group() {
-                    //     self.focus.push(0);
-                    // }
-                } else {
-                    //self.focus.pop();
-                    // TODO: recurse, then go down to most likely leaf
-                }
-            }
-            _ => (),
-        }
+        } {}
     }
 }

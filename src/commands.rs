@@ -74,10 +74,10 @@ impl Default for CommandMap {
                     ('v', (split, "vertical")),
                     ('t', transpose_splits),
                     ('q', close_split),
-                    ('h', to_view_right),
-                    ('l', to_view_left),
-                    ('j', to_view_down),
-                    ('k', to_view_up),
+                    ('h', (to_view, "right")),
+                    ('l', (to_view, "left")),
+                    ('j', (to_view, "down")),
+                    ('k', (to_view, "up")),
                     // ('h', move_view_right),
                     // ('l', move_view_left),
                     // ('j', move_view_down),
@@ -188,10 +188,16 @@ make_lst!(
         app.finish();
         app
     }),
-    split = ("split", |app: App, args: &[&str]| {
+    split = ("split", |mut app: App, args: &[&str]| {
         match args.get(0) {
-            Some(&"horizontal") => app.view_split(Direction::Horizontal),
-            Some(&"vertical") => app.view_split(Direction::Vertical),
+            Some(&"horizontal") => {
+                app.view_split(Direction::Horizontal);
+                app
+            }
+            Some(&"vertical") => {
+                app.view_split(Direction::Vertical);
+                app
+            }
             _ => app,
         }
     }),
@@ -248,20 +254,14 @@ make_lst!(
         app.focused_mut().offset.shift += by;
         app
     }),
-    to_view_right = ("to_view_right", |mut app: App, _| {
-        app.to_view_right();
-        app
-    }),
-    to_view_left = ("to_view_left", |mut app: App, _| {
-        app.to_view_left();
-        app
-    }),
-    to_view_down = ("to_view_down", |mut app: App, _| {
-        app.to_view_down();
-        app
-    }),
-    to_view_up = ("to_view_up", |mut app: App, _| {
-        app.to_view_up();
+    to_view = ("to_view", |mut app: App, args: &[&str]| {
+        match args.get(0) {
+            Some(&"right") => app.to_view(Direction::Horizontal, -1),
+            Some(&"left") => app.to_view(Direction::Horizontal, 1),
+            Some(&"down") => app.to_view(Direction::Vertical, 1),
+            Some(&"up") => app.to_view(Direction::Vertical, -1),
+            _ => (),
+        }
         app
     }),
 );
