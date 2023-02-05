@@ -213,7 +213,7 @@ impl StatefulWidget for &Tree {
             buf,
             &mut origin,
             area,
-            Some(&state.cursor),
+            Some(state.cursor_path()),
         );
     }
 }

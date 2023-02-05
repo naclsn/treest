@@ -97,7 +97,7 @@ impl Default for CommandMap {
                 'g',
                 [('g', {
                     Action::Fn(|mut app: App, _| {
-                        app.focused_mut().cursor.clear();
+                        app.focused_mut().cursor_to_root();
                         app
                     })
                 }),]

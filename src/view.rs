@@ -62,7 +62,8 @@ pub struct Offset {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct View {
     pub root: State,
-    pub cursor: Vec<usize>,
+    cursor: Vec<usize>,
+    cursor_path_len: usize,
     pub offset: Offset,
     // cursor: &'tree Node,
     // selection: Vec<State>,
@@ -73,12 +74,17 @@ impl View {
         View {
             root: State::new(root),
             cursor: Vec::new(),
+            cursor_path_len: 0,
             offset: Offset {
                 shift: 0,
                 scroll: 0,
             },
             // selection: vec![],
         }
+    }
+
+    pub fn cursor_path(&self) -> &[usize] {
+        &self.cursor[..self.cursor_path_len]
     }
 
     pub fn cursor_offset(&self) -> Offset {
@@ -96,11 +102,15 @@ impl View {
                 (s, r)
             })
             .1;
-        let len = self.cursor.len() as i32;
+        let len = self.cursor_path_len as i32;
         Offset {
             shift: len * 4 - self.offset.shift,
             scroll: acc as i32 - self.offset.scroll,
         }
+    }
+
+    pub fn cursor_to_root(&mut self) {
+        self.cursor_path_len = 0;
     }
 
     pub fn visible_height(&self) -> usize {
@@ -131,6 +141,7 @@ impl View {
     pub fn at_cursor(&self) -> &State {
         self.cursor
             .iter()
+            .take(self.cursor_path_len)
             .fold(&self.root, |acc_state, in_state_idx| {
                 &acc_state.children[*in_state_idx].1
             })
@@ -139,13 +150,14 @@ impl View {
     pub fn at_cursor_mut(&mut self) -> &mut State {
         self.cursor
             .iter()
+            .take(self.cursor_path_len)
             .fold(&mut self.root, |acc_state, in_state_idx| {
                 &mut acc_state.children[*in_state_idx].1
             })
     }
 
     pub fn at_cursor_pair<'a>(&'a self, tree: &'a Tree) -> (&'a Node, &'a State) {
-        self.cursor.iter().fold(
+        self.cursor.iter().take(self.cursor_path_len).fold(
             (&tree.root, &self.root),
             |(acc_node, acc_state): (&Node, &State), in_state_idx| {
                 let (in_node_idx, next_state) = &acc_state.children[*in_state_idx];
@@ -163,7 +175,7 @@ impl View {
         &'a mut self,
         tree: &'a mut Tree,
     ) -> (&'a mut Node, &'a mut State) {
-        self.cursor.iter().fold(
+        self.cursor.iter().take(self.cursor_path_len).fold(
             (&mut tree.root, &mut self.root),
             |(acc_node, acc_state): (&mut Node, &mut State), in_state_idx| {
                 let (in_node_idx, next_state) = &mut acc_state.children[*in_state_idx];
@@ -178,13 +190,13 @@ impl View {
     }
 
     pub fn at_parent(&self) -> Option<&State> {
-        if self.cursor.is_empty() {
+        if 0 == self.cursor_path_len {
             None
         } else {
             Some(
                 self.cursor
                     .iter()
-                    .take(self.cursor.len() - 1)
+                    .take(self.cursor_path_len - 1)
                     .fold(&self.root, |acc_state, in_state_idx| {
                         &acc_state.children[*in_state_idx].1
                     }),
@@ -194,17 +206,23 @@ impl View {
 
     pub fn enter(&mut self) {
         if !self.at_cursor().children.is_empty() {
-            self.cursor.push(0);
+            if self.cursor.len() == self.cursor_path_len {
+                self.cursor.push(0);
+            }
+            self.cursor_path_len += 1;
         }
     }
 
     pub fn leave(&mut self) {
-        self.cursor.pop();
+        if 0 < self.cursor_path_len {
+            self.cursor_path_len -= 1;
+        }
     }
 
     pub fn next(&mut self) {
         if let Some(par) = self.at_parent() {
             let len = par.children.len();
+            self.cursor.truncate(self.cursor_path_len);
             self.cursor.last_mut().map(|idx| {
                 if *idx + 1 < len {
                     *idx += 1
@@ -214,6 +232,7 @@ impl View {
     }
 
     pub fn prev(&mut self) {
+        self.cursor.truncate(self.cursor_path_len);
         self.cursor.last_mut().map(|idx| {
             if 0 < *idx {
                 *idx -= 1
