@@ -348,6 +348,26 @@ impl App {
         }
     }
 
+    pub fn to_view_adjacent(&mut self, movement: i8) {
+        let Some(ViewTree::Split(v, _)) = self.focused_group() else { return; };
+        let max = v.len();
+        if !self.focus.is_empty() {
+            self.focus.last_mut().map(|it| {
+                if 0 < movement {
+                    *it += 1;
+                    if max <= *it {
+                        *it = 0;
+                    }
+                } else {
+                    if 0 == *it {
+                        *it = max;
+                    }
+                    *it -= 1
+                }
+            });
+        }
+    }
+
     // for now movement should only be +1 or -1
     // eg moving 'left' in a d=1(Horizontal) split is +1
     // FIXME: this is still not it: `wswvwswjwj`

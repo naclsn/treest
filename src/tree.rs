@@ -86,10 +86,11 @@ fn render_name(
     } else {
         let ext = tree_node.extension().unwrap_or("");
         let cut = 1 + ext.len() + deco.len() + raw_prefix.width() + raw_suffix.width();
+        let visible = file_name.chars().take(avail_len - cut).collect::<String>();
 
         let c = Spans::from(vec![
             raw_prefix,
-            Span::styled(&file_name[..avail_len - cut], sty),
+            Span::styled(&visible, sty),
             Span::styled("\u{2026}", sty),
             Span::styled(ext, sty),
             Span::raw(deco),

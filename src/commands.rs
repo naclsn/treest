@@ -74,6 +74,8 @@ impl Default for CommandMap {
                     ('v', (split, "vertical")),
                     ('t', transpose_splits),
                     ('q', close_split),
+                    ('w', to_view_next),
+                    ('W', to_view_prev),
                     ('h', (to_view, "right")),
                     ('l', (to_view, "left")),
                     ('j', (to_view, "down")),
@@ -293,6 +295,14 @@ make_lst!(
             Some(&"up") => app.to_view(Direction::Vertical, -1),
             _ => (),
         }
+        app
+    }),
+    to_view_next = ("to_view_next", |mut app: App, _| {
+        app.to_view_adjacent(1);
+        app
+    }),
+    to_view_prev = ("to_view_prev", |mut app: App, _| {
+        app.to_view_adjacent(-1);
         app
     }),
 );
