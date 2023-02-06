@@ -33,6 +33,8 @@ pub struct App {
     status: Status,
     #[serde(skip_serializing, skip_deserializing)]
     quit: bool,
+    #[serde(skip_serializing, skip_deserializing)]
+    pause: bool,
 }
 
 fn draw_r<B: Backend>(
@@ -114,6 +116,7 @@ impl App {
             status: Status::default(),
             // pending: Vec::new(),
             quit: false,
+            pause: false,
         })
     }
 
@@ -126,6 +129,15 @@ impl App {
     }
     pub fn done(&self) -> bool {
         self.quit
+    }
+    pub fn pause(&mut self) {
+        self.pause = true;
+    }
+    pub fn resume(&mut self) {
+        self.pause = false;
+    }
+    pub fn stopped(&self) -> bool {
+        self.pause
     }
 
     pub fn draw<B: Backend>(&mut self, f: &mut Frame<'_, B>) {
@@ -168,6 +180,23 @@ impl App {
     }
 
     pub fn do_event(mut self, event: &Event) -> App {
+        // ZZZ: hard-coded for now
+        if let Event::Key(key) = event {
+            if key.modifiers.contains(KeyModifiers::CONTROL) {
+                match key.code {
+                    KeyCode::Char('c') => {
+                        self.finish();
+                        return self;
+                    }
+                    KeyCode::Char('z') => {
+                        self.pause();
+                        return self;
+                    }
+                    _ => (),
+                }
+            }
+        }
+
         let (prompt_action, event_consumed) = self.status.do_event(&event);
         if let Some((action, args)) = prompt_action {
             return action.apply(self, &args.iter().map(|s| s.as_str()).collect::<Vec<_>>());
@@ -178,12 +207,6 @@ impl App {
 
         if let Event::Key(key) = event {
             if let KeyCode::Char(c) = key.code {
-                // ZZZ: hard-coded for now
-                if 'c' == c && key.modifiers.contains(KeyModifiers::CONTROL) {
-                    self.finish();
-                    return self;
-                }
-
                 self.status.push_pending(c);
                 let crap = self.bindings.clone(); // XXX: this should not be needed
                 let (may, continues) = crap.try_get_action(&self.status.get_pending());

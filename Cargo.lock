@@ -248,6 +248,7 @@ dependencies = [
  "lazy_static",
  "serde",
  "serde_json",
+ "signal-hook",
  "tui",
 ]
 
