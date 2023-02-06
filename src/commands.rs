@@ -182,7 +182,7 @@ macro_rules! make_lst_one {
         )
     };
     ($name:ident = $action:expr) => {
-        fn $name(app: App, args: &[&str]) -> App {
+        pub fn $name(app: App, args: &[&str]) -> App {
             $action(app, args)
         }
     };

@@ -263,6 +263,7 @@ impl App {
         self
     }
 
+    #[allow(dead_code)] // convenience, not used yet
     pub fn focused(&self) -> &View {
         let ViewTree::Leaf(r) = self.focus.iter().fold(&self.views, |acc, idx| {
             let ViewTree::Split(chs, _) = acc else { unreachable!() };
@@ -279,6 +280,7 @@ impl App {
         r
     }
 
+    #[allow(dead_code)] // convenience, not used yet
     pub fn focused_and_tree(&self) -> (&View, &Tree) {
         let ViewTree::Leaf(r) = self.focus.iter().fold(&self.views, |acc, idx| {
             let ViewTree::Split(chs, _) = acc else { unreachable!() };

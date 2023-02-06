@@ -1,11 +1,13 @@
 mod app;
+mod args;
 mod commands;
 mod line;
 mod node;
 mod tree;
 mod view;
 
-use crate::app::App;
+use crate::{app::App, args::Args};
+use clap::Parser;
 use crossterm::{
     event::{self, DisableMouseCapture, EnableMouseCapture},
     execute,
@@ -71,7 +73,7 @@ impl<W: io::Write> Drop for TerminalWrap<W> {
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
-    let res = run_app();
+    let res = run_app(Args::parse());
     print!("\r\n");
 
     if let Err(err) = res {
@@ -95,13 +97,18 @@ fn get_save_path(dir: &PathBuf) -> PathBuf {
     acc
 }
 
-fn run_app() -> Result<(), Box<dyn Error>> {
+fn get_default_userconf_path() -> PathBuf {
+    let mut acc = home_dir().unwrap();
+    acc.push(".config");
+    acc.push("treestrc");
+    acc
+}
+
+fn run_app(args: Args) -> Result<(), Box<dyn Error>> {
     let cwd = current_dir()?;
 
-    let arg_dir = ".".to_string();
-
     let dir = {
-        let r = PathBuf::from(arg_dir);
+        let r = args.path.unwrap_or(cwd.clone());
         if r.is_absolute() {
             r
         } else {
@@ -111,13 +118,25 @@ fn run_app() -> Result<(), Box<dyn Error>> {
     .canonicalize()?;
     let save_at = get_save_path(&dir);
 
-    let mut app = if let Ok(content) = fs::read_to_string(&save_at) {
-        let mut r: App = serde_json::from_str(&content)?;
-        r.fixup();
-        r
-    } else {
-        App::new(dir)?
+    let mut app = {
+        if args.clearstate {
+            App::new(dir)?
+        } else if let Ok(content) = fs::read_to_string(&save_at) {
+            let mut r: App = serde_json::from_str(&content)?;
+            r.fixup();
+            r
+        } else {
+            App::new(dir)?
+        }
     };
+
+    if !args.clean {
+        let p = args.userconf.unwrap_or_else(get_default_userconf_path);
+        if p.exists() {
+            app = commands::source(app, &[&p.to_string_lossy()]);
+        }
+    }
+
     let mut terminal = TerminalWrap::new(io::stderr())?;
 
     while !app.done() {
