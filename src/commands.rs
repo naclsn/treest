@@ -1,6 +1,6 @@
 use crate::{app::App, line::Message};
 use lazy_static::lazy_static;
-use std::{collections::HashMap, default::Default, process::Command as SysCommand};
+use std::{collections::HashMap, default::Default, io, process::Command as SysCommand};
 use tui::layout::Direction;
 
 #[derive(Clone)]
@@ -110,6 +110,8 @@ impl Default for CommandMap {
             ('E', (shift_view, "3")),
             (':', (prompt, ":", "command")),
             ('!', (prompt, "!", "shell")),
+            ('<', (prompt, "<", "echo")),
+            ('>', (prompt, ">", "read")),
         ])
     }
 }
@@ -180,11 +182,16 @@ make_lst!(
         }
         app
     }),
-    command = ("command", |app: App, args: &[&str]| {
+    command = ("command", |mut app: App, args: &[&str]| {
         if let Some(com) = COMMAND_MAP.get(args[0]) {
             let action = com.action;
             action(app, &args[1..])
         } else {
+            app.message(Message::Warning(if args.is_empty() {
+                format!("no command name provided")
+            } else {
+                format!("unknown command: '{}'", args[0])
+            }));
             app
         }
     }),
@@ -303,6 +310,47 @@ make_lst!(
     }),
     to_view_prev = ("to_view_prev", |mut app: App, _| {
         app.to_view_adjacent(-1);
+        app
+    }),
+    echo = ("echo", |app: App, args: &[&str]| {
+        let mut first = true;
+        for it in args {
+            if first {
+                first = false;
+            } else {
+                print!(" ");
+            }
+            if let Some((before, rest)) = it.split_once('$') {
+                print!("{before}");
+                if rest.starts_with('{') {
+                    if let Some((name, rest)) = rest[1..].split_once('}') {
+                        print!("{}{rest}", app.lookup(name));
+                    } else {
+                        print!("{rest}")
+                    }
+                } else {
+                    let mut chs = it.chars();
+                    let name = chs
+                        .by_ref()
+                        .take_while(|c| c.is_ascii_alphanumeric())
+                        .collect::<String>();
+                    let rest = chs.collect::<String>();
+                    print!("{}{rest}", app.lookup(&name));
+                }
+            } else {
+                print!("{it}");
+            }
+        }
+        println!();
+        app
+    }),
+    read = ("read", |mut app: App, args: &[&str]| {
+        let mut line = String::new();
+        let Ok(_) = io::stdin().read_line(&mut line) else { return app; };
+        let mut values = line.split_whitespace();
+        for it in args {
+            app.declare(it, values.next().unwrap_or(""));
+        }
         app
     }),
 );

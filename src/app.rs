@@ -6,7 +6,7 @@ use crate::{
 };
 use crossterm::event::{Event, KeyCode, KeyModifiers};
 use serde::{Deserialize, Serialize};
-use std::{io, iter, path::PathBuf};
+use std::{collections::HashMap, io, iter, path::PathBuf};
 use tui::{
     backend::Backend,
     layout::{Constraint, Direction, Layout, Rect},
@@ -26,6 +26,8 @@ pub struct App {
     pub tree: Tree,
     views: ViewTree,
     focus: Vec<usize>,
+
+    variables: HashMap<String, String>,
 
     #[serde(skip_serializing, skip_deserializing)]
     bindings: CommandMap,
@@ -112,6 +114,9 @@ impl App {
             tree,
             views: ViewTree::Leaf(view),
             focus: Vec::new(),
+
+            variables: HashMap::new(),
+
             bindings: CommandMap::default(),
             status: Status::default(),
             // pending: Vec::new(),
@@ -451,5 +456,12 @@ impl App {
                 _ => stack.pop().is_some(),
             }
         } {}
+    }
+
+    pub fn declare(&mut self, name: &str, value: &str) {
+        self.variables.insert(name.to_string(), value.to_string());
+    }
+    pub fn lookup(&self, name: &str) -> &str {
+        self.variables.get(name).map(String::as_str).unwrap_or("")
     }
 }
