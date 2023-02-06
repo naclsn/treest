@@ -125,8 +125,8 @@ impl App {
         })
     }
 
-    pub fn set_bindings(&mut self, bindings: CommandMap) {
-        self.bindings = bindings;
+    pub fn rebind(&mut self, key_path: &[char], action: Action) {
+        self.bindings.rebind(key_path, action);
     }
 
     pub fn finish(&mut self) {

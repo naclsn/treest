@@ -227,9 +227,44 @@ impl StatefulWidget for Line<'_> {
     }
 }
 
-fn split_line_args(c: &String) -> Vec<String> {
-    // TODO
-    c.split(" ").map(String::from).collect()
+pub fn split_line_args(c: &str) -> Vec<String> {
+    let mut r = Vec::new();
+    let mut cur = String::new();
+
+    let mut in_simple = false;
+    let mut in_double = false;
+    for ch in c.chars() {
+        if in_simple {
+            if '\'' == ch {
+                in_simple = false;
+            } else {
+                cur.push(ch);
+            }
+        } else if in_double {
+            if '"' == ch {
+                in_double = false;
+            } else {
+                cur.push(ch);
+            }
+        } else {
+            match ch {
+                '\'' => in_simple = true,
+                '"' => in_double = true,
+                ' ' | '\t' => {
+                    r.push(cur);
+                    cur = String::new();
+                }
+                '#' if cur.is_empty() => break,
+                _ => cur.push(ch),
+            }
+        }
+    }
+
+    if !cur.is_empty() {
+        r.push(cur);
+    }
+
+    r
 }
 
 impl Status {

@@ -1,6 +1,9 @@
-use crate::{app::App, line::Message};
+use crate::{
+    app::App,
+    line::{split_line_args, Message},
+};
 use lazy_static::lazy_static;
-use std::{collections::HashMap, default::Default, io, process::Command as SysCommand};
+use std::{collections::HashMap, default::Default, fs, io, process::Command as SysCommand};
 use tui::layout::Direction;
 
 #[derive(Clone)]
@@ -137,6 +140,27 @@ impl CommandMap {
         } else {
             return (None, curr.is_some());
         }
+    }
+
+    pub fn rebind(&mut self, key_path: &[char], action: Action) {
+        let mut acc = &mut self.0;
+        for ch in &key_path[..key_path.len() - 1] {
+            acc = {
+                match acc.get(ch) {
+                    Some(Command::Pending(_)) => {
+                        let Some(Command::Pending(next)) = acc.get_mut(ch) else { unreachable!(); };
+                        next
+                    }
+                    Some(Command::Immediate(_)) | None => {
+                        let niw = HashMap::new();
+                        acc.insert(*ch, Command::Pending(niw));
+                        let Some(Command::Pending(niw)) = acc.get_mut(ch) else { unreachable!(); };
+                        niw
+                    }
+                }
+            };
+        }
+        acc.insert(key_path[key_path.len() - 1], Command::Immediate(action));
     }
 }
 
@@ -344,6 +368,18 @@ make_lst!(
         println!();
         app
     }),
+    declare = ("declare", |mut app: App, args: &[&str]| {
+        if args.is_empty() {
+            app.message(Message::Warning(
+                "declare needs a name and optional value".to_string(),
+            ));
+            return app;
+        }
+        let name = args[0];
+        let value = args.get(1).unwrap_or(&"");
+        app.declare(name, value);
+        app
+    }),
     read = ("read", |mut app: App, args: &[&str]| {
         let mut line = String::new();
         let Ok(_) = io::stdin().read_line(&mut line) else { return app; };
@@ -351,6 +387,57 @@ make_lst!(
         for it in args {
             app.declare(it, values.next().unwrap_or(""));
         }
+        app
+    }),
+    bind = ("bind", |mut app: App, args: &[&str]| {
+        if args.len() < 2 {
+            app.message(Message::Warning(
+                "bind needs a key, a command name and optional arguments".to_string(),
+            ));
+            return app;
+        }
+        let key_path = args[0]
+            .split_whitespace()
+            .map(|s| s.chars().next().unwrap())
+            .collect::<Vec<_>>();
+        let Some(action) = COMMAND_MAP.get(args[1]).map(|c| c.action) else {
+            app.message(Message::Warning(format!("cannot bind unknown command '{}'", args[1])));
+            return app;
+        };
+        let bound = &args[2..];
+        app.rebind(
+            &key_path,
+            Action::Bind(action, bound.iter().map(|s| s.to_string()).collect()),
+        );
+        app
+    }),
+    source = ("source", |mut app: App, args: &[&str]| {
+        let Some(res) = args.get(0).map(fs::read_to_string) else {
+            app.message(Message::Warning(if args.is_empty() {
+                format!("could not read file '{}'", args[0])
+            } else {
+                format!("source needs a file path")
+            }));
+            return app;
+        };
+        match res {
+            Err(err) => app.message(Message::Warning(format!("could not read file: {err}"))),
+            Ok(content) => {
+                for (k, com0_args) in content
+                    .lines()
+                    .map(split_line_args)
+                    .enumerate()
+                    .filter(|(_, v)| !v.is_empty())
+                {
+                    let (com0, args) = com0_args.split_at(1);
+                    let Some(act) = COMMAND_MAP.get(com0[0].as_str()).map(|c| c.action) else {
+                        app.message(Message::Warning(format!("unknown command at line {k}")));
+                        return app;
+                    };
+                    app = act(app, &args.iter().map(String::as_str).collect::<Vec<_>>());
+                }
+            } // Ok
+        } // match
         app
     }),
 );
