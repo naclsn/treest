@@ -30,8 +30,6 @@ impl Display for Tree {
 const INDENT: &str = "\u{2502}\u{a0}\u{a0}"; //          "|  "
 const BRANCH: &str = "\u{251c}\u{2500}\u{2500}"; //      "|--"
 const BRANCH_LAST: &str = "\u{2514}\u{2500}\u{2500}"; // "`--"
-const _TOP_OFFSCRN: &str = "\u{2506}\u{a0}\u{a0}"; //     ...
-const _BOT_OFFSCRN: &str = "\u{2506}\u{a0}\u{a0}"; //     ...
 const INDENT_WIDTH: u16 = 4;
 
 fn render_name(

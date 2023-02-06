@@ -11,11 +11,14 @@ use crossterm::{
     execute,
     terminal::{disable_raw_mode, enable_raw_mode},
 };
+use dirs::home_dir;
 use serde_json;
 use std::{
     env::current_dir,
     error::Error,
+    fs,
     io::{self, Write},
+    path::{Component, PathBuf},
 };
 use tui::{
     backend::{Backend, CrosstermBackend},
@@ -71,16 +74,50 @@ fn main() -> Result<(), Box<dyn Error>> {
     let res = run_app();
     print!("\r\n");
 
-    match res {
-        Ok(_ser) => (), //println!("{ser}"),
-        Err(err) => println!("{:?}", err),
+    if let Err(err) = res {
+        println!("{:?}", err);
     }
 
     Ok(())
 }
 
-fn run_app() -> Result<String, Box<dyn Error>> {
-    let mut app = App::new(current_dir()?)?;
+fn get_save_path(dir: &PathBuf) -> PathBuf {
+    let mut acc = home_dir().unwrap();
+    acc.push(".cache");
+    acc.push("treest");
+    acc.push("root");
+    for cur in dir.components() {
+        if let Component::Normal(it) = cur {
+            acc.push(it);
+        }
+    }
+    acc.push("save.json");
+    acc
+}
+
+fn run_app() -> Result<(), Box<dyn Error>> {
+    let cwd = current_dir()?;
+
+    let arg_dir = ".".to_string();
+
+    let dir = {
+        let r = PathBuf::from(arg_dir);
+        if r.is_absolute() {
+            r
+        } else {
+            cwd.join(r)
+        }
+    }
+    .canonicalize()?;
+    let save_at = get_save_path(&dir);
+
+    let mut app = if let Ok(content) = fs::read_to_string(&save_at) {
+        let mut r: App = serde_json::from_str(&content)?;
+        r.fixup();
+        r
+    } else {
+        App::new(dir)?
+    };
     let mut terminal = TerminalWrap::new(io::stderr())?;
 
     while !app.done() {
@@ -99,5 +136,11 @@ fn run_app() -> Result<String, Box<dyn Error>> {
         }
     }
 
-    Ok(serde_json::to_string(&app)?)
+    if let Some(parent) = save_at.parent() {
+        if !parent.exists() {
+            fs::create_dir_all(parent)?;
+        }
+    }
+    fs::write(&save_at, serde_json::to_string(&app)?)?;
+    Ok(())
 }
