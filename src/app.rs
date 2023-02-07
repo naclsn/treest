@@ -108,8 +108,8 @@ fn draw_r<B: Backend>(
 impl App {
     pub fn new(path: PathBuf) -> io::Result<App> {
         let mut tree = Tree::new(path)?;
-        let mut view = View::new(&tree.root);
-        view.root.unfold(&mut tree.root)?;
+        let mut view = View::new(&tree.root)?;
+        view.unfold_root(&mut tree)?;
         Ok(App {
             tree,
             views: ViewTree::Leaf(view),

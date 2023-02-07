@@ -1,6 +1,7 @@
 use crate::{
     app::App,
     line::{split_line_args, Message},
+    node::{Sorting, SortingProp},
 };
 use lazy_static::lazy_static;
 use std::{collections::HashMap, default::Default, fs, io, process::Command as SysCommand};
@@ -438,6 +439,57 @@ make_lst!(
                 }
             } // Ok
         } // match
+        app
+    }),
+    sort = ("sort", |mut app: App, args: &[&str]| {
+        let prop = match args.get(0) {
+            Some(&"none") => SortingProp::None,
+            Some(&"name") => SortingProp::Name,
+            Some(&"size") => SortingProp::Size,
+            Some(&"extension") => SortingProp::Extension,
+            Some(&"atime") => SortingProp::ATime,
+            Some(&"mtime") => SortingProp::MTime,
+            Some(&"ctime") => SortingProp::CTime,
+            Some(unk) => {
+                app.message(Message::Warning(format!(
+                    "cannot sort by unknown property '{unk}'"
+                )));
+                return app;
+            }
+            None => {
+                app.message(Message::Warning(
+                    "sort needs a propery to sort by".to_string(),
+                ));
+                return app;
+            }
+        };
+        let mut skip = 1;
+        let (view, tree) = app.focused_and_tree_mut();
+        view.set_sorting(
+            Sorting::new(
+                prop,
+                match args.get(skip) {
+                    Some(&"dirs_first") => {
+                        skip += 1;
+                        true
+                    }
+                    _ => false,
+                },
+            ),
+            match args.get(skip) {
+                Some(&"reverse") => {
+                    skip += 1;
+                    true
+                }
+                _ => false,
+            },
+        );
+        view.renew_root(tree).unwrap();
+        if let Some(rest) = args.get(skip) {
+            app.message(Message::Warning(format!(
+                "unknown extraneous argument '{rest}'"
+            )));
+        }
         app
     }),
 );

@@ -1,11 +1,40 @@
 use serde::{Deserialize, Serialize};
 use std::{
+    cmp::Ordering,
     fmt::{self, Display, Formatter},
     fs::{metadata, read_dir, read_link, symlink_metadata, Metadata},
     io,
     path::{Path, PathBuf},
 };
 use tui::style::{Color, Modifier, Style};
+
+#[derive(Serialize, Deserialize, Debug, Clone, Copy)]
+pub enum SortingProp {
+    None,
+    Name,
+    Size,
+    Extension,
+    ATime,
+    MTime,
+    CTime,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Copy)]
+pub struct Sorting {
+    prop: SortingProp,
+    dirs_first: bool,
+}
+
+impl Sorting {
+    pub fn new(prop: SortingProp, dirs_first: bool) -> Sorting {
+        Sorting { prop, dirs_first }
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Copy)]
+pub enum Filtering {
+    None,
+}
 
 #[derive(Serialize, Deserialize, Debug)]
 pub enum FileKind {
@@ -178,6 +207,12 @@ fn meta_to_string(meta: &Metadata) -> String {
     .concat()
 }
 
+fn cmp_in<T, C: Ord>(l: &Option<T>, r: &Option<T>, sel: fn(&T) -> C) -> Ordering {
+    l.as_ref()
+        .zip(r.as_ref())
+        .map_or(Ordering::Equal, |(m, o)| sel(m).cmp(&sel(o)))
+}
+
 impl Node {
     pub fn new(path: PathBuf, meta: Metadata) -> io::Result<Node> {
         let info = if meta.is_dir() {
@@ -222,6 +257,30 @@ impl Node {
 
     pub fn as_path(&self) -> &Path {
         self.path.as_path()
+    }
+
+    pub fn cmp_by(&self, other: &Node, by: Sorting) -> Ordering {
+        if by.dirs_first {
+            match (&self.info, &other.info) {
+                (NodeInfo::Dir { .. }, NodeInfo::Dir { .. }) => (),
+                (NodeInfo::Dir { .. }, _) => return Ordering::Less,
+                (_, NodeInfo::Dir { .. }) => return Ordering::Greater,
+                _ => (),
+            }
+        }
+
+        match by.prop {
+            SortingProp::None => Ordering::Equal,
+            SortingProp::Name => self.file_name().cmp(other.file_name()),
+            SortingProp::Size => cmp_in(&self.meta, &other.meta, Metadata::len),
+            SortingProp::Extension => self
+                .extension()
+                .or_else(|| Some(self.file_name()))
+                .cmp(&other.extension().or_else(|| Some(self.file_name()))),
+            SortingProp::ATime => cmp_in(&self.meta, &other.meta, |m| m.accessed().unwrap()),
+            SortingProp::MTime => cmp_in(&self.meta, &other.meta, |m| m.modified().unwrap()),
+            SortingProp::CTime => cmp_in(&self.meta, &other.meta, |m| m.created().unwrap()),
+        }
     }
 
     pub fn loaded_children(&self) -> Option<&Vec<Node>> {
@@ -311,6 +370,27 @@ impl Node {
             _ => (),
         }
         true
+    }
+
+    pub fn is_dir(&self) -> bool {
+        match self.info {
+            NodeInfo::Dir { .. } => true,
+            _ => false,
+        }
+    }
+
+    pub fn is_link(&self) -> bool {
+        match self.info {
+            NodeInfo::Link { .. } => true,
+            _ => false,
+        }
+    }
+
+    pub fn is_file(&self) -> bool {
+        match self.info {
+            NodeInfo::File { .. } => true,
+            _ => false,
+        }
     }
 
     pub fn file_name(&self) -> &str {

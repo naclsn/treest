@@ -1,6 +1,55 @@
-use crate::{node::Node, tree::Tree};
+use crate::{
+    node::{Filtering, Node, Sorting, SortingProp},
+    tree::Tree,
+};
 use serde::{Deserialize, Serialize};
 use std::io;
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+struct ViewSettings {
+    sort: Sorting,
+    filter: Filtering,
+    reverse: bool,
+}
+
+impl ViewSettings {
+    fn make_node_state_mapping(&self, chs: &Vec<Node>) -> io::Result<Vec<(usize, State)>> {
+        let mut r: Vec<_> = chs
+            .iter()
+            .filter(|_| true) // TODO
+            .enumerate()
+            .collect();
+
+        r.sort_unstable_by(|(_, l), (_, r)| Node::cmp_by(l, r, self.sort));
+
+        if self.reverse {
+            r.into_iter()
+                .rev()
+                .map(|(idx, ch)| State::new(ch, self).map(|st| (idx, st)))
+                .collect()
+        } else {
+            r.into_iter()
+                .map(|(idx, ch)| State::new(ch, self).map(|st| (idx, st)))
+                .collect()
+        }
+    }
+
+    fn correct_node_state_mapping(
+        &self,
+        chs: &Vec<Node>,
+        mut r: Vec<(usize, State)>,
+    ) -> Vec<(usize, State)> {
+        r.sort_unstable_by(|(lk, _), (rk, _)| Node::cmp_by(&chs[*lk], &chs[*rk], self.sort));
+
+        let iter = r.into_iter().filter(|_| true); // TODO
+
+        if self.reverse {
+            iter.rev().collect()
+        } else {
+            iter.collect()
+        }
+    }
+}
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct State {
@@ -10,39 +59,53 @@ pub struct State {
 }
 
 impl State {
-    fn new(node: &Node) -> State {
-        State {
+    fn new(node: &Node, settings: &ViewSettings) -> io::Result<State> {
+        Ok(State {
             unfolded: false,
             marked: false,
-            children: node.loaded_children().map_or(Vec::new(), |chs| {
-                chs.iter()
-                    .enumerate()
-                    .map(|(idx, ch)| (idx, State::new(ch)))
-                    .collect()
-            }),
-        }
+            children: node
+                .loaded_children()
+                .map_or(Ok(Vec::new()), |ok| settings.make_node_state_mapping(ok))?,
+        })
+    }
+
+    fn renew(&self, node: &Node, settings: &ViewSettings) -> io::Result<State> {
+        Ok(State {
+            unfolded: self.unfolded,
+            marked: self.marked,
+            children: if !self.unfolded {
+                Vec::new()
+            } else {
+                let Some(ok) = node.loaded_children() else { unreachable!() };
+                settings.correct_node_state_mapping(
+                    ok,
+                    self.children
+                        .iter()
+                        .map(|(k, st)| st.renew(&ok[*k], settings).map(|st| (*k, st)))
+                        .collect::<io::Result<_>>()?,
+                )
+            },
+        })
     }
 
     pub fn visible_height(&self) -> usize {
         if self.unfolded {
-            1 + self
-                .children
-                .iter()
-                .map(|(_, ch)| ch.visible_height())
-                .sum::<usize>()
+            (if 1 == self.children.len() { 0 } else { 1 })
+                + self
+                    .children
+                    .iter()
+                    .map(|(_, ch)| ch.visible_height())
+                    .sum::<usize>()
         } else {
             1
         }
     }
 
-    pub fn unfold(&mut self, node: &mut Node) -> io::Result<()> {
+    fn unfold(&mut self, node: &mut Node, settings: &ViewSettings) -> io::Result<()> {
         if self.children.is_empty() {
-            self.children = node.load_children().map(|chs| {
-                chs.iter()
-                    .enumerate()
-                    .map(|(idx, ch)| (idx, State::new(ch)))
-                    .collect()
-            })?;
+            self.children = node
+                .load_children()
+                .and_then(|v| settings.make_node_state_mapping(v))?;
         }
         self.unfolded = true;
         Ok(())
@@ -66,12 +129,18 @@ pub struct View {
     cursor_path_len: usize,
     offset: Offset,
     // selection: Vec<State>,
+    settings: ViewSettings,
 }
 
 impl View {
-    pub fn new(root: &Node) -> View {
-        View {
-            root: State::new(root),
+    pub fn new(root: &Node) -> io::Result<View> {
+        let settings = ViewSettings {
+            sort: Sorting::new(SortingProp::Name, false),
+            filter: Filtering::None,
+            reverse: false,
+        };
+        Ok(View {
+            root: State::new(root, &settings)?,
             cursor: Vec::new(),
             cursor_path_len: 0,
             offset: Offset {
@@ -79,7 +148,8 @@ impl View {
                 scroll: 0,
             },
             // selection: vec![],
-        }
+            settings,
+        })
     }
 
     pub fn cursor_path(&self) -> &[usize] {
@@ -243,13 +313,26 @@ impl View {
         });
     }
 
+    pub fn renew_root(&mut self, tree: &Tree) -> io::Result<()> {
+        self.root = self.root.renew(&tree.root, &self.settings)?;
+        // TODO: try to update accordingly
+        self.cursor.clear();
+        self.cursor_path_len = 0;
+        Ok(())
+    }
+
+    pub fn unfold_root(&mut self, tree: &mut Tree) -> io::Result<()> {
+        self.root.unfold(&mut tree.root, &self.settings)
+    }
+
     pub fn fold(&mut self) {
         self.at_cursor_mut().fold();
     }
 
     pub fn unfold(&mut self, tree: &mut Tree) -> io::Result<()> {
+        let f_u = self.settings.clone();
         let (node, state) = self.at_cursor_pair_mut(tree);
-        state.unfold(node)
+        state.unfold(node, &f_u)
     }
 
     pub fn unfolded(&self) -> bool {
@@ -267,5 +350,10 @@ impl View {
     pub fn toggle_marked(&mut self) {
         let it = self.at_cursor_mut();
         it.marked = !it.marked;
+    }
+
+    pub fn set_sorting(&mut self, sort: Sorting, reverse: bool) {
+        self.settings.sort = sort;
+        self.settings.reverse = reverse;
     }
 }
