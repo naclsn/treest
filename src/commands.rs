@@ -78,6 +78,7 @@ impl Default for CommandMap {
                     ('v', (split, "vertical")),
                     ('t', transpose_splits),
                     ('q', close_split),
+                    ('o', close_other_splits),
                     ('w', to_view_next),
                     ('W', to_view_prev),
                     ('h', (to_view, "right")),
@@ -268,6 +269,10 @@ make_lst!(
     }),
     close_split = ("close_split", |mut app: App, _| {
         app.view_close();
+        app
+    }),
+    close_other_splits = ("close_other_splits", |mut app: App, _| {
+        app.view_close_other();
         app
     }),
     transpose_splits = ("transpose_splits", |mut app: App, _| {

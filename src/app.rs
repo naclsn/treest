@@ -386,6 +386,11 @@ impl App {
         }
     }
 
+    pub fn view_close_other(&mut self) {
+        self.views = ViewTree::Leaf(self.focused().clone());
+        self.focus.clear();
+    }
+
     pub fn to_view_adjacent(&mut self, movement: i8) {
         let Some(ViewTree::Split(v, _)) = self.focused_group() else { return; };
         let max = v.len();
