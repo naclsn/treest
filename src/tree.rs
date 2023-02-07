@@ -39,9 +39,9 @@ fn render_name(
     (indent, line): (u16, u16),
     area: Rect,
     is_cursor: bool,
-) {
+) -> usize {
     if area.width <= indent {
-        return;
+        return 0;
     }
 
     let file_name = tree_node.file_name();
@@ -81,6 +81,7 @@ fn render_name(
         ]);
 
         buf.set_spans(area.x + indent, area.y + line, &c, area.width - indent);
+        c.width()
     } else {
         let ext = tree_node.extension().unwrap_or("");
         let cut = 1 + ext.len() + deco.len() + raw_prefix.width() + raw_suffix.width();
@@ -96,6 +97,7 @@ fn render_name(
         ]);
 
         buf.set_spans(area.x + indent, area.y + line, &c, area.width - indent);
+        c.width()
     }
 }
 
@@ -104,31 +106,39 @@ fn render_r(
     state_node: &State,
     buf: &mut Buffer,
     curr: &mut Offset,
+    bump: i32,
     area: Rect,
     cursor_path: Option<&[usize]>,
 ) {
     // this node
+    let mut name_width = 0;
     if 0 <= curr.shift && 0 <= curr.scroll {
-        render_name(
+        name_width = render_name(
             tree_node,
             state_node,
             buf,
-            (curr.shift as u16, curr.scroll as u16),
+            ((curr.shift + bump) as u16, curr.scroll as u16),
             area,
             if let Some(v) = cursor_path {
                 v.is_empty()
             } else {
                 false
             },
-        );
+        ) as i32;
     }
     curr.scroll += 1;
 
     // recurse
     if state_node.unfolded && !state_node.children.is_empty() {
-        curr.shift += INDENT_WIDTH as i32;
-
         let count = state_node.children.len();
+        let bump = if 1 < count {
+            curr.shift += INDENT_WIDTH as i32;
+            0
+        } else {
+            curr.scroll -= 1;
+            bump + name_width
+        };
+
         let chs = tree_node.loaded_children().unwrap();
 
         for (in_state_idx, (tree_node, state_node)) in state_node
@@ -143,21 +153,14 @@ fn render_r(
 
             let is_last = in_state_idx == count - 1;
 
-            if INDENT_WIDTH as i32 <= curr.shift && 0 <= curr.scroll {
-                buf.set_string(
-                    area.x + (curr.shift as u16) - INDENT_WIDTH,
-                    area.y + (curr.scroll as u16),
-                    if is_last { BRANCH_LAST } else { BRANCH },
-                    Style::default(),
-                );
-            }
-
+            let p_indent = curr.shift;
             let p_line = curr.scroll;
             render_r(
                 tree_node,
                 state_node,
                 buf,
                 curr,
+                bump,
                 area,
                 cursor_path.and_then(|p_slice| {
                     if p_slice.is_empty() {
@@ -170,6 +173,15 @@ fn render_r(
                     None
                 }),
             );
+
+            if INDENT_WIDTH as i32 <= curr.shift && 0 <= curr.scroll {
+                buf.set_string(
+                    area.x + (p_indent as u16) - INDENT_WIDTH,
+                    area.y + (p_line as u16),
+                    if is_last { BRANCH_LAST } else { BRANCH },
+                    Style::default(),
+                );
+            }
 
             if !is_last {
                 let start = if p_line + 1 < 0 { 0 } else { p_line + 1 };
@@ -186,7 +198,9 @@ fn render_r(
             }
         }
 
-        curr.shift -= INDENT_WIDTH as i32;
+        if 1 < count {
+            curr.shift -= INDENT_WIDTH as i32;
+        }
     };
 }
 
@@ -209,6 +223,7 @@ impl StatefulWidget for &Tree {
             &state.root,
             buf,
             &mut origin,
+            0,
             area,
             Some(state.cursor_path()),
         );
