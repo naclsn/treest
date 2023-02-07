@@ -125,8 +125,7 @@ impl App {
     }
 
     pub fn fixup(&mut self) {
-        // TODO: todo (needs to also update the views in parallel, but
-        // the interface to have sorting/filtering is not here at all)
+        // TODO: todo (needs to also update the views in parallel eg. removed files)
         let still_exists = self.tree.root.fixup();
         if !still_exists {
             panic!("at least root is supposed to still exist");
@@ -185,6 +184,7 @@ impl App {
     }
 
     pub fn message(&mut self, message: Message) {
+        // TODO: handle longer messages and multi-line messages better
         self.status.message(message);
     }
 

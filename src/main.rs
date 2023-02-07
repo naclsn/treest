@@ -6,7 +6,7 @@ mod node;
 mod tree;
 mod view;
 
-use crate::{app::App, args::Args};
+use crate::{app::App, args::Args, commands::Action};
 use clap::Parser;
 use crossterm::{
     event::{self, DisableMouseCapture, EnableMouseCapture},
@@ -133,7 +133,7 @@ fn run_app(args: Args) -> Result<(), Box<dyn Error>> {
     if !args.clean {
         let p = args.userconf.unwrap_or_else(get_default_userconf_path);
         if p.exists() {
-            app = commands::source(app, &[&p.to_string_lossy()]);
+            app = Action::Fn(&commands::source).apply(app, &[&p.to_string_lossy()]);
         }
     }
 
