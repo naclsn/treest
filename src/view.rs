@@ -53,7 +53,7 @@ impl State {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, Copy)]
 pub struct Offset {
     pub shift: i32,  // horizontally
     pub scroll: i32, // vertically
@@ -64,8 +64,7 @@ pub struct View {
     pub root: State,
     cursor: Vec<usize>,
     cursor_path_len: usize,
-    pub offset: Offset,
-    // cursor: &'tree Node,
+    offset: Offset,
     // selection: Vec<State>,
 }
 
@@ -85,6 +84,10 @@ impl View {
 
     pub fn cursor_path(&self) -> &[usize] {
         &self.cursor[..self.cursor_path_len]
+    }
+
+    pub fn view_offset(&self) -> Offset {
+        self.offset
     }
 
     pub fn cursor_offset(&self) -> Offset {

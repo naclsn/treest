@@ -26,10 +26,10 @@ pub enum NodeInfo {
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Node {
-    pub path: PathBuf,
+    path: PathBuf,
     #[serde(skip_serializing, skip_deserializing)]
-    pub meta: Option<Metadata>,
-    pub info: NodeInfo,
+    meta: Option<Metadata>,
+    info: NodeInfo,
 }
 
 impl Display for Node {
@@ -104,6 +104,80 @@ impl From<&Metadata> for FileKind {
     }
 }
 
+fn perm_to_string(o: u32) -> String {
+    [
+        if o >> 2 & 0b1 == 1 { 'r' } else { '-' },
+        if o >> 1 & 0b1 == 1 { 'w' } else { '-' },
+        if o >> 0 & 0b1 == 1 { 'x' } else { '-' },
+    ]
+    .into_iter()
+    .collect()
+}
+
+#[cfg(unix)]
+fn meta_to_string(meta: &Metadata) -> String {
+    use std::os::unix::fs::FileTypeExt;
+    use std::os::unix::fs::PermissionsExt;
+
+    let mode = meta.permissions().mode();
+    let ft = meta.file_type();
+
+    [
+        // file type
+        if ft.is_block_device() {
+            'b'
+        } else if ft.is_char_device() {
+            'c'
+        } else if ft.is_dir() {
+            'd'
+        } else if ft.is_symlink() {
+            'l'
+        } else if ft.is_fifo() {
+            'p'
+        } else if ft.is_socket() {
+            's'
+        } else {
+            '-'
+        }
+        .to_string(),
+        // owner
+        perm_to_string(mode >> 3 * 2 & 0b111),
+        // group
+        perm_to_string(mode >> 3 * 1 & 0b111),
+        // world
+        perm_to_string(mode >> 3 * 0 & 0b111),
+    ]
+    .concat()
+}
+
+#[cfg(windows)]
+fn meta_to_string(meta: &Metadata) -> String {
+    use std::os::windows::fs::FileTypeExt;
+    use std::os::windows::fs::PermissionsExt;
+
+    let ro = meta.permissions().readonly();
+    let ft = meta.file_type();
+
+    [
+        // file type
+        if ft.is_dir() {
+            'd'
+        } else if ft.is_symlink() {
+            'l'
+        } else {
+            '-'
+        }
+        .to_string(),
+        // owner
+        perm_to_string(0b101 | if ro { 0b000 } else { 0b010 }),
+        // group
+        perm_to_string(0b101 | if ro { 0b000 } else { 0b010 }),
+        // world
+        perm_to_string(0b101 | if ro { 0b000 } else { 0b010 }),
+    ]
+    .concat()
+}
+
 impl Node {
     pub fn new(path: PathBuf, meta: Metadata) -> io::Result<Node> {
         let info = if meta.is_dir() {
@@ -134,16 +208,16 @@ impl Node {
         })
     }
 
-    pub fn new_root(path: PathBuf) -> Node {
-        let meta = metadata(path.clone()).ok();
-        Node {
+    pub fn new_root(path: PathBuf) -> io::Result<Node> {
+        let meta = Some(metadata(&path)?);
+        Ok(Node {
             path,
             meta,
             info: NodeInfo::Dir {
                 loaded: false,
                 children: Vec::new(),
             },
-        }
+        })
     }
 
     pub fn as_path(&self) -> &Path {
@@ -205,6 +279,38 @@ impl Node {
                 ),
             )),
         }
+    }
+
+    pub fn meta_to_string(&self) -> String {
+        match &self.meta {
+            Some(meta) => meta_to_string(meta),
+            None => "- no meta - ".to_string(),
+        }
+    }
+
+    pub fn fixup_meta(&mut self) -> io::Result<()> {
+        self.meta = Some(self.path.metadata()?);
+        Ok(())
+    }
+
+    pub fn fixup(&mut self) -> bool {
+        let Ok(()) = self.fixup_meta() else { return false };
+        match &mut self.info {
+            NodeInfo::Dir {
+                loaded: true,
+                children,
+            } => {
+                // FIXME: raw edits to the vec will cause a panic at unwrap in some view!
+                children.retain_mut(Node::fixup);
+            }
+            NodeInfo::Link { target } => {
+                if let Ok(node) = target {
+                    node.fixup();
+                }
+            }
+            _ => (),
+        }
+        true
     }
 
     pub fn file_name(&self) -> &str {

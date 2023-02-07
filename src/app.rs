@@ -1,7 +1,6 @@
 use crate::{
     commands::{Action, CommandMap},
     line::{Line, Message, Status},
-    node::{Node, NodeInfo},
     tree::Tree,
     view::View,
 };
@@ -24,7 +23,7 @@ enum ViewTree {
 
 #[derive(Serialize, Deserialize)]
 pub struct App {
-    pub tree: Tree,
+    tree: Tree,
     views: ViewTree,
     focus: Vec<usize>,
 
@@ -125,30 +124,10 @@ impl App {
         })
     }
 
-    fn fixup_stub_r(node: &mut Node) -> bool {
-        let Ok(meta) = node.path.metadata() else { return false; };
-        node.meta = Some(meta);
-        match &mut node.info {
-            NodeInfo::Dir {
-                loaded: true,
-                children,
-            } => {
-                // FIXME: raw edits to the vec will cause a panic at unwrap in some view!
-                children.retain_mut(App::fixup_stub_r);
-            }
-            NodeInfo::Link { target } => {
-                if let Ok(node) = target {
-                    App::fixup_stub_r(node);
-                }
-            }
-            _ => (),
-        }
-        true
-    }
     pub fn fixup(&mut self) {
         // TODO: todo (needs to also update the views in parallel, but
         // the interface to have sorting/filtering is not here at all)
-        let still_exists = App::fixup_stub_r(&mut self.tree.root);
+        let still_exists = self.tree.root.fixup();
         if !still_exists {
             panic!("at least root is supposed to still exist");
         }

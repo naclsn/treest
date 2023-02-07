@@ -107,9 +107,6 @@ fn render_r(
     area: Rect,
     cursor_path: Option<&[usize]>,
 ) {
-    // XXX: too many numeric type conversion, either
-    // that's normal rust, or there's a bigger problem
-
     // this node
     if 0 <= curr.shift && 0 <= curr.scroll {
         render_name(
@@ -201,9 +198,10 @@ impl StatefulWidget for &Tree {
 
         state.ensure_cursor_within(area.height as i32, stride);
 
+        let view_offset = state.view_offset();
         let mut origin = Offset {
-            shift: -state.offset.shift,
-            scroll: -state.offset.scroll,
+            shift: -view_offset.shift,
+            scroll: -view_offset.scroll,
         };
 
         render_r(
@@ -220,7 +218,7 @@ impl StatefulWidget for &Tree {
 impl Tree {
     pub fn new(path: PathBuf) -> io::Result<Tree> {
         Ok(Tree {
-            root: Node::new_root(path),
+            root: Node::new_root(path)?,
         })
     }
 }

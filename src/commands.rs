@@ -310,12 +310,12 @@ make_lst!(
     }),
     scroll_view = ("scroll_view", |mut app: App, args: &[&str]| {
         let by = args.get(0).map_or(Ok(1), |n| n.parse()).unwrap_or(1);
-        app.focused_mut().offset.scroll += by;
+        app.focused_mut().view_offset().scroll += by;
         app
     }),
     shift_view = ("shift_view", |mut app: App, args: &[&str]| {
         let by = args.get(0).map_or(Ok(1), |n| n.parse()).unwrap_or(1);
-        app.focused_mut().offset.shift += by;
+        app.focused_mut().view_offset().shift += by;
         app
     }),
     to_view = ("to_view", |mut app: App, args: &[&str]| {
