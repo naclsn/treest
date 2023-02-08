@@ -305,7 +305,7 @@ make_lst!(
             }
             app
         },
-        Completer::None
+        Completer::StaticNth(&[Completer::PathLookup, Completer::None])
     ),
     prompt = (
         "prompt for input, then execute a command with it (the first argument should be the prompt text)",
@@ -703,5 +703,18 @@ make_lst!(
             })
         },
         Completer::None
+    ),
+    message = (
+        "display a message, level should be one of info/warning/error",
+        |mut app: App, args: &[&str]| {
+            match args.get(0) {
+                Some(&"info") => app.message(Message::Info(args[1..].join(" "))),
+                Some(&"warning") => app.message(Message::Warning(args[1..].join(" "))),
+                Some(&"error") => app.message(Message::Error(args[1..].join(" "))),
+                _ => app.message(Message::Warning("message needs a level and messages".to_string())),
+            }
+            app
+        },
+        Completer::StaticWords(&["info", "warning", "error"])
     ),
 );

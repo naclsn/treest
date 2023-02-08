@@ -635,7 +635,7 @@ fn complete(p: &mut Prompt, lookup: impl Fn(String) -> String) {
 
     match res.len() {
         0 => {
-            todo!("warn user or something");
+            todo!("warn user or something (no result)");
         }
         1 => {
             let rest = str_char_slice(&res[0], ch_idx, res[0].len());
@@ -645,7 +645,7 @@ fn complete(p: &mut Prompt, lookup: impl Fn(String) -> String) {
             p.cursor += 1;
         }
         _ => {
-            todo!("show choices or something");
+            todo!("show choices or something: {res:?}");
         }
     }
 }
