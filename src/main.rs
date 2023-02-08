@@ -1,6 +1,7 @@
 mod app;
 mod args;
 mod commands;
+mod completions;
 mod line;
 mod node;
 mod tree;

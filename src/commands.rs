@@ -6,6 +6,7 @@
 /// as name/doc/completion).
 use crate::{
     app::App,
+    completions::{self, Completer},
     line::{split_line_args, Message},
     node::{Sorting, SortingProp},
 };
@@ -29,7 +30,22 @@ impl Action {
                 v.extend_from_slice(args);
                 sc.action(app, &v)
             }
-            Action::Chain(funcs) => funcs.iter().fold(app, |acc, cur| cur.apply(acc, args)),
+            Action::Chain(acts) => acts
+                .iter()
+                .skip(1)
+                .fold(acts[0].apply(app, args), |acc, cur| cur.apply(acc, &[])),
+        }
+    }
+
+    pub fn get_comp(&self, args: &[&str], arg_idx: usize, ch_idx: usize) -> Vec<String> {
+        match self {
+            Action::Fn(sc) => sc.comp.get_comp(args, arg_idx, ch_idx),
+            Action::Bind(sc, bound) => {
+                let mut v: Vec<_> = bound.iter().map(String::as_str).collect();
+                v.extend_from_slice(args);
+                sc.comp.get_comp(&v, bound.len() + arg_idx, ch_idx)
+            }
+            Action::Chain(acts) => acts[0].get_comp(args, arg_idx, ch_idx),
         }
     }
 }
@@ -116,6 +132,7 @@ impl Default for CommandMap {
                             app.focused_mut().cursor_to_root();
                             app
                         },
+                        comp: completions::comp_none,
                     })
                 }),]
             ),
@@ -184,6 +201,7 @@ pub struct StaticCommand {
     name: &'static str,
     doc: &'static str,
     action: fn(App, &[&str]) -> App,
+    comp: Completer,
 }
 
 impl StaticCommand {
@@ -201,8 +219,11 @@ macro_rules! make_lst {
                 name: stringify!($name),
                 doc: $doc,
                 action: $action,
+                comp: completions::comp_commands(),
             };
         )*
+
+        pub const COMMAND_LIST: &'static[&'static str] = &[$(stringify!($name),)*];
 
         lazy_static! {
             pub static ref COMMAND_MAP: HashMap<&'static str, &'static StaticCommand> =

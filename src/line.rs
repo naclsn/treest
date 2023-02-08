@@ -23,7 +23,6 @@ pub enum Message {
     Error(String),
 }
 
-// TODO: completion (would be provided by the `Action`)
 pub struct Prompt {
     prompt: String,
     cursor: usize,
@@ -149,13 +148,30 @@ impl StatefulWidget for Line<'_> {
     }
 }
 
-pub fn split_line_args(c: &str) -> Vec<String> {
+pub fn split_line_args_cursor_indices(
+    c: &str,
+    cursor: usize,
+    add_phantom_arg_at_cursor: bool, // when true, will add a fake empty argument on floaty cursor
+) -> (Vec<String>, usize, usize) {
     let mut r = Vec::new();
     let mut cur = String::new();
 
+    let mut passed_cursor = false;
+    let mut arg_idx = 0;
+    let mut ch_idx = 0;
+    let mut done_with_cursor_stuff = !add_phantom_arg_at_cursor;
+
     let mut in_simple = false;
     let mut in_double = false;
-    for ch in c.chars() {
+    let mut last_k = 0;
+    for (k, ch) in c.chars().enumerate() {
+        last_k = k;
+        if !done_with_cursor_stuff && k == cursor {
+            arg_idx = r.len();
+            ch_idx = cur.len();
+            passed_cursor = true;
+        }
+
         if in_simple {
             if '\'' == ch {
                 in_simple = false;
@@ -173,8 +189,24 @@ pub fn split_line_args(c: &str) -> Vec<String> {
                 '\'' => in_simple = true,
                 '"' => in_double = true,
                 ' ' | '\t' => {
-                    r.push(cur);
-                    cur = String::new();
+                    if !cur.is_empty() {
+                        if !done_with_cursor_stuff && k == cursor {
+                            arg_idx = r.len();
+                            ch_idx = cur.len();
+                            done_with_cursor_stuff = true;
+                        }
+                        r.push(cur);
+                        if !done_with_cursor_stuff && passed_cursor {
+                            done_with_cursor_stuff = true;
+                        }
+                        cur = String::new();
+                    } else if !done_with_cursor_stuff && passed_cursor {
+                        // the case where the cursor is not on a word, eg.:
+                        // `somecommand somearg1 | somearg3`
+                        // so we add a fake empty argument here
+                        r.push("".to_string());
+                        done_with_cursor_stuff = true;
+                    }
                 }
                 '#' if cur.is_empty() => break,
                 _ => cur.push(ch),
@@ -183,10 +215,27 @@ pub fn split_line_args(c: &str) -> Vec<String> {
     }
 
     if !cur.is_empty() {
+        if !done_with_cursor_stuff && last_k + 1 == cursor {
+            arg_idx = r.len();
+            ch_idx = cur.len();
+            done_with_cursor_stuff = true;
+        }
         r.push(cur);
     }
 
-    r
+    if !done_with_cursor_stuff {
+        arg_idx = r.len();
+        // the case where the cursor is not on a word, eg.:
+        // `somecommand somearg1 somearg2 |`
+        // so we add a fake empty argument here
+        r.push("".to_string());
+    }
+
+    (r, arg_idx, ch_idx)
+}
+
+pub fn split_line_args(c: &str) -> Vec<String> {
+    split_line_args_cursor_indices(c, 0, false).0
 }
 
 impl Status {
@@ -275,6 +324,7 @@ impl Status {
                             'e' => p.cursor = p.content.chars().count(),
                             'f' => forward(p, TO_CHAR_FORWARD),
                             'h' => kill(p, TO_CHAR_BACKWARD),
+                            'i' => complete(p),
                             'j' | 'm' => {
                                 // accept
                                 let action = p.action.clone();
@@ -402,6 +452,8 @@ impl Status {
                     hist_prev(p, &self.history, &mut self.history_location)
                 }
 
+                KeyCode::Tab => complete(p),
+
                 KeyCode::Enter => {
                     // accept
                     let action = p.action.clone();
@@ -412,9 +464,13 @@ impl Status {
                     return (Some((action, args)), true);
                 }
                 KeyCode::Esc => {
-                    // abord
-                    self.input = None;
-                    return (None, true);
+                    if alt {
+                        complete(p);
+                    } else {
+                        // abord
+                        self.input = None;
+                        return (None, true);
+                    }
                 }
 
                 _ => (),
@@ -550,4 +606,21 @@ fn trans(p: &mut Prompt, to_left: TextObject, to_right: TextObject) {
     p.content.replace_range(ra..rb, &lcpy);
     p.content.replace_range(la..lb, &rcpy);
     p.cursor = rb;
+}
+
+fn complete(p: &mut Prompt) {
+    let (args, arg_idx, ch_idx) = split_line_args_cursor_indices(&p.content, p.cursor, true);
+    let res = p.action.get_comp(
+        &args.iter().map(|s| s.as_str()).collect::<Vec<_>>(),
+        arg_idx,
+        ch_idx,
+    );
+
+    if 1 == res.len() {
+        let rest = str_char_slice(&res[0], ch_idx, res[0].len());
+        p.content.insert_str(p.cursor, rest);
+        p.cursor += rest.len();
+        p.content.insert(p.cursor, ' ');
+        p.cursor += 1;
+    }
 }
