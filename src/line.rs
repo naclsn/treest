@@ -616,11 +616,19 @@ fn complete(p: &mut Prompt) {
         ch_idx,
     );
 
-    if 1 == res.len() {
-        let rest = str_char_slice(&res[0], ch_idx, res[0].len());
-        p.content.insert_str(p.cursor, rest);
-        p.cursor += rest.len();
-        p.content.insert(p.cursor, ' ');
-        p.cursor += 1;
+    match res.len() {
+        0 => {
+            todo!("warn user or something");
+        }
+        1 => {
+            let rest = str_char_slice(&res[0], ch_idx, res[0].len());
+            p.content.insert_str(p.cursor, rest);
+            p.cursor += rest.len();
+            p.content.insert(p.cursor, ' ');
+            p.cursor += 1;
+        }
+        _ => {
+            todo!("show choices or something");
+        }
     }
 }
