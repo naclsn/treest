@@ -210,7 +210,43 @@ impl App {
             }
         }
 
-        let (prompt_action, event_consumed) = self.status.do_event(&event);
+        let (prompt_action, event_consumed) = self.status.do_event(&event, |name| {
+            // FIXME: HOW CAN I JUST USE APP::LOOKUP?! RUST!!
+
+            // let (view, tree) = self.focused_and_tree();
+            let focused_and_tree = || -> (&View, &Tree) {
+                let ViewTree::Leaf(r) = self.focus.iter().fold(&self.views, |acc, idx| {
+                        let ViewTree::Split(chs, _) = acc else { unreachable!() };
+                        chs.get(*idx).unwrap()
+                    }) else { unreachable!() };
+                (r, &self.tree)
+            };
+
+            // self.lookup(name.as_str())
+            match name.as_str() {
+                "" => {
+                    let (view, tree) = focused_and_tree();
+                    let (node, _) = view.at_cursor_pair(tree);
+                    node.as_path().to_string_lossy().to_string()
+                }
+                "file_name" => {
+                    let (view, tree) = focused_and_tree();
+                    let (node, _) = view.at_cursor_pair(tree);
+                    node.file_name().to_string()
+                }
+                "extension" => {
+                    let (view, tree) = focused_and_tree();
+                    let (node, _) = view.at_cursor_pair(tree);
+                    node.extension().unwrap_or("").to_string()
+                }
+                "root" => self.tree.root.as_path().to_string_lossy().to_string(),
+                _ => self
+                    .variables
+                    .get(&name)
+                    .map(|v| v.to_string())
+                    .unwrap_or_else(|| String::new()),
+            }
+        });
         if let Some((action, args)) = prompt_action {
             return action.apply(self, &args.iter().map(|s| s.as_str()).collect::<Vec<_>>());
         }
@@ -476,7 +512,31 @@ impl App {
     pub fn declare(&mut self, name: &str, value: &str) {
         self.variables.insert(name.to_string(), value.to_string());
     }
-    pub fn lookup(&self, name: &str) -> &str {
-        self.variables.get(name).map(String::as_str).unwrap_or("")
+
+    pub fn lookup(&self, name: &str) -> String {
+        // XXX: code is duplicated in `do_event` (see the FIXME)
+        match name {
+            "" => {
+                let (view, tree) = self.focused_and_tree();
+                let (node, _) = view.at_cursor_pair(tree);
+                node.as_path().to_string_lossy().to_string()
+            }
+            "file_name" => {
+                let (view, tree) = self.focused_and_tree();
+                let (node, _) = view.at_cursor_pair(tree);
+                node.file_name().to_string()
+            }
+            "extension" => {
+                let (view, tree) = self.focused_and_tree();
+                let (node, _) = view.at_cursor_pair(tree);
+                node.extension().unwrap_or("").to_string()
+            }
+            "root" => self.tree.root.as_path().to_string_lossy().to_string(),
+            _ => self
+                .variables
+                .get(name)
+                .map(|v| v.to_string())
+                .unwrap_or_else(|| String::new()),
+        }
     }
 }

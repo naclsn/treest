@@ -150,6 +150,7 @@ impl StatefulWidget for Line<'_> {
 
 pub fn split_line_args_cursor_indices(
     c: &str,
+    lookup: impl Fn(String) -> String,
     cursor: usize,
     add_phantom_arg_at_cursor: bool, // when true, will add a fake empty argument on floaty cursor
 ) -> (Vec<String>, usize, usize) {
@@ -163,6 +164,9 @@ pub fn split_line_args_cursor_indices(
 
     let mut in_simple = false;
     let mut in_double = false;
+    let mut in_escape = false;
+    let mut in_lookup = false;
+    let mut lookup_name = String::new();
     let mut last_k = 0;
     for (k, ch) in c.chars().enumerate() {
         last_k = k;
@@ -172,22 +176,34 @@ pub fn split_line_args_cursor_indices(
             passed_cursor = true;
         }
 
-        if in_simple {
+        if in_escape {
+            cur.push(ch);
+        } else if in_lookup {
+            if '}' == ch {
+                cur.push_str(&lookup(lookup_name));
+                lookup_name = String::new();
+            } else {
+                lookup_name.push(ch);
+            }
+        } else if in_simple {
             if '\'' == ch {
                 in_simple = false;
             } else {
                 cur.push(ch);
             }
         } else if in_double {
-            if '"' == ch {
-                in_double = false;
-            } else {
-                cur.push(ch);
+            match ch {
+                '"' => in_double = false,
+                '\\' => in_escape = true,
+                '}' => in_lookup = false,
+                _ => cur.push(ch),
             }
         } else {
             match ch {
                 '\'' => in_simple = true,
                 '"' => in_double = true,
+                '\\' => in_escape = true,
+                '{' => in_lookup = true,
                 ' ' | '\t' => {
                     if !cur.is_empty() {
                         if !done_with_cursor_stuff && k == cursor {
@@ -234,8 +250,8 @@ pub fn split_line_args_cursor_indices(
     (r, arg_idx, ch_idx)
 }
 
-pub fn split_line_args(c: &str) -> Vec<String> {
-    split_line_args_cursor_indices(c, 0, false).0
+pub fn split_line_args(c: &str, lookup: impl Fn(String) -> String) -> Vec<String> {
+    split_line_args_cursor_indices(c, lookup, 0, false).0
 }
 
 impl Status {
@@ -257,11 +273,7 @@ impl Status {
         };
         self.input = Some(Prompt {
             prompt,
-            cursor: if content.is_empty() {
-                0
-            } else {
-                content.chars().count()
-            },
+            cursor: content.chars().count(),
             content,
             action,
             render_shift: 0,
@@ -269,7 +281,11 @@ impl Status {
         });
     }
 
-    pub fn do_event(&mut self, event: &Event) -> (Option<(Action, Vec<String>)>, bool) {
+    pub fn do_event(
+        &mut self,
+        event: &Event,
+        lookup: impl Fn(String) -> String,
+    ) -> (Option<(Action, Vec<String>)>, bool) {
         let Some(p) = &mut self.input else { return (None, false); };
 
         // YYY: maybe not right away, when is it stored in a registed is not thought out yet
@@ -324,11 +340,11 @@ impl Status {
                             'e' => p.cursor = p.content.chars().count(),
                             'f' => forward(p, TO_CHAR_FORWARD),
                             'h' => kill(p, TO_CHAR_BACKWARD),
-                            'i' => complete(p),
+                            'i' => complete(p, lookup),
                             'j' | 'm' => {
                                 // accept
                                 let action = p.action.clone();
-                                let args = split_line_args(&p.content);
+                                let args = split_line_args(&p.content, lookup);
                                 self.history.push(p.content.clone());
                                 self.history_location = self.history.len();
                                 self.input = None;
@@ -339,7 +355,7 @@ impl Status {
                             'o' => {
                                 // accept - keep hist location
                                 let action = p.action.clone();
-                                let args = split_line_args(&p.content);
+                                let args = split_line_args(&p.content, lookup);
                                 self.history.push(p.content.clone());
                                 self.history_location += 1;
                                 self.input = None;
@@ -452,12 +468,12 @@ impl Status {
                     hist_prev(p, &self.history, &mut self.history_location)
                 }
 
-                KeyCode::Tab => complete(p),
+                KeyCode::Tab => complete(p, lookup),
 
                 KeyCode::Enter => {
                     // accept
                     let action = p.action.clone();
-                    let args = split_line_args(&p.content);
+                    let args = split_line_args(&p.content, lookup);
                     self.history.push(p.content.clone());
                     self.history_location = self.history.len();
                     self.input = None;
@@ -465,7 +481,7 @@ impl Status {
                 }
                 KeyCode::Esc => {
                     if alt {
-                        complete(p);
+                        complete(p, lookup);
                     } else {
                         // abord
                         self.input = None;
@@ -608,8 +624,9 @@ fn trans(p: &mut Prompt, to_left: TextObject, to_right: TextObject) {
     p.cursor = rb;
 }
 
-fn complete(p: &mut Prompt) {
-    let (args, arg_idx, ch_idx) = split_line_args_cursor_indices(&p.content, p.cursor, true);
+fn complete(p: &mut Prompt, lookup: impl Fn(String) -> String) {
+    let (args, arg_idx, ch_idx) =
+        split_line_args_cursor_indices(&p.content, lookup, p.cursor, true);
     let res = p.action.get_comp(
         &args.iter().map(|s| s.as_str()).collect::<Vec<_>>(),
         arg_idx,

@@ -10,6 +10,7 @@ use crate::{
     line::{split_line_args, Message},
     node::{Sorting, SortingProp},
 };
+use crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers};
 use lazy_static::lazy_static;
 use std::{collections::HashMap, default::Default, fs, io, process::Command as SysCommand};
 use tui::layout::Direction;
@@ -605,7 +606,7 @@ make_lst!(
                 Ok(content) => {
                     for (k, com0_args) in content
                         .lines()
-                        .map(split_line_args)
+                        .map(|l| split_line_args(l, |_| String::new())) // interpolation in not enabled when sourcing
                         .enumerate()
                         .filter(|(_, v)| !v.is_empty())
                     {
@@ -688,5 +689,19 @@ make_lst!(
             Completer::StaticWords(&["dirs_first", "reverse"]),
             Completer::StaticWords(&["reverse"]),
         ])
+    ),
+    keys = (
+        "send key events as if theses where pressed by the user (whatever you are doing, this should really be last resort)",
+        |app: App, args: &[&str]| {
+            args.iter().fold(app, |app, ks| {
+                ks.chars().fold(app, |app, k| {
+                    app.do_event(&Event::Key(KeyEvent::new(
+                        KeyCode::Char(k),
+                        KeyModifiers::empty(),
+                    )))
+                })
+            })
+        },
+        Completer::None
     ),
 );
