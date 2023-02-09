@@ -306,7 +306,7 @@ make_lst!(
         Completer::StaticWords(COMMAND_LIST)
     ),
     shell = (
-        "execute a shell command, passing the rest as arguments",
+        "execute a shell command for its output, passing the rest as arguments",
         |mut app: App, args: &[&str]| {
             match args {
                 [h, t @ ..] => match SysCommand::new(h).args(t).output() {
@@ -325,7 +325,35 @@ make_lst!(
                         app.message(Message::Error(format!("{}", err)));
                     }
                 },
-                _ => (), //app.message(Message::Error("no command given".to_string())),
+                _ => app.message(Message::Warning("shell needs an executable name and optional arguments".to_string())),
+            }
+            app
+        },
+        Completer::StaticNth(&[Completer::PathLookup, Completer::None])
+    ),
+    shell_wait = (
+        "execute a shell command and wait for it to finish, passing the rest as arguments",
+        |mut app: App, args: &[&str]| {
+            match args {
+                [h, t @ ..] => match SysCommand::new(h).args(t).status() {
+                    Ok(res) => {
+                        if res.success() {
+                            app.message(Message::Info("exited successfully".to_string()));
+                        } else {
+                            app.message(Message::Warning(
+                                if let Some(code) = res.code() {
+                                    format!("exited with status '{:?}'", code)
+                                } else {
+                                    "exited with a failure (no exit code)".to_string()
+                                }
+                            ));
+                        }
+                    }
+                    Err(err) => {
+                        app.message(Message::Error(format!("{err}")));
+                    }
+                },
+                _ => app.message(Message::Warning("shell needs an executable name and optional arguments".to_string())),
             }
             app
         },
