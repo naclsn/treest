@@ -12,7 +12,7 @@ use tui::{
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Style},
     terminal::Frame,
-    widgets::{Block, Borders},
+    widgets::{Block, Borders, Clear},
 };
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -136,6 +136,10 @@ impl App {
         self.bindings.rebind(key_path, action);
     }
 
+    pub fn get_bindings(&self) -> &CommandMap {
+        &self.bindings
+    }
+
     pub fn finish(&mut self) {
         self.quit = true;
     }
@@ -178,6 +182,18 @@ impl App {
             &mut self.status,
         );
         f.render_stateful_widget(Line::new(pair), line, status);
+
+        self.status.long_message().map(|tb| {
+            let h = tb.height();
+            let r = if line.y < h {
+                f.size()
+            } else {
+                Rect::new(line.x, line.y - h, line.width, h)
+            };
+            f.render_widget(Clear, r);
+            f.render_widget(tb, r);
+        });
+
         self.status
             .cursor_shift()
             .map(|s| f.set_cursor(line.x + s, line.y));

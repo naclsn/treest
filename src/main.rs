@@ -4,6 +4,7 @@ mod commands;
 mod completions;
 mod line;
 mod node;
+mod textblock;
 mod tree;
 mod view;
 

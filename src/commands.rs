@@ -12,10 +12,10 @@ use crate::{
 };
 use crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers};
 use lazy_static::lazy_static;
-use std::{collections::HashMap, default::Default, fs, io, process::Command as SysCommand};
+use std::{collections::HashMap, default::Default, fmt, fs, io, process::Command as SysCommand};
 use tui::layout::Direction;
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub enum Action {
     Fn(&'static StaticCommand),
     Bind(&'static StaticCommand, Vec<String>),
@@ -51,13 +51,13 @@ impl Action {
     }
 }
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 enum CommandGraph {
     Immediate(Action),
     Pending(HashMap<char, CommandGraph>),
 }
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct CommandMap(HashMap<char, CommandGraph>);
 
 macro_rules! make_map_one {
@@ -197,12 +197,20 @@ impl CommandMap {
     }
 }
 
-// #[derive(Clone)]
 pub struct StaticCommand {
     name: &'static str,
     doc: &'static str,
     action: fn(App, &[&str]) -> App,
     comp: Completer,
+}
+
+impl fmt::Debug for StaticCommand {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("StaticCommand")
+            .field("name", &self.name)
+            .field("doc", &self.doc)
+            .finish()
+    }
 }
 
 impl StaticCommand {
@@ -589,6 +597,17 @@ make_lst!(
                     .unwrap_or(Completer::None)
             }),
         ])
+    ),
+    bindings = (
+        "list the current bindings",
+        |mut app: App, _| {
+            app.message(Message::Info({
+                let b = app.get_bindings();
+                format!("{b:#?}")
+            }));
+            app
+        },
+        Completer::None
     ),
     source = (
         "source the given file, executing each line as a command",

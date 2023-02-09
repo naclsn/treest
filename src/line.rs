@@ -1,4 +1,4 @@
-use crate::{commands::Action, tree::Tree, view::View};
+use crate::{commands::Action, textblock::TextBlock, tree::Tree, view::View};
 use crossterm::event::{Event, KeyCode, KeyModifiers};
 use tui::{
     buffer::Buffer,
@@ -36,6 +36,7 @@ pub struct Prompt {
 pub struct Status {
     pending: Vec<char>,
     message: Option<Message>,
+    message_tb: Option<TextBlock>,
     input: Option<Prompt>,
     history: Vec<String>, //HashMap<String, String>, // TODO: hist per prompt (ie. not same for eg. ':' and '!')
     history_location: usize,
@@ -119,7 +120,9 @@ impl StatefulWidget for Line<'_> {
                 Message::Warning(text) => (text, Style::default().fg(Color::Yellow)),
                 Message::Error(text) => (text, Style::default().fg(Color::Red)),
             };
-            buf.set_string(area.x, area.y, text, style);
+
+            let width = area.width as usize;
+            state.message_tb = Some(TextBlock::wrapped(text, width, style));
         } else {
             {
                 let (node, _) = self.focused.at_cursor_pair(self.tree);
@@ -265,6 +268,15 @@ impl Status {
         self.message = Some(message);
     }
 
+    pub fn long_message(&self) -> Option<&TextBlock> {
+        self.message_tb.as_ref()
+    }
+
+    pub fn clear_message(&mut self) {
+        self.message = None;
+        self.message_tb = None;
+    }
+
     pub fn prompt(&mut self, prompt: String, action: Action) {
         let content = if self.history.len() == self.history_location {
             String::new()
@@ -287,9 +299,6 @@ impl Status {
         lookup: impl Fn(String) -> String,
     ) -> (Option<(Action, Vec<String>)>, bool) {
         let Some(p) = &mut self.input else { return (None, false); };
-
-        // YYY: maybe not right away, when is it stored in a registed is not thought out yet
-        self.message = None;
 
         if let Event::Key(key) = event {
             let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
@@ -334,13 +343,18 @@ impl Status {
                             'c' | 'g' => {
                                 // abord
                                 self.input = None;
+                                self.clear_message();
                                 return (None, true);
                             }
                             'd' => kill(p, TO_CHAR_FORWARD),
                             'e' => p.cursor = p.content.chars().count(),
                             'f' => forward(p, TO_CHAR_FORWARD),
                             'h' => kill(p, TO_CHAR_BACKWARD),
-                            'i' => complete(p, lookup),
+                            'i' => {
+                                if let Some(res) = complete(p, lookup) {
+                                    self.message_tb = Some(TextBlock::raw(res));
+                                }
+                            },
                             'j' | 'm' => {
                                 // accept
                                 let action = p.action.clone();
@@ -348,6 +362,7 @@ impl Status {
                                 self.history.push(p.content.clone());
                                 self.history_location = self.history.len();
                                 self.input = None;
+                                self.clear_message();
                                 return (Some((action, args)), true);
                             }
                             'k' => kill(p, TO_END_FORWARD),
@@ -359,6 +374,7 @@ impl Status {
                                 self.history.push(p.content.clone());
                                 self.history_location += 1;
                                 self.input = None;
+                                self.clear_message();
                                 return (Some((action, args)), true);
                             }
                             'p' => hist_prev(p, &self.history, &mut self.history_location),
@@ -377,7 +393,6 @@ impl Status {
                             'b' => backward(p, TO_WORD_BACKWARD),
                             'c' => {
                                 // capitalize
-                                // this one not look good but gave up
                                 let (a, b) = TO_EXACT_WORD_FORWARD(&p.content, p.cursor);
                                 if a < b {
                                     let w = str_char_slice(&p.content, a, b);
@@ -418,7 +433,7 @@ impl Status {
                             }
                             '>' => {
                                 self.history_location = self.history.len();
-                                replace(p, ""); // XXX: this should be restoring it, edits are losts
+                                replace(p, ""); // XXX: this should be restoring it, edits are losts (same with ^N)
                             }
                             _ => (),
                         }
@@ -462,13 +477,17 @@ impl Status {
                 KeyCode::End => p.cursor = p.content.chars().count(),
 
                 KeyCode::Down | KeyCode::PageDown => {
-                    hist_next(p, &self.history, &mut self.history_location)
+                    hist_next(p, &self.history, &mut self.history_location);
                 }
                 KeyCode::Up | KeyCode::PageUp => {
-                    hist_prev(p, &self.history, &mut self.history_location)
+                    hist_prev(p, &self.history, &mut self.history_location);
                 }
 
-                KeyCode::Tab => complete(p, lookup),
+                KeyCode::Tab => {
+                    if let Some(res) = complete(p, lookup) {
+                        self.message_tb = Some(TextBlock::raw(res));
+                    }
+                }
 
                 KeyCode::Enter => {
                     // accept
@@ -477,14 +496,18 @@ impl Status {
                     self.history.push(p.content.clone());
                     self.history_location = self.history.len();
                     self.input = None;
+                    self.clear_message();
                     return (Some((action, args)), true);
                 }
                 KeyCode::Esc => {
                     if alt {
-                        complete(p, lookup);
+                        if let Some(res) = complete(p, lookup) {
+                            self.message_tb = Some(TextBlock::raw(res));
+                        }
                     } else {
                         // abord
                         self.input = None;
+                        self.clear_message();
                         return (None, true);
                     }
                 }
@@ -624,7 +647,7 @@ fn trans(p: &mut Prompt, to_left: TextObject, to_right: TextObject) {
     p.cursor = rb;
 }
 
-fn complete(p: &mut Prompt, lookup: impl Fn(String) -> String) {
+fn complete(p: &mut Prompt, lookup: impl Fn(String) -> String) -> Option<Vec<String>> {
     let (args, arg_idx, ch_idx) =
         split_line_args_cursor_indices(&p.content, lookup, p.cursor, true);
     let res = p.action.get_comp(
@@ -635,7 +658,8 @@ fn complete(p: &mut Prompt, lookup: impl Fn(String) -> String) {
 
     match res.len() {
         0 => {
-            todo!("warn user or something (no result)");
+            eprint!("\x07"); // XXX: that how you supposed to do it?
+            None
         }
         1 => {
             let rest = str_char_slice(&res[0], ch_idx, res[0].len());
@@ -643,9 +667,8 @@ fn complete(p: &mut Prompt, lookup: impl Fn(String) -> String) {
             p.cursor += rest.len();
             p.content.insert(p.cursor, ' ');
             p.cursor += 1;
+            None
         }
-        _ => {
-            todo!("show choices or something: {res:?}");
-        }
+        _ => Some(res),
     }
 }
