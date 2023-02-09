@@ -78,7 +78,7 @@ impl Display for Node {
                         writeln!(f)?;
                         children
                             .iter()
-                            .map(|ch| write!(f, "{:.*}", depth + 1, ch))
+                            .map(|ch| write!(f, "{ch:.*}", depth + 1))
                             .collect()
                     }
                 } else {

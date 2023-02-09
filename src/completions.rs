@@ -1,5 +1,5 @@
 use crate::commands::StaticCommand;
-use std::{env, fs::Metadata};
+use std::{env, fmt, fs::Metadata};
 
 #[cfg(unix)]
 fn is_executable_like(_name: &String, meta: &Metadata) -> bool {
@@ -23,6 +23,47 @@ pub enum Completer {
     Nth(Vec<Completer>),
     StaticNth(&'static [Completer]),
     PathLookup,
+}
+
+impl fmt::Display for Completer {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let depth = f.precision().unwrap_or(0);
+        let indent = "   ".repeat(depth);
+
+        match self {
+            Completer::None => write!(f, "{indent}nothing or anything"),
+
+            Completer::Defered(_g) => write!(f, "{indent}arguments for a command"),
+
+            Completer::Fn(func) => write!(f, "{indent}one of: {}", func(&[""], 0, 0).join(" ")),
+
+            Completer::Words(v) => write!(f, "{indent}one of: {}", v.join(" ")),
+
+            Completer::StaticWords(l) => write!(f, "{indent}one of: {}", l.join(" ")),
+
+            Completer::Of(sc, _shift) => write!(f, "{indent}{:.*}", depth + 1, "sc.comp"),
+
+            Completer::Nth(v) => {
+                writeln!(f, "{indent}positional arguments:")?;
+                for it in v {
+                    write!(f, "{it:.*}", depth + 1)?;
+                    writeln!(f)?;
+                }
+                Ok(())
+            }
+
+            Completer::StaticNth(l) => {
+                writeln!(f, "{indent}positional arguments:")?;
+                for it in *l {
+                    write!(f, "{it:.*}", depth + 1)?;
+                    writeln!(f)?;
+                }
+                Ok(())
+            }
+
+            Completer::PathLookup => write!(f, "{indent}executable program from PATH"),
+        }
+    }
 }
 
 impl Completer {
@@ -68,9 +109,9 @@ impl Completer {
                 .map(|it| it.get_comp(args, arg_idx, ch_idx))
                 .unwrap_or(Vec::new()),
 
-            Completer::StaticNth(v) => v
+            Completer::StaticNth(l) => l
                 .get(arg_idx)
-                .or(v.last())
+                .or(l.last())
                 .map(|it| it.get_comp(args, arg_idx, ch_idx))
                 .unwrap_or(Vec::new()),
 

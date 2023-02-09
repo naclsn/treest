@@ -32,12 +32,15 @@ impl TextBlock {
         let mut vlines = Vec::new();
         for line in text.lines() {
             let mut chs = line.chars().peekable();
-            vlines.push(chs.by_ref().take(width).collect::<String>());
+            let niw = chs.by_ref().take(width).collect::<String>();
+            let indent = niw.chars().take_while(char::is_ascii_whitespace).count();
+            vlines.push(niw);
             while chs.peek().is_some() {
                 vlines.push(
-                    ['\u{21aa}', ' ']
-                        .into_iter()
-                        .chain(chs.by_ref().take(width - 2))
+                    " ".repeat(indent)
+                        .chars()
+                        .chain(['\u{21aa}', ' '].into_iter())
+                        .chain(chs.by_ref().take(width - indent - 2))
                         .collect::<String>(),
                 );
             }

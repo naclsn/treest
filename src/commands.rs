@@ -252,14 +252,12 @@ make_lst!(
         |mut app: App, args: &[&str]| {
             if let Some(name) = args.get(0) {
                 if let Some(com) = COMMAND_MAP.get(name) {
-                    app.message(Message::Info(format!("{}: {}", com.name, com.doc)));
+                    app.message(Message::Info(format!("{}: {}\n{:.1}", com.name, com.doc, com.comp)));
                 } else {
                     app.message(Message::Warning(format!("unknown command name '{name}'")));
                 }
             } else {
-                for (_, com) in COMMAND_MAP.iter() {
-                    app.message(Message::Info(format!("{}", com.name)));
-                }
+                app.message(Message::Info(COMMAND_MAP.keys().map(|s| *s).collect::<Vec<_>>().join(" ")));
             }
             app
         },
@@ -268,15 +266,15 @@ make_lst!(
     command = (
         "execute a command, passing the rest of the arguments",
         |mut app: App, args: &[&str]| {
+            if args.len() < 1 {
+                app.message(Message::Warning("expand needs a command and an argument string".to_string()));
+                return app;
+            }
             if let Some(com) = COMMAND_MAP.get(args[0]) {
                 let action = com.action;
                 action(app, &args[1..])
             } else {
-                app.message(Message::Warning(if args.is_empty() {
-                    format!("no command name provided")
-                } else {
-                    format!("unknown command: '{}'", args[0])
-                }));
+                app.message(Message::Warning(format!("unknown command: '{}'", args[0])));
                 app
             }
         },
@@ -288,6 +286,24 @@ make_lst!(
                     .unwrap_or(Completer::None)
             }),
         ])
+    ),
+    expand = (
+        "execute a command, expanding the second argument into its arguments",
+        |mut app: App, args: &[&str]| {
+            if args.len() < 2 {
+                app.message(Message::Warning("expand needs a command and an argument string".to_string()));
+                return app;
+            }
+            if let Some(com) = COMMAND_MAP.get(args[0]) {
+                let action = com.action;
+                let args = split_line_args(&args[1], |name| app.lookup(&name));
+                action(app, &args.iter().map(String::as_ref).collect::<Vec<_>>())
+            } else {
+                app.message(Message::Warning(format!("unknown command: '{}'", args[0])));
+                app
+            }
+        },
+        Completer::StaticWords(COMMAND_LIST)
     ),
     shell = (
         "execute a shell command, passing the rest as arguments",
