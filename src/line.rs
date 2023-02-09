@@ -9,6 +9,9 @@ use tui::{
 };
 
 fn str_char_slice(c: &str, a: usize, b: usize) -> &str {
+    if b <= a {
+        return "";
+    }
     let mut i = c.char_indices();
     if let Some(st) = i.nth(a) {
         &c[st.0..i.nth(b - a - 1).unwrap_or((c.len(), ' ')).0]
@@ -30,6 +33,7 @@ pub struct Prompt {
     action: Action,
     render_shift: usize,
     kill_ring: String,
+    hints: Option<Vec<String>>,
 }
 
 #[derive(Default)]
@@ -40,18 +44,6 @@ pub struct Status {
     input: Option<Prompt>,
     history: Vec<String>, //HashMap<String, String>, // TODO: hist per prompt (ie. not same for eg. ':' and '!')
     history_location: usize,
-}
-
-impl Status {
-    pub fn push_pending(&mut self, key: char) {
-        self.pending.push(key);
-    }
-    pub fn get_pending(&self) -> &Vec<char> {
-        &self.pending
-    }
-    pub fn clear_pending(&mut self) {
-        self.pending.clear();
-    }
 }
 
 pub struct Line<'me> {
@@ -73,12 +65,33 @@ impl StatefulWidget for Line<'_> {
                         Style::default().fg(Color::DarkGray),
                     )];
 
+                    let put_hints_here_if_any = |v: &mut Vec<_>| {
+                        if let Some(hints) = &p.hints {
+                            v.push(Span::raw(" "));
+                            for it in hints {
+                                v.push(Span::styled(it, Style::default().fg(Color::DarkGray)));
+                                if !it.ends_with(' ') {
+                                    v.push(Span::raw(" "));
+                                }
+                            }
+                        }
+                    };
+
                     let avail = area.width as usize - 2 - p.prompt.chars().count() - 2;
 
                     if p.content.chars().count() < avail {
-                        v.push(Span::raw(&p.content));
+                        v.push(Span::raw(str_char_slice(&p.content, 0, p.cursor)));
+                        put_hints_here_if_any(&mut v);
+                        v.push(Span::raw(str_char_slice(
+                            &p.content,
+                            p.cursor,
+                            p.content.len(),
+                        )));
                     } else {
                         // update render_shift so as to keep cursor in view
+                        if 0 == p.cursor {
+                            p.render_shift = 0;
+                        }
                         if 0 < p.cursor && p.cursor < p.render_shift + 1 {
                             p.render_shift = p.cursor - 1;
                         }
@@ -96,23 +109,21 @@ impl StatefulWidget for Line<'_> {
                         };
                         let cut_end = cut_start + avail;
 
+                        v.push(Span::raw(str_char_slice(&p.content, cut_start, p.cursor)));
+                        put_hints_here_if_any(&mut v);
                         if p.content.chars().count() < cut_start + avail {
                             // no need for ... at end
-                            let char_cut_start = p.content.char_indices().nth(cut_start).unwrap().0;
-                            v.push(Span::raw(&p.content[char_cut_start..]));
+                            v.push(Span::raw(str_char_slice(&p.content, p.cursor, cut_end)));
                         } else {
                             // need for ... at end
-                            v.push(Span::raw(str_char_slice(
-                                &p.content,
-                                cut_start,
-                                cut_end - 1,
-                            )));
+                            v.push(Span::raw(str_char_slice(&p.content, p.cursor, cut_end - 1)));
                             v.push(Span::raw("\u{2026}"));
                         }
                     }
+
                     v
                 }),
-                area.width,
+                area.width - 2,
             );
         } else if let Some(m) = &state.message {
             let (text, style) = match m {
@@ -258,6 +269,18 @@ pub fn split_line_args(c: &str, lookup: impl Fn(String) -> String) -> Vec<String
 }
 
 impl Status {
+    pub fn push_pending(&mut self, key: char) {
+        self.pending.push(key);
+    }
+
+    pub fn get_pending(&self) -> &Vec<char> {
+        &self.pending
+    }
+
+    pub fn clear_pending(&mut self) {
+        self.pending.clear();
+    }
+
     pub fn cursor_shift(&self) -> Option<u16> {
         self.input
             .as_ref()
@@ -290,6 +313,7 @@ impl Status {
             action,
             render_shift: 0,
             kill_ring: String::new(),
+            hints: None,
         });
     }
 
@@ -299,6 +323,7 @@ impl Status {
         lookup: impl Fn(String) -> String,
     ) -> (Option<(Action, Vec<String>)>, bool) {
         let Some(p) = &mut self.input else { return (None, false); };
+        p.hints = None;
 
         if let Event::Key(key) = event {
             let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
@@ -350,11 +375,7 @@ impl Status {
                             'e' => p.cursor = p.content.chars().count(),
                             'f' => forward(p, TO_CHAR_FORWARD),
                             'h' => kill(p, TO_CHAR_BACKWARD),
-                            'i' => {
-                                if let Some(res) = complete(p, lookup) {
-                                    self.message_tb = Some(TextBlock::raw(res));
-                                }
-                            },
+                            'i' => complete(p, lookup),
                             'j' | 'm' => {
                                 // accept
                                 let action = p.action.clone();
@@ -483,11 +504,7 @@ impl Status {
                     hist_prev(p, &self.history, &mut self.history_location);
                 }
 
-                KeyCode::Tab => {
-                    if let Some(res) = complete(p, lookup) {
-                        self.message_tb = Some(TextBlock::raw(res));
-                    }
-                }
+                KeyCode::Tab => complete(p, lookup),
 
                 KeyCode::Enter => {
                     // accept
@@ -501,9 +518,7 @@ impl Status {
                 }
                 KeyCode::Esc => {
                     if alt {
-                        if let Some(res) = complete(p, lookup) {
-                            self.message_tb = Some(TextBlock::raw(res));
-                        }
+                        complete(p, lookup);
                     } else {
                         // abord
                         self.input = None;
@@ -647,7 +662,7 @@ fn trans(p: &mut Prompt, to_left: TextObject, to_right: TextObject) {
     p.cursor = rb;
 }
 
-fn complete(p: &mut Prompt, lookup: impl Fn(String) -> String) -> Option<Vec<String>> {
+fn complete(p: &mut Prompt, lookup: impl Fn(String) -> String) {
     let (args, arg_idx, ch_idx) =
         split_line_args_cursor_indices(&p.content, lookup, p.cursor, true);
     let res = p.action.get_comp(
@@ -659,16 +674,14 @@ fn complete(p: &mut Prompt, lookup: impl Fn(String) -> String) -> Option<Vec<Str
     match res.len() {
         0 => {
             eprint!("\x07"); // XXX: that how you supposed to do it?
-            None
+            p.hints = None;
         }
         1 => {
             let rest = str_char_slice(&res[0], ch_idx, res[0].len());
             p.content.insert_str(p.cursor, rest);
             p.cursor += rest.len();
-            p.content.insert(p.cursor, ' ');
-            p.cursor += 1;
-            None
+            p.hints = None;
         }
-        _ => Some(res),
+        _ => p.hints = Some(res),
     }
 }

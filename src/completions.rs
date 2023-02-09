@@ -41,7 +41,7 @@ impl Completer {
                 let mut r: Vec<_> = v
                     .iter()
                     .filter(|it| it.starts_with(wor))
-                    .map(String::clone)
+                    .map(|it| it.to_string() + " ")
                     .collect();
                 r.sort_unstable();
                 r
@@ -54,7 +54,7 @@ impl Completer {
                 let mut r: Vec<_> = l
                     .iter()
                     .filter(|it| it.starts_with(wor))
-                    .map(|it| it.to_string())
+                    .map(|it| it.to_string() + " ")
                     .collect();
                 r.sort_unstable();
                 r
@@ -92,7 +92,7 @@ impl Completer {
                                                     if meta.is_file()
                                                         && is_executable_like(&name, &meta)
                                                     {
-                                                        Some(name)
+                                                        Some(name + " ")
                                                     } else {
                                                         None
                                                     }
