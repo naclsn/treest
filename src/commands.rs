@@ -11,6 +11,7 @@ use crate::{
     node::{Sorting, SortingProp},
 };
 use crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers};
+use dirs::home_dir;
 use lazy_static::lazy_static;
 use std::{collections::HashMap, default::Default, fmt, fs, io, process::Command as SysCommand};
 use tui::layout::Direction;
@@ -367,9 +368,9 @@ make_lst!(
                 return app;
             }
             if let Some(then) = COMMAND_MAP.get(args[1]) {
-                app.prompt(args[0].to_string(), Action::Bind(then, args[2..].iter().map(|s| s.to_string()).collect()));
+                app.prompt(args[0].to_string(), Action::Bind(then, args[2..].iter().map(|s| s.to_string()).collect()), None);
             } else {
-                app.message(Message::Warning(format!("unknown command '{}'", args[0])));
+                app.message(Message::Warning(format!("unknown command '{}'", args[1])));
             }
             app
         },
@@ -379,6 +380,31 @@ make_lst!(
             Completer::Defered(|args, _, _| {
                 COMMAND_MAP.get(args[1])
                     .map(|sc| Completer::Of(sc, 2))
+                    .unwrap_or(Completer::None)
+            }),
+        ])
+    ),
+    prompt_init = (
+        "prompt for input with an initial value, then execute a command with it (the first argument should be the prompt text)",
+        |mut app: App, args: &[&str]| {
+            if args.len() < 3 {
+                app.message(Message::Warning("prompt_init needs a prompt text, an initial value, a command name and optional arguments".to_string()));
+                return app;
+            }
+            if let Some(then) = COMMAND_MAP.get(args[2]) {
+                app.prompt(args[0].to_string(), Action::Bind(then, args[3..].iter().map(|s| s.to_string()).collect()), Some(args[1]));
+            } else {
+                app.message(Message::Warning(format!("unknown command '{}'", args[2])));
+            }
+            app
+        },
+        Completer::StaticNth(&[
+            Completer::None,
+            Completer::None,
+            Completer::StaticWords(COMMAND_LIST),
+            Completer::Defered(|args, _, _| {
+                COMMAND_MAP.get(args[2])
+                    .map(|sc| Completer::Of(sc, 3))
                     .unwrap_or(Completer::None)
             }),
         ])
@@ -656,16 +682,20 @@ make_lst!(
     source = (
         "source the given file, executing each line as a command",
         |mut app: App, args: &[&str]| {
-            let Some(res) = args.get(0).map(fs::read_to_string) else {
-                app.message(Message::Warning(if args.is_empty() {
-                    format!("could not read file '{}'", args[0])
-                } else {
-                    format!("source needs a file path")
-                }));
+            if args.is_empty() {
+                app.message(Message::Warning("source needs a file path".to_string()));
                 return app;
+            }
+            let filename = if args[0].starts_with('~') {
+                let mut r = args[0][1..].to_string();
+                r.insert_str(0, home_dir().unwrap().to_string_lossy().as_ref());
+                r
+            } else {
+                args[0].to_string()
             };
+            let res = fs::read_to_string(&filename);
             match res {
-                Err(err) => app.message(Message::Warning(format!("could not read file: {err}"))),
+                Err(err) => app.message(Message::Warning(format!("could not read file {filename}: {err}"))),
                 Ok(content) => {
                     for (k, com0_args) in content
                         .lines()
@@ -675,11 +705,12 @@ make_lst!(
                     {
                         let (com0, args) = com0_args.split_at(1);
                         let Some(act) = COMMAND_MAP.get(com0[0].as_str()).map(|c| c.action) else {
-                            app.message(Message::Warning(format!("unknown command at line {k}")));
+                            app.message(Message::Warning(format!("unknown command at line {k}: {}", com0[0])));
                             return app;
                         };
                         app = act(app, &args.iter().map(String::as_str).collect::<Vec<_>>());
                     }
+                    app.message(Message::Info(format!("successfully sourced {filename}")));
                 } // Ok
             } // match
             app

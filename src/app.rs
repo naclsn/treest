@@ -200,12 +200,11 @@ impl App {
     }
 
     pub fn message(&mut self, message: Message) {
-        // TODO: handle longer messages and multi-line messages better
         self.status.message(message);
     }
 
-    pub fn prompt(&mut self, prompt: String, action: Action) {
-        self.status.prompt(prompt, action);
+    pub fn prompt(&mut self, prompt: String, action: Action, initial: Option<&str>) {
+        self.status.prompt(prompt, action, initial);
     }
 
     pub fn do_event(mut self, event: &Event) -> App {

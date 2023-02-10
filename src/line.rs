@@ -300,8 +300,11 @@ impl Status {
         self.message_tb = None;
     }
 
-    pub fn prompt(&mut self, prompt: String, action: Action) {
-        let content = if self.history.len() == self.history_location {
+    pub fn prompt(&mut self, prompt: String, action: Action, initial: Option<&str>) {
+        let content = if let Some(init) = initial {
+            self.history_location = self.history.len();
+            init.to_string()
+        } else if self.history.len() == self.history_location {
             String::new()
         } else {
             self.history[self.history_location].clone()
@@ -682,6 +685,30 @@ fn complete(p: &mut Prompt, lookup: impl Fn(String) -> String) {
             p.cursor += rest.len();
             p.hints = None;
         }
-        _ => p.hints = Some(res),
+        _ => {
+            let mut common: &str = &res[0];
+            let mut found = true;
+            for it in res.iter().skip(1) {
+                let min = std::cmp::min(it.len(), common.len());
+                if let Some(((k, a), b)) = common
+                    .char_indices()
+                    .zip(it.chars())
+                    .skip(ch_idx)
+                    .skip_while(|((k, a), b)| a == b && *k + 1 < min)
+                    .next()
+                {
+                    common = &common[..if a == b { k + a.len_utf8() } else { k }]
+                } else {
+                    found = false;
+                    break;
+                }
+            }
+            if found {
+                let rest = str_char_slice(common, ch_idx, res[0].len());
+                p.content.insert_str(p.cursor, rest);
+                p.cursor += rest.len();
+            }
+            p.hints = Some(res);
+        }
     }
 }
