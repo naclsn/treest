@@ -4,38 +4,23 @@ Stateful tree view of a root directory.
 
 ![./screenshot.png](./screenshot.png)
 
-> Example of `--printer=fancy -FCj` with [trapd00r/LS_COLORS](https://github.com/trapd00r/LS_COLORS/).
-
 ### Getting Started
 
-With `PREFIX` or `DESTDIR`;
-
+This project uses `cargo`:
 ```console
-$ PREFIX=~/.local make install
+$ cargo install --path .
 $ treest --help
-Usage: treest [--printer=NAME] [--LONGOPTIONS] [-FLAGS] [[--] ROOT]
+Visually explore a file tree.
+
+Usage: treest [OPTIONS] [PATH]
+
+Arguments:
+  [PATH]  path to open at, defaults to current directory
+
+Options:
+  -x, --clearstate           do not load any existing state for this path
+  -u, --userconf <USERCONF>  use specified config instead of any existing default ($HOME/.config/treest)
+      --clean                do not use any config
+  -h, --help                 Print help
+  -V, --version              Print version
 ```
-
-> Note that the man page is probably more helpful.
-
-Somewhat sane alias:
-```bash
-alias treest='treest --printer=fancy --rcfile='"'$HOME/.treestrc'"' -CdFIjwX'
-```
-
----
-
-### TODO
-
-- cd to where cursor is (so shell commands are relative to cursor)
-- prompt replaces (last 4 from `history(3)`):
-  - {} is absolute path of cursor
-  - {~} is root
-  - {h} ("head") Remove a trailing file name component, leaving only the head.
-  - {t} ("tail") Remove all leading file name components, leaving the tail.
-  - {r} ("remove"?) Remove a trailing suffix of the form .xxx, leaving the basename.
-  - {e} ("extension") Remove all but the trailing suffix.
-- mapping every user command to `\\` can be boring... (or at least does not enable realy customising)
-- `^W` window commands (would be cool tho)
-  - for this, need proper mini curses of sort... uh
-- state when invocked twice in a same directory
