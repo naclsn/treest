@@ -16,13 +16,12 @@ use crossterm::{
     terminal::{disable_raw_mode, enable_raw_mode},
 };
 use dirs::home_dir;
-use serde_json;
 use std::{
     env::current_dir,
     error::Error,
     fs,
     io::{self, Write},
-    path::{Component, PathBuf},
+    path::{Component, Path, PathBuf},
 };
 use tui::{
     backend::{Backend, CrosstermBackend},
@@ -40,7 +39,7 @@ impl<W: io::Write> TerminalWrap<W> {
             EnableMouseCapture
         )?;
         let backend = CrosstermBackend::new(bla);
-        io::stderr().write(&vec![b'\n'; backend.size()?.height.into()])?;
+        io::stderr().write_all(&vec![b'\n'; backend.size()?.height.into()])?;
         let terminal = Terminal::new(backend)?;
         Ok(TerminalWrap(terminal))
     }
@@ -79,13 +78,13 @@ fn main() -> Result<(), Box<dyn Error>> {
     print!("\r\n");
 
     if let Err(err) = res {
-        println!("{:?}", err);
+        println!("{err:?}");
     }
 
     Ok(())
 }
 
-fn get_save_path(dir: &PathBuf) -> PathBuf {
+fn get_save_path(dir: &Path) -> PathBuf {
     let mut acc = home_dir().unwrap();
     acc.push(".cache");
     acc.push("treest");

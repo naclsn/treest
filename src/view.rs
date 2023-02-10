@@ -13,7 +13,7 @@ struct ViewSettings {
 }
 
 impl ViewSettings {
-    fn make_node_state_mapping(&self, chs: &Vec<Node>) -> io::Result<Vec<(usize, State)>> {
+    fn make_node_state_mapping(&self, chs: &[Node]) -> io::Result<Vec<(usize, State)>> {
         let mut r: Vec<_> = chs
             .iter()
             .filter(|_| true) // TODO
@@ -36,7 +36,7 @@ impl ViewSettings {
 
     fn correct_node_state_mapping(
         &self,
-        chs: &Vec<Node>,
+        chs: &[Node],
         mut r: Vec<(usize, State)>,
     ) -> Vec<(usize, State)> {
         r.sort_unstable_by(|(lk, _), (rk, _)| Node::cmp_by(&chs[*lk], &chs[*rk], self.sort));
@@ -296,21 +296,21 @@ impl View {
         if let Some(par) = self.at_parent() {
             let len = par.children.len();
             self.cursor.truncate(self.cursor_path_len);
-            self.cursor.last_mut().map(|idx| {
+            if let Some(idx) = self.cursor.last_mut() {
                 if *idx + 1 < len {
                     *idx += 1
                 }
-            });
+            }
         }
     }
 
     pub fn prev(&mut self) {
         self.cursor.truncate(self.cursor_path_len);
-        self.cursor.last_mut().map(|idx| {
+        if let Some(idx) = self.cursor.last_mut() {
             if 0 < *idx {
                 *idx -= 1
             }
-        });
+        }
     }
 
     pub fn renew_root(&mut self, tree: &Tree) -> io::Result<()> {

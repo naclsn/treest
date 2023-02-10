@@ -2,17 +2,18 @@ use crate::commands::StaticCommand;
 use std::{env, fmt, fs::Metadata};
 
 #[cfg(unix)]
-fn is_executable_like(_name: &String, meta: &Metadata) -> bool {
+fn is_executable_like(_name: &str, meta: &Metadata) -> bool {
     use std::os::unix::fs::PermissionsExt;
     meta.permissions().mode() & 0o111 != 0
 }
 
 #[cfg(windows)]
-fn is_executable_like(name: &String, _meta: &Metadata) -> bool {
+fn is_executable_like(name: &str, _meta: &Metadata) -> bool {
     name.ends_with(".exe") || name.ends_with(".com")
 }
 
 #[derive(Clone)]
+#[allow(dead_code)]
 pub enum Completer {
     None,
     Fn(fn(&[&str], usize, usize) -> Vec<String>),
@@ -41,7 +42,9 @@ impl fmt::Display for Completer {
 
             Completer::StaticWords(l) => write!(f, "{indent}one of: {}", l.join(" ")),
 
-            Completer::Of(sc, _shift) => write!(f, "{indent}{:.*}", depth + 1, "sc.comp"),
+            Completer::Of(sc, _shift) => {
+                write!(f, "{indent}{:.*}", depth + 1, sc.get_comp_itself())
+            }
 
             Completer::Nth(v) => {
                 writeln!(f, "{indent}positional arguments:")?;

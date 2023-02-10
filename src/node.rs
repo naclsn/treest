@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::{
     cmp::Ordering,
-    fmt::{self, Display, Formatter},
+    fmt,
     fs::{metadata, read_dir, read_link, symlink_metadata, Metadata},
     io,
     path::{Path, PathBuf},
@@ -61,8 +61,8 @@ pub struct Node {
     info: NodeInfo,
 }
 
-impl Display for Node {
-    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+impl fmt::Display for Node {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let depth = f.precision().unwrap_or(0);
         let ident = "   ".repeat(depth);
 
@@ -78,8 +78,7 @@ impl Display for Node {
                         writeln!(f)?;
                         children
                             .iter()
-                            .map(|ch| write!(f, "{ch:.*}", depth + 1))
-                            .collect()
+                            .try_for_each(|ch| write!(f, "{ch:.*}", depth + 1))
                     }
                 } else {
                     writeln!(f)
@@ -137,7 +136,7 @@ fn perm_to_string(o: u32) -> String {
     [
         if o >> 2 & 0b1 == 1 { 'r' } else { '-' },
         if o >> 1 & 0b1 == 1 { 'w' } else { '-' },
-        if o >> 0 & 0b1 == 1 { 'x' } else { '-' },
+        if o & 0b1 == 1 { 'x' } else { '-' },
     ]
     .into_iter()
     .collect()
@@ -170,11 +169,11 @@ fn meta_to_string(meta: &Metadata) -> String {
         }
         .to_string(),
         // owner
-        perm_to_string(mode >> 3 * 2 & 0b111),
+        perm_to_string(mode >> 6 & 0b111),
         // group
-        perm_to_string(mode >> 3 * 1 & 0b111),
+        perm_to_string(mode >> 3 & 0b111),
         // world
-        perm_to_string(mode >> 3 * 0 & 0b111),
+        perm_to_string(mode & 0b111),
     ]
     .concat()
 }
@@ -226,7 +225,7 @@ impl Node {
                     let realpath = read_link(path.clone())?;
                     symlink_metadata(realpath.clone())
                         .and_then(|lnmeta| Node::new(realpath.clone(), lnmeta))
-                        .map(|node| Box::new(node))
+                        .map(Box::new)
                         .map_err(|_| realpath)
                 },
             }
@@ -362,36 +361,34 @@ impl Node {
                 // FIXME: raw edits to the vec will cause a panic at unwrap in some view!
                 children.retain_mut(Node::fixup);
             }
-            NodeInfo::Link { target } => {
-                if let Ok(node) = target {
-                    node.fixup();
-                }
+            NodeInfo::Link { target: Ok(node) } => {
+                node.fixup();
             }
             _ => (),
         }
         true
     }
 
-    pub fn is_dir(&self) -> bool {
-        match self.info {
-            NodeInfo::Dir { .. } => true,
-            _ => false,
-        }
-    }
+    // pub fn is_dir(&self) -> bool {
+    //     match self.info {
+    //         NodeInfo::Dir { .. } => true,
+    //         _ => false,
+    //     }
+    // }
 
-    pub fn is_link(&self) -> bool {
-        match self.info {
-            NodeInfo::Link { .. } => true,
-            _ => false,
-        }
-    }
+    // pub fn is_link(&self) -> bool {
+    //     match self.info {
+    //         NodeInfo::Link { .. } => true,
+    //         _ => false,
+    //     }
+    // }
 
-    pub fn is_file(&self) -> bool {
-        match self.info {
-            NodeInfo::File { .. } => true,
-            _ => false,
-        }
-    }
+    // pub fn is_file(&self) -> bool {
+    //     match self.info {
+    //         NodeInfo::File { .. } => true,
+    //         _ => false,
+    //     }
+    // }
 
     pub fn file_name(&self) -> &str {
         self.path.file_name().unwrap().to_str().unwrap()

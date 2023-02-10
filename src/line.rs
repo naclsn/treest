@@ -284,7 +284,7 @@ impl Status {
     pub fn cursor_shift(&self) -> Option<u16> {
         self.input
             .as_ref()
-            .map(|p| (2 + p.prompt.len() + p.cursor - p.render_shift as usize) as u16)
+            .map(|p| (2 + p.prompt.len() + p.cursor - p.render_shift) as u16)
     }
 
     pub fn message(&mut self, message: Message) {
@@ -462,7 +462,7 @@ impl Status {
                             _ => (),
                         }
                     } else {
-                        p.content.insert(p.cursor as usize, c);
+                        p.content.insert(p.cursor, c);
                         p.cursor += 1;
                     }
                 } // if ..(c) = key.code
@@ -534,7 +534,7 @@ impl Status {
             } // match key.code
         } // if ..(key) = event
 
-        return (None, true);
+        (None, true)
     }
 }
 
@@ -554,8 +554,7 @@ const TO_WORD_FORWARD: TextObject = |t, p| {
         .enumerate()
         .skip(p)
         .skip_while(|(_, c)| !c.is_ascii_alphanumeric())
-        .skip_while(|(_, c)| c.is_ascii_alphanumeric())
-        .next()
+        .find(|(_, c)| !c.is_ascii_alphanumeric())
         .map_or((p, t.len()), |(e, _)| (p, e))
 };
 const TO_WORD_BACKWARD: TextObject = |t, p| {
@@ -566,8 +565,7 @@ const TO_WORD_BACKWARD: TextObject = |t, p| {
         .into_iter()
         .rev()
         .skip_while(|(_, c)| !c.is_ascii_alphanumeric())
-        .skip_while(|(_, c)| c.is_ascii_alphanumeric())
-        .next()
+        .find(|(_, c)| !c.is_ascii_alphanumeric())
         .map_or((0, p), |(b, _)| (b + 1, p))
 };
 
@@ -613,8 +611,7 @@ const TO_SHELL_WORD_FORWARD: TextObject = |t, p| {
         .enumerate()
         .skip(p)
         .skip_while(|(_, c)| c.is_ascii_whitespace())
-        .skip_while(|(_, c)| !c.is_ascii_whitespace())
-        .next()
+        .find(|(_, c)| c.is_ascii_whitespace())
         .map_or((p, t.len()), |(e, _)| (p, e))
 };
 const TO_SHELL_WORD_BACKWARD: TextObject = |t, p| {
@@ -625,8 +622,7 @@ const TO_SHELL_WORD_BACKWARD: TextObject = |t, p| {
         .into_iter()
         .rev()
         .skip_while(|(_, c)| c.is_ascii_whitespace())
-        .skip_while(|(_, c)| !c.is_ascii_whitespace())
-        .next()
+        .find(|(_, c)| c.is_ascii_whitespace())
         .map_or((0, p), |(b, _)| (b + 1, p))
 };
 
@@ -694,8 +690,7 @@ fn complete(p: &mut Prompt, lookup: impl Fn(String) -> String) {
                     .char_indices()
                     .zip(it.chars())
                     .skip(ch_idx)
-                    .skip_while(|((k, a), b)| a == b && *k + 1 < min)
-                    .next()
+                    .find(|((k, a), b)| a != b || min <= *k + 1)
                 {
                     common = &common[..if a == b { k + a.len_utf8() } else { k }]
                 } else {

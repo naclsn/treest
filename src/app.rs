@@ -183,7 +183,7 @@ impl App {
         );
         f.render_stateful_widget(Line::new(pair), line, status);
 
-        self.status.long_message().map(|tb| {
+        if let Some(tb) = self.status.long_message() {
             let h = tb.height();
             let r = if line.y < h {
                 f.size()
@@ -192,11 +192,11 @@ impl App {
             };
             f.render_widget(Clear, r);
             f.render_widget(tb, r);
-        });
+        }
 
-        self.status
-            .cursor_shift()
-            .map(|s| f.set_cursor(line.x + s, line.y));
+        if let Some(s) = self.status.cursor_shift() {
+            f.set_cursor(line.x + s, line.y);
+        }
     }
 
     pub fn message(&mut self, message: Message) {
@@ -225,7 +225,7 @@ impl App {
             }
         }
 
-        let (prompt_action, event_consumed) = self.status.do_event(&event, |name| {
+        let (prompt_action, event_consumed) = self.status.do_event(event, |name| {
             // FIXME: HOW CAN I JUST USE APP::LOOKUP?! RUST!!
 
             // let (view, tree) = self.focused_and_tree();
@@ -259,7 +259,7 @@ impl App {
                     .variables
                     .get(&name)
                     .map(|v| v.to_string())
-                    .unwrap_or_else(|| String::new()),
+                    .unwrap_or_else(String::new),
             }
         });
         if let Some((action, args)) = prompt_action {
@@ -273,9 +273,9 @@ impl App {
             if let KeyCode::Char(c) = key.code {
                 self.status.push_pending(c);
                 let crap = self.bindings.clone(); // XXX: this should not be needed
-                let (may, continues) = crap.try_get_action(&self.status.get_pending());
+                let (may, continues) = crap.try_get_action(self.status.get_pending());
 
-                if let Some(action) = may.clone() {
+                if let Some(action) = may {
                     self.status.clear_pending();
                     return action.apply(self, &[]);
                 }
@@ -285,10 +285,10 @@ impl App {
             } else if let KeyCode::Esc = key.code {
                 self.status.clear_pending();
             }
-        } else if let Event::Mouse(mouse) = event {
-            match mouse.kind {
-                _ => (),
-            }
+            // } else if let Event::Mouse(mouse) = event {
+            //     match mouse.kind {
+            //         _ => (),
+            //     }
         }
         self
     }
@@ -398,9 +398,8 @@ impl App {
 
     pub fn view_transpose(&mut self) {
         let gr = self.focused_group_mut();
-        match gr {
-            Some(ViewTree::Split(_, d)) => *d = 1 - *d,
-            _ => (),
+        if let Some(ViewTree::Split(_, d)) = gr {
+            *d = 1 - *d;
         }
     }
 
@@ -412,29 +411,26 @@ impl App {
         let len = self.focus.len();
         let at = self.focus[len - 1];
         let gr = self.focused_group_mut();
-        match gr {
-            Some(ViewTree::Split(v, _)) => {
-                v.remove(at);
-                match v.len() {
-                    0 => unreachable!("should not have a split with a single leaf"),
-                    1 => {
-                        let last = v[0].clone();
-                        let was_at = self.focus.pop().unwrap();
-                        if let Some(ViewTree::Split(v, _)) = self.focused_group_mut() {
-                            v[was_at] = last;
-                        } else {
-                            self.views = last;
-                        }
+        if let Some(ViewTree::Split(v, _)) = gr {
+            v.remove(at);
+            match v.len() {
+                0 => unreachable!("should not have a split with a single leaf"),
+                1 => {
+                    let last = v[0].clone();
+                    let was_at = self.focus.pop().unwrap();
+                    if let Some(ViewTree::Split(v, _)) = self.focused_group_mut() {
+                        v[was_at] = last;
+                    } else {
+                        self.views = last;
                     }
-                    _ => {
-                        if 0 < at {
-                            self.focus[len - 1] = at - 1;
-                        }
+                }
+                _ => {
+                    if 0 < at {
+                        self.focus[len - 1] = at - 1;
                     }
                 }
             }
-            _ => (), // YYY: quit on last view close? I prefer no
-        }
+        } //else // YYY: quit on last view close? I prefer no
     }
 
     pub fn view_close_other(&mut self) {
@@ -442,11 +438,11 @@ impl App {
         self.focus.clear();
     }
 
-    pub fn to_view_adjacent(&mut self, movement: i8) {
+    pub fn focus_to_view_adjacent(&mut self, movement: i8) {
         let Some(ViewTree::Split(v, _)) = self.focused_group() else { return; };
         let max = v.len();
         if !self.focus.is_empty() {
-            self.focus.last_mut().map(|it| {
+            if let Some(it) = self.focus.last_mut() {
                 if 0 < movement {
                     *it += 1;
                     if max <= *it {
@@ -458,16 +454,16 @@ impl App {
                     }
                     *it -= 1
                 }
-            });
+            }
         }
     }
 
     // for now movement should only be +1 or -1
     // eg moving 'left' in a d=1(Horizontal) split is +1
     // FIXME: this is still not it: `wswvwswjwj`
-    pub fn to_view(&mut self, d: Direction, movement: i8) {
+    pub fn focus_to_view(&mut self, d: Direction, movement: i8) {
         if self.focus.is_empty() {
-            return ();
+            return;
         }
 
         let d = match d {
@@ -551,7 +547,7 @@ impl App {
                 .variables
                 .get(name)
                 .map(|v| v.to_string())
-                .unwrap_or_else(|| String::new()),
+                .unwrap_or_else(String::new),
         }
     }
 }

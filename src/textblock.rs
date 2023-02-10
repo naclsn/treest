@@ -28,7 +28,7 @@ impl TextBlock {
         }
     }
 
-    pub fn wrapped(text: &String, width: usize, style: Style) -> TextBlock {
+    pub fn wrapped(text: &str, width: usize, style: Style) -> TextBlock {
         let mut vlines = Vec::new();
         for line in text.lines() {
             let mut chs = line.chars().peekable();

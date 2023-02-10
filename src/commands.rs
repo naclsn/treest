@@ -167,9 +167,9 @@ impl CommandMap {
         }
 
         if let Some(CommandGraph::Immediate(action)) = curr {
-            return (Some(action), false);
+            (Some(action), false)
         } else {
-            return (None, curr.is_some());
+            (None, curr.is_some())
         }
     }
 
@@ -223,6 +223,10 @@ impl StaticCommand {
     pub fn get_comp(&self, args: &[&str], arg_idx: usize, ch_idx: usize) -> Vec<String> {
         self.comp.get_comp(args, arg_idx, ch_idx)
     }
+
+    pub fn get_comp_itself(&self) -> &Completer {
+        &self.comp
+    }
 }
 
 macro_rules! make_lst {
@@ -251,14 +255,14 @@ make_lst!(
     help = (
         "get help for a command or a list of known commands",
         |mut app: App, args: &[&str]| {
-            if let Some(name) = args.get(0) {
+            if let Some(name) = args.first() {
                 if let Some(com) = COMMAND_MAP.get(name) {
                     app.message(Message::Info(format!("{}: {}\n{:.1}", com.name, com.doc, com.comp)));
                 } else {
                     app.message(Message::Warning(format!("unknown command name '{name}'")));
                 }
             } else {
-                app.message(Message::Info(COMMAND_MAP.keys().map(|s| *s).collect::<Vec<_>>().join(" ")));
+                app.message(Message::Info(COMMAND_MAP.keys().copied().collect::<Vec<_>>().join(" ")));
             }
             app
         },
@@ -267,7 +271,7 @@ make_lst!(
     command = (
         "execute a command, passing the rest of the arguments",
         |mut app: App, args: &[&str]| {
-            if args.len() < 1 {
+            if args.is_empty() {
                 app.message(Message::Warning("expand needs a command and an argument string".to_string()));
                 return app;
             }
@@ -297,7 +301,7 @@ make_lst!(
             }
             if let Some(com) = COMMAND_MAP.get(args[0]) {
                 let action = com.action;
-                let args = split_line_args(&args[1], |name| app.lookup(&name));
+                let args = split_line_args(args[1], |name| app.lookup(&name));
                 action(app, &args.iter().map(String::as_ref).collect::<Vec<_>>())
             } else {
                 app.message(Message::Warning(format!("unknown command: '{}'", args[0])));
@@ -323,7 +327,7 @@ make_lst!(
                         }
                     }
                     Err(err) => {
-                        app.message(Message::Error(format!("{}", err)));
+                        app.message(Message::Error(format!("{err}")));
                     }
                 },
                 _ => app.message(Message::Warning("shell needs an executable name and optional arguments".to_string())),
@@ -343,7 +347,7 @@ make_lst!(
                         } else {
                             app.message(Message::Warning(
                                 if let Some(code) = res.code() {
-                                    format!("exited with status '{:?}'", code)
+                                    format!("exited with status '{code:?}'")
                                 } else {
                                     "exited with a failure (no exit code)".to_string()
                                 }
@@ -420,7 +424,7 @@ make_lst!(
     split = (
         "create a new split base on this view, horizontal or vertical",
         |mut app: App, args: &[&str]| {
-            match args.get(0) {
+            match args.first() {
                 Some(&"horizontal") => {
                     app.view_split(Direction::Horizontal);
                     app
@@ -470,9 +474,7 @@ make_lst!(
         "try to unfold the node at the cursor (nothing happens if it is not a directory or a link to one)",
         |mut app: App, _| {
             let (view, tree) = app.focused_and_tree_mut();
-            match view.unfold(tree) {
-                _ => (),
-            }
+            view.unfold(tree).ok();
             app
         },
         Completer::None
@@ -481,9 +483,8 @@ make_lst!(
         "try to enter the node at the cursor, unfolding it first",
         |mut app: App, _| {
             let (view, tree) = app.focused_and_tree_mut();
-            match view.unfold(tree) {
-                Ok(()) => view.enter(),
-                Err(_) => (),
+            if view.unfold(tree).is_ok() {
+                view.enter();
             }
             app
         },
@@ -524,7 +525,7 @@ make_lst!(
     scroll_view = (
         "scroll the focused view (vertically)",
         |mut app: App, args: &[&str]| {
-            let by = args.get(0).map_or(Ok(1), |n| n.parse()).unwrap_or(1);
+            let by = args.first().map_or(Ok(1), |n| n.parse()).unwrap_or(1);
             app.focused_mut().view_offset().scroll += by;
             app
         },
@@ -533,7 +534,7 @@ make_lst!(
     shift_view = (
         "shift the focused view (horizontally)",
         |mut app: App, args: &[&str]| {
-            let by = args.get(0).map_or(Ok(1), |n| n.parse()).unwrap_or(1);
+            let by = args.first().map_or(Ok(1), |n| n.parse()).unwrap_or(1);
             app.focused_mut().view_offset().shift += by;
             app
         },
@@ -542,11 +543,11 @@ make_lst!(
     to_view = (
         "move to a view right/left/down/up from the focused one",
         |mut app: App, args: &[&str]| {
-            match args.get(0) {
-                Some(&"right") => app.to_view(Direction::Horizontal, -1),
-                Some(&"left") => app.to_view(Direction::Horizontal, 1),
-                Some(&"down") => app.to_view(Direction::Vertical, 1),
-                Some(&"up") => app.to_view(Direction::Vertical, -1),
+            match args.first() {
+                Some(&"right") => app.focus_to_view(Direction::Horizontal, -1),
+                Some(&"left") => app.focus_to_view(Direction::Horizontal, 1),
+                Some(&"down") => app.focus_to_view(Direction::Vertical, 1),
+                Some(&"up") => app.focus_to_view(Direction::Vertical, -1),
                 _ => (),
             }
             app
@@ -556,7 +557,7 @@ make_lst!(
     to_view_next = (
         "move to the next view in the same split",
         |mut app: App, _| {
-            app.to_view_adjacent(1);
+            app.focus_to_view_adjacent(1);
             app
         },
         Completer::None
@@ -564,7 +565,7 @@ make_lst!(
     to_view_prev = (
         "move to the previous view in the same split",
         |mut app: App, _| {
-            app.to_view_adjacent(-1);
+            app.focus_to_view_adjacent(-1);
             app
         },
         Completer::None
@@ -581,8 +582,8 @@ make_lst!(
                 }
                 if let Some((before, rest)) = it.split_once('$') {
                     print!("{before}");
-                    if rest.starts_with('{') {
-                        if let Some((name, rest)) = rest[1..].split_once('}') {
+                    if let Some(stripped) = rest.strip_prefix('{') {
+                        if let Some((name, rest)) = stripped.split_once('}') {
                             print!("{}{rest}", app.lookup(name));
                         } else {
                             print!("{rest}")
@@ -720,7 +721,7 @@ make_lst!(
     sort = (
         "change the way nodes are sorted for the focused view",
         |mut app: App, args: &[&str]| {
-            let prop = match args.get(0) {
+            let prop = match args.first() {
                 Some(&"none") => SortingProp::None,
                 Some(&"name") => SortingProp::Name,
                 Some(&"size") => SortingProp::Size,
@@ -801,7 +802,7 @@ make_lst!(
     message = (
         "display a message, level should be one of info/warning/error",
         |mut app: App, args: &[&str]| {
-            match args.get(0) {
+            match args.first() {
                 Some(&"info") => app.message(Message::Info(args[1..].join(" "))),
                 Some(&"warning") => app.message(Message::Warning(args[1..].join(" "))),
                 Some(&"error") => app.message(Message::Error(args[1..].join(" "))),
