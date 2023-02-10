@@ -1,5 +1,6 @@
 use crate::commands::StaticCommand;
-use std::{env, fmt, fs::Metadata};
+use dirs::home_dir;
+use std::{env, fmt, fs::Metadata, path::PathBuf};
 
 #[cfg(unix)]
 fn is_executable_like(_name: &str, meta: &Metadata) -> bool {
@@ -24,6 +25,8 @@ pub enum Completer {
     Nth(Vec<Completer>),
     StaticNth(&'static [Completer]),
     PathLookup,
+    FileFromRoot,
+    FileFromCursor,
 }
 
 impl fmt::Display for Completer {
@@ -65,16 +68,28 @@ impl fmt::Display for Completer {
             }
 
             Completer::PathLookup => write!(f, "{indent}executable program from PATH"),
+
+            Completer::FileFromRoot => write!(f, "{indent}file path from the root"),
+
+            Completer::FileFromCursor => write!(f, "{indent}file path from the cursor"),
         }
     }
 }
 
 impl Completer {
-    pub fn get_comp(&self, args: &[&str], arg_idx: usize, ch_idx: usize) -> Vec<String> {
+    pub fn get_comp(
+        &self,
+        args: &[&str],
+        arg_idx: usize,
+        ch_idx: usize,
+        lookup: &impl Fn(&str) -> String,
+    ) -> Vec<String> {
         match self {
             Completer::None => Vec::new(),
 
-            Completer::Defered(g) => g(args, arg_idx, ch_idx).get_comp(args, arg_idx, ch_idx),
+            Completer::Defered(g) => {
+                g(args, arg_idx, ch_idx).get_comp(args, arg_idx, ch_idx, lookup)
+            }
 
             Completer::Fn(func) => func(args, arg_idx, ch_idx),
 
@@ -104,18 +119,20 @@ impl Completer {
                 r
             }
 
-            Completer::Of(sc, shift) => sc.get_comp(&args[*shift..], arg_idx - shift, ch_idx),
+            Completer::Of(sc, shift) => {
+                sc.get_comp(&args[*shift..], arg_idx - shift, ch_idx, lookup)
+            }
 
             Completer::Nth(v) => v
                 .get(arg_idx)
                 .or(v.last())
-                .map(|it| it.get_comp(args, arg_idx, ch_idx))
+                .map(|it| it.get_comp(args, arg_idx, ch_idx, lookup))
                 .unwrap_or(Vec::new()),
 
             Completer::StaticNth(l) => l
                 .get(arg_idx)
                 .or(l.last())
-                .map(|it| it.get_comp(args, arg_idx, ch_idx))
+                .map(|it| it.get_comp(args, arg_idx, ch_idx, lookup))
                 .unwrap_or(Vec::new()),
 
             Completer::PathLookup => {
@@ -156,6 +173,73 @@ impl Completer {
                     })
                     .unwrap_or(Vec::new())
             }
+
+            Completer::FileFromRoot => complete_file_from(args, arg_idx, ch_idx, &lookup("root")),
+
+            Completer::FileFromCursor => complete_file_from(args, arg_idx, ch_idx, &lookup("")), // at cursor full path
         }
     }
+}
+
+fn complete_file_from(
+    args: &[&str],
+    arg_idx: usize,
+    ch_idx: usize,
+    path_from: &str,
+) -> Vec<String> {
+    let word = args[arg_idx];
+    let (k, _) = word.char_indices().nth(ch_idx).unwrap_or((word.len(), ' '));
+    let wor = &word[..k];
+
+    let partial_path = if let Some(stripped) = wor.strip_prefix("~/") {
+        home_dir().unwrap().join(PathBuf::from(stripped))
+    } else {
+        let pb_wor = PathBuf::from(wor);
+        if pb_wor.has_root() {
+            pb_wor
+        } else {
+            PathBuf::from(path_from).join(pb_wor)
+        }
+    };
+
+    let (search_in, search_for) = if partial_path.is_dir() {
+        // names in this directory
+        (partial_path.as_path(), "")
+    } else {
+        // names in parent that starts with
+        (
+            partial_path.parent().unwrap(),
+            partial_path.file_name().unwrap().to_str().unwrap(),
+        )
+    };
+
+    search_in
+        .read_dir()
+        .ok()
+        .map(|ent_iter| {
+            let mut r: Vec<_> = ent_iter
+                .filter_map(|maybe_ent| {
+                    maybe_ent.ok().and_then(|ent| {
+                        let name = ent.file_name().to_string_lossy().to_string();
+                        if let Some(stripped) = name.strip_prefix(search_for) {
+                            match ent.metadata() {
+                                Ok(meta) => {
+                                    let mut opt = stripped.to_string();
+                                    opt.push(if meta.is_dir() { '/' } else { ' ' });
+                                    opt.insert_str(0, wor);
+                                    Some(opt)
+                                }
+                                Err(_) => None,
+                            }
+                        } else {
+                            None
+                        }
+                    }) // maybe_ent |ent|
+                }) // ent_iter |maybe_ent|
+                .collect::<Vec<String>>();
+            r.sort_unstable();
+            r.dedup();
+            r
+        }) // dir |ent_iter|
+        .unwrap_or(Vec::new())
 }

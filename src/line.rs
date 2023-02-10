@@ -164,7 +164,7 @@ impl StatefulWidget for Line<'_> {
 
 pub fn split_line_args_cursor_indices(
     c: &str,
-    lookup: impl Fn(String) -> String,
+    lookup: &impl Fn(&str) -> String,
     cursor: usize,
     add_phantom_arg_at_cursor: bool, // when true, will add a fake empty argument on floaty cursor
 ) -> (Vec<String>, usize, usize) {
@@ -194,7 +194,7 @@ pub fn split_line_args_cursor_indices(
             cur.push(ch);
         } else if in_lookup {
             if '}' == ch {
-                cur.push_str(&lookup(lookup_name));
+                cur.push_str(&lookup(&lookup_name));
                 lookup_name = String::new();
             } else {
                 lookup_name.push(ch);
@@ -264,7 +264,7 @@ pub fn split_line_args_cursor_indices(
     (r, arg_idx, ch_idx)
 }
 
-pub fn split_line_args(c: &str, lookup: impl Fn(String) -> String) -> Vec<String> {
+pub fn split_line_args(c: &str, lookup: &impl Fn(&str) -> String) -> Vec<String> {
     split_line_args_cursor_indices(c, lookup, 0, false).0
 }
 
@@ -323,7 +323,7 @@ impl Status {
     pub fn do_event(
         &mut self,
         event: &Event,
-        lookup: impl Fn(String) -> String,
+        lookup: &impl Fn(&str) -> String,
     ) -> (Option<(Action, Vec<String>)>, bool) {
         let Some(p) = &mut self.input else { return (None, false); };
         p.hints = None;
@@ -661,13 +661,14 @@ fn trans(p: &mut Prompt, to_left: TextObject, to_right: TextObject) {
     p.cursor = rb;
 }
 
-fn complete(p: &mut Prompt, lookup: impl Fn(String) -> String) {
+fn complete(p: &mut Prompt, lookup: &impl Fn(&str) -> String) {
     let (args, arg_idx, ch_idx) =
         split_line_args_cursor_indices(&p.content, lookup, p.cursor, true);
     let res = p.action.get_comp(
         &args.iter().map(|s| s.as_str()).collect::<Vec<_>>(),
         arg_idx,
         ch_idx,
+        lookup,
     );
 
     match res.len() {

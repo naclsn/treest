@@ -39,15 +39,21 @@ impl Action {
         }
     }
 
-    pub fn get_comp(&self, args: &[&str], arg_idx: usize, ch_idx: usize) -> Vec<String> {
+    pub fn get_comp(
+        &self,
+        args: &[&str],
+        arg_idx: usize,
+        ch_idx: usize,
+        lookup: &impl Fn(&str) -> String,
+    ) -> Vec<String> {
         match self {
-            Action::Fn(sc) => sc.get_comp(args, arg_idx, ch_idx),
+            Action::Fn(sc) => sc.get_comp(args, arg_idx, ch_idx, lookup),
             Action::Bind(sc, bound) => {
                 let mut v: Vec<_> = bound.iter().map(String::as_str).collect();
                 v.extend_from_slice(args);
-                sc.get_comp(&v, bound.len() + arg_idx, ch_idx)
+                sc.get_comp(&v, bound.len() + arg_idx, ch_idx, lookup)
             }
-            Action::Chain(acts) => acts[0].get_comp(args, arg_idx, ch_idx),
+            Action::Chain(acts) => acts[0].get_comp(args, arg_idx, ch_idx, lookup),
         }
     }
 }
@@ -220,8 +226,14 @@ impl StaticCommand {
         f(app, args)
     }
 
-    pub fn get_comp(&self, args: &[&str], arg_idx: usize, ch_idx: usize) -> Vec<String> {
-        self.comp.get_comp(args, arg_idx, ch_idx)
+    pub fn get_comp(
+        &self,
+        args: &[&str],
+        arg_idx: usize,
+        ch_idx: usize,
+        lookup: &impl Fn(&str) -> String,
+    ) -> Vec<String> {
+        self.comp.get_comp(args, arg_idx, ch_idx, lookup)
     }
 
     pub fn get_comp_itself(&self) -> &Completer {
@@ -233,7 +245,7 @@ macro_rules! make_lst {
     ($($name:ident = ($doc:literal, $action:expr, $comp:expr),)*) => {
         $(
             #[allow(non_upper_case_globals)]
-            pub static $name: StaticCommand = StaticCommand {
+            pub const $name: StaticCommand = StaticCommand {
                 name: stringify!($name),
                 doc: $doc,
                 action: $action,
@@ -301,7 +313,7 @@ make_lst!(
             }
             if let Some(com) = COMMAND_MAP.get(args[0]) {
                 let action = com.action;
-                let args = split_line_args(args[1], |name| app.lookup(&name));
+                let args = split_line_args(args[1], &|name| app.lookup(name));
                 action(app, &args.iter().map(String::as_ref).collect::<Vec<_>>())
             } else {
                 app.message(Message::Warning(format!("unknown command: '{}'", args[0])));
@@ -334,7 +346,7 @@ make_lst!(
             }
             app
         },
-        Completer::StaticNth(&[Completer::PathLookup, Completer::None])
+        Completer::StaticNth(&[Completer::PathLookup, Completer::FileFromRoot])
     ),
     shell_wait = (
         "execute a shell command and wait for it to finish, passing the rest as arguments",
@@ -362,7 +374,7 @@ make_lst!(
             }
             app
         },
-        Completer::StaticNth(&[Completer::PathLookup, Completer::None])
+        Completer::StaticNth(&[Completer::PathLookup, Completer::FileFromRoot])
     ),
     prompt = (
         "prompt for input, then execute a command with it (the first argument should be the prompt text)",
@@ -687,8 +699,8 @@ make_lst!(
                 app.message(Message::Warning("source needs a file path".to_string()));
                 return app;
             }
-            let filename = if args[0].starts_with('~') {
-                let mut r = args[0][1..].to_string();
+            let filename = if let Some(suffix) = args[0].strip_prefix("~/") {
+                let mut r = suffix.to_string();
                 r.insert_str(0, home_dir().unwrap().to_string_lossy().as_ref());
                 r
             } else {
@@ -700,7 +712,7 @@ make_lst!(
                 Ok(content) => {
                     for (k, com0_args) in content
                         .lines()
-                        .map(|l| split_line_args(l, |_| String::new())) // interpolation in not enabled when sourcing
+                        .map(|l| split_line_args(l, &|name| format!("{{{name}}}"))) // interpolation in not enabled when sourcing
                         .enumerate()
                         .filter(|(_, v)| !v.is_empty())
                     {
@@ -716,7 +728,7 @@ make_lst!(
             } // match
             app
         },
-        Completer::None
+        Completer::FileFromRoot
     ),
     sort = (
         "change the way nodes are sorted for the focused view",

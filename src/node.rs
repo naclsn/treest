@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 use std::{
     cmp::Ordering,
     fmt,
-    fs::{metadata, read_dir, read_link, symlink_metadata, Metadata},
+    fs::{metadata, read_link, symlink_metadata, Metadata},
     io,
     path::{Path, PathBuf},
 };
@@ -306,7 +306,9 @@ impl Node {
         match &mut self.info {
             NodeInfo::Dir { loaded, children } => {
                 if !*loaded {
-                    *children = read_dir(self.path.clone())?
+                    *children = self
+                        .path
+                        .read_dir()?
                         .map(|maybe_ent| {
                             maybe_ent.and_then(|ent| {
                                 ent.metadata().and_then(|meta| Node::new(ent.path(), meta))

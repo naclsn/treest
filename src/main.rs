@@ -101,7 +101,7 @@ fn get_save_path(dir: &Path) -> PathBuf {
 fn get_default_userconf_path() -> PathBuf {
     let mut acc = home_dir().unwrap();
     acc.push(".config");
-    acc.push("treestrc");
+    acc.push("treest");
     acc
 }
 

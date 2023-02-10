@@ -225,7 +225,7 @@ impl App {
             }
         }
 
-        let (prompt_action, event_consumed) = self.status.do_event(event, |name| {
+        let (prompt_action, event_consumed) = self.status.do_event(event, &|name| {
             // FIXME: HOW CAN I JUST USE APP::LOOKUP?! RUST!!
 
             // let (view, tree) = self.focused_and_tree();
@@ -238,7 +238,7 @@ impl App {
             };
 
             // self.lookup(name.as_str())
-            match name.as_str() {
+            match name {
                 "" => {
                     let (view, tree) = focused_and_tree();
                     let (node, _) = view.at_cursor_pair(tree);
@@ -257,7 +257,7 @@ impl App {
                 "root" => self.tree.root.as_path().to_string_lossy().to_string(),
                 _ => self
                     .variables
-                    .get(&name)
+                    .get(name)
                     .map(|v| v.to_string())
                     .unwrap_or_else(String::new),
             }
