@@ -23,7 +23,7 @@ enum ViewTree {
 
 #[derive(Serialize, Deserialize)]
 pub struct App {
-    tree: Tree,
+    pub tree: Tree,
     views: ViewTree,
     focus: Vec<usize>,
 

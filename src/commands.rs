@@ -801,7 +801,8 @@ make_lst!(
                     _ => false,
                 },
             );
-            view.renew_root(tree).unwrap();
+            // (tree not changed, hence same)
+            view.renew_root(tree, tree).unwrap();
             if let Some(rest) = args.get(skip) {
                 app.message(Message::Warning(format!(
                     "unknown extraneous argument '{rest}'"
@@ -849,5 +850,16 @@ make_lst!(
             app
         },
         Completer::StaticWords(&["info", "warning", "error"])
+    ),
+    refresh = (
+        "refresh the tree or something",
+        |mut app: App, _| {
+            let (view, tree) = app.focused_and_tree_mut();
+            let ntree = tree.renew().unwrap();
+            view.renew_root(tree, &ntree).unwrap();
+            app.tree = ntree;
+            app
+        },
+        Completer::None
     ),
 );

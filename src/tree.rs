@@ -236,4 +236,15 @@ impl Tree {
             root: Node::new_root(path)?,
         })
     }
+
+    /// re-create the tree from the file system; even
+    /// though a Tree is lazy, this is NOT a no-op: it
+    /// tries to re-load the nodes that previously where
+    /// @ret the previous root node
+    /// @see also `View::renew_root`
+    pub fn renew(&self) -> io::Result<Tree> {
+        Ok(Tree {
+            root: self.root.renew()?,
+        })
+    }
 }

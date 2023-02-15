@@ -242,6 +242,42 @@ impl Node {
         })
     }
 
+    pub fn renew(&self) -> io::Result<Node> {
+        let mut node = Node::new(self.path.clone(), metadata(&self.path)?)?;
+
+        // correct for any change, load children if any
+        // (does not account for eg. dir became a link)
+        match (&self.info, &mut node.info) {
+            // it was a loaded dir; if it still is a dir, load it
+            (
+                NodeInfo::Dir {
+                    loaded: true,
+                    children: previous,
+                },
+                NodeInfo::Dir { loaded, children },
+            ) => {
+                children.reserve(previous.len());
+                for ch in previous {
+                    if let Ok(niw) = ch.renew() {
+                        children.push(niw);
+                    }
+                }
+                *loaded = true;
+            }
+
+            // // it was a link; if it still is,
+            // (NodeInfo::Link { target: previous }, NodeInfo::Link { target }) => {
+            //     todo!("not sure but maybe something (think link to dir)");
+            // }
+
+            // it was a file or an unloaded dir;
+            // whatever it is now, noop
+            _ => (),
+        }
+
+        Ok(node)
+    }
+
     pub fn new_root(path: PathBuf) -> io::Result<Node> {
         let meta = Some(metadata(&path)?);
         Ok(Node {
