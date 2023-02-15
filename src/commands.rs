@@ -269,7 +269,7 @@ make_lst!(
         |mut app: App, args: &[&str]| {
             if let Some(name) = args.first() {
                 if let Some(com) = COMMAND_MAP.get(name) {
-                    app.message(Message::Info(format!("{}: {}\n{:.1}", com.name, com.doc, com.comp)));
+                    app.message(Message::Info(format!("{}: {} -- completion:\n{:.1}", com.name, com.doc, com.comp)));
                 } else {
                     app.message(Message::Warning(format!("unknown command name '{name}'")));
                 }
@@ -736,6 +736,25 @@ make_lst!(
             app
         },
         Completer::FileFromRoot
+    ),
+    seq = (
+        "execute a sequence of commands",
+        |mut app: App, comms: &[&str]| {
+            let idk = comms
+                .iter()
+                .map(|l| split_line_args(l, &|name| app.lookup(name)))
+                .collect::<Vec<_>>();
+            for com0_args in idk {
+                let (com0, args) = com0_args.split_at(1);
+                let Some(act) = COMMAND_MAP.get(com0[0].as_str()).map(|c| c.action) else {
+                    app.message(Message::Warning(format!("unknown command: {}", com0[0])));
+                    return app;
+                };
+                app = act(app, &args.iter().map(String::as_str).collect::<Vec<_>>());
+            }
+            app
+        },
+        Completer::None
     ),
     sort = (
         "change the way nodes are sorted for the focused view",
