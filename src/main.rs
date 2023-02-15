@@ -13,7 +13,7 @@ use clap::Parser;
 use crossterm::{
     event::{self, DisableMouseCapture, EnableMouseCapture},
     execute,
-    terminal::{disable_raw_mode, enable_raw_mode},
+    terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
 use dirs::home_dir;
 use std::{
@@ -33,11 +33,7 @@ struct TerminalWrap<W: io::Write>(Terminal<CrosstermBackend<W>>);
 impl<W: io::Write> TerminalWrap<W> {
     fn new(mut bla: W) -> Result<TerminalWrap<W>, Box<dyn Error>> {
         enable_raw_mode()?;
-        execute!(
-            bla,
-            //EnterAlternateScreen,
-            EnableMouseCapture
-        )?;
+        execute!(bla, EnterAlternateScreen, EnableMouseCapture)?;
         let backend = CrosstermBackend::new(bla);
         io::stderr().write_all(&vec![b'\n'; backend.size()?.height.into()])?;
         let terminal = Terminal::new(backend)?;
@@ -48,7 +44,7 @@ impl<W: io::Write> TerminalWrap<W> {
         enable_raw_mode()?;
         execute!(
             self.0.backend_mut(),
-            //EnterAlternateScreen,
+            EnterAlternateScreen,
             EnableMouseCapture
         )?;
         self.0.hide_cursor()?;
@@ -59,7 +55,7 @@ impl<W: io::Write> TerminalWrap<W> {
         disable_raw_mode()?;
         execute!(
             self.0.backend_mut(),
-            //LeaveAlternateScreen,
+            LeaveAlternateScreen,
             DisableMouseCapture
         )?;
         self.0.show_cursor()?;
@@ -153,6 +149,11 @@ fn run_app(args: Args) -> Result<(), Box<dyn Error>> {
                 terminal.0.clear()?;
             }
             app.resume();
+        } else if app.pending() {
+            terminal.release()?;
+            app = app.do_execute_in_restored();
+            terminal.regrab()?;
+            terminal.0.clear()?;
         }
     }
 

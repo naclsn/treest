@@ -37,6 +37,8 @@ pub struct App {
     quit: bool,
     #[serde(skip_serializing, skip_deserializing)]
     pause: bool,
+    #[serde(skip_serializing, skip_deserializing)]
+    in_restored: Option<Box<dyn FnOnce(App) -> App>>
 }
 
 fn draw_r<B: Backend>(
@@ -121,6 +123,7 @@ impl App {
             status: Status::default(),
             quit: false,
             pause: false,
+            in_restored: None,
         })
     }
 
@@ -146,6 +149,7 @@ impl App {
     pub fn done(&self) -> bool {
         self.quit
     }
+
     pub fn pause(&mut self) {
         self.pause = true;
     }
@@ -154,6 +158,18 @@ impl App {
     }
     pub fn stopped(&self) -> bool {
         self.pause
+    }
+
+    pub fn pending(&self) -> bool {
+        self.in_restored.is_some()
+    }
+    pub fn execute_in_restored(&mut self, f: Box<dyn FnOnce(App) -> App>) {
+        self.in_restored = Some(f);
+    }
+    pub fn do_execute_in_restored(mut self) -> App {
+        let f = self.in_restored.unwrap();
+        self.in_restored = None;
+        f(self)
     }
 
     pub fn draw<B: Backend>(&mut self, f: &mut Frame<'_, B>) {

@@ -352,23 +352,30 @@ make_lst!(
         "execute a shell command and wait for it to finish, passing the rest as arguments",
         |mut app: App, args: &[&str]| {
             match args {
-                [h, t @ ..] => match SysCommand::new(h).args(t).status() {
-                    Ok(res) => {
-                        if res.success() {
-                            app.message(Message::Info("exited successfully".to_string()));
-                        } else {
-                            app.message(Message::Warning(
-                                if let Some(code) = res.code() {
-                                    format!("exited with status '{code:?}'")
+                [h, t @ ..] => {
+                    let h = h.to_string();
+                    let t = t.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+                    app.execute_in_restored(Box::new(|mut app| {
+                        match SysCommand::new(h).args(t).status() {
+                            Ok(res) => {
+                                if res.success() {
+                                    app.message(Message::Info("exited successfully".to_string()));
                                 } else {
-                                    "exited with a failure (no exit code)".to_string()
+                                    app.message(Message::Warning(
+                                        if let Some(code) = res.code() {
+                                            format!("exited with status '{code:?}'")
+                                        } else {
+                                            "exited with a failure (no exit code)".to_string()
+                                        }
+                                    ));
                                 }
-                            ));
+                            }
+                            Err(err) => {
+                                app.message(Message::Error(format!("{err}")));
+                            }
                         }
-                    }
-                    Err(err) => {
-                        app.message(Message::Error(format!("{err}")));
-                    }
+                        app
+                    }));
                 },
                 _ => app.message(Message::Warning("shell needs an executable name and optional arguments".to_string())),
             }
