@@ -242,7 +242,7 @@ impl StaticCommand {
 }
 
 macro_rules! make_lst {
-    ($($name:ident = ($doc:literal, $action:expr, $comp:expr),)*) => {
+    ($($name:ident = ($doc:literal, $action:expr, $comp:expr,);)*) => {
         $(
             #[allow(non_upper_case_globals)]
             pub const $name: StaticCommand = StaticCommand {
@@ -269,22 +269,29 @@ make_lst!(
         |mut app: App, args: &[&str]| {
             if let Some(name) = args.first() {
                 if let Some(com) = COMMAND_MAP.get(name) {
-                    app.message(Message::Info(format!("{}: {} -- completion:\n{:.1}", com.name, com.doc, com.comp)));
+                    app.message(Message::Info(format!(
+                        "{}: {} -- completion:\n{:.1}",
+                        com.name, com.doc, com.comp
+                    )));
                 } else {
                     app.message(Message::Warning(format!("unknown command name '{name}'")));
                 }
             } else {
-                app.message(Message::Info(COMMAND_MAP.keys().copied().collect::<Vec<_>>().join(" ")));
+                app.message(Message::Info(
+                    COMMAND_MAP.keys().copied().collect::<Vec<_>>().join(" "),
+                ));
             }
             app
         },
-        Completer::StaticWords(COMMAND_LIST)
-    ),
+        Completer::StaticWords(COMMAND_LIST),
+    );
     command = (
         "execute a command, passing the rest of the arguments",
         |mut app: App, args: &[&str]| {
             if args.is_empty() {
-                app.message(Message::Warning("expand needs a command and an argument string".to_string()));
+                app.message(Message::Warning(
+                    "expand needs a command and an argument string".to_string(),
+                ));
                 return app;
             }
             if let Some(com) = COMMAND_MAP.get(args[0]) {
@@ -298,17 +305,20 @@ make_lst!(
         Completer::StaticNth(&[
             Completer::StaticWords(COMMAND_LIST),
             Completer::Defered(|args, _, _| {
-                COMMAND_MAP.get(args[0])
+                COMMAND_MAP
+                    .get(args[0])
                     .map(|sc| Completer::Of(sc, 1))
                     .unwrap_or(Completer::None)
             }),
-        ])
-    ),
+        ]),
+    );
     expand = (
         "execute a command, expanding the second argument into its arguments",
         |mut app: App, args: &[&str]| {
             if args.len() < 2 {
-                app.message(Message::Warning("expand needs a command and an argument string".to_string()));
+                app.message(Message::Warning(
+                    "expand needs a command and an argument string".to_string(),
+                ));
                 return app;
             }
             if let Some(com) = COMMAND_MAP.get(args[0]) {
@@ -320,8 +330,8 @@ make_lst!(
                 app
             }
         },
-        Completer::StaticWords(COMMAND_LIST)
-    ),
+        Completer::StaticWords(COMMAND_LIST),
+    );
     shell = (
         "execute a shell command for its output, passing the rest as arguments",
         |mut app: App, args: &[&str]| {
@@ -342,12 +352,14 @@ make_lst!(
                         app.message(Message::Error(format!("{err}")));
                     }
                 },
-                _ => app.message(Message::Warning("shell needs an executable name and optional arguments".to_string())),
+                _ => app.message(Message::Warning(
+                    "shell needs an executable name and optional arguments".to_string(),
+                )),
             }
             app
         },
-        Completer::StaticNth(&[Completer::PathLookup, Completer::FileFromRoot])
-    ),
+        Completer::StaticNth(&[Completer::PathLookup, Completer::FileFromRoot]),
+    );
     shell_wait = (
         "execute a shell command and wait for it to finish, passing the rest as arguments",
         |mut app: App, args: &[&str]| {
@@ -361,13 +373,11 @@ make_lst!(
                                 if res.success() {
                                     app.message(Message::Info("exited successfully".to_string()));
                                 } else {
-                                    app.message(Message::Warning(
-                                        if let Some(code) = res.code() {
-                                            format!("exited with status '{code:?}'")
-                                        } else {
-                                            "exited with a failure (no exit code)".to_string()
-                                        }
-                                    ));
+                                    app.message(Message::Warning(if let Some(code) = res.code() {
+                                        format!("exited with status '{code:?}'")
+                                    } else {
+                                        "exited with a failure (no exit code)".to_string()
+                                    }));
                                 }
                             }
                             Err(err) => {
@@ -376,13 +386,15 @@ make_lst!(
                         }
                         app
                     }));
-                },
-                _ => app.message(Message::Warning("shell needs an executable name and optional arguments".to_string())),
+                }
+                _ => app.message(Message::Warning(
+                    "shell needs an executable name and optional arguments".to_string(),
+                )),
             }
             app
         },
-        Completer::StaticNth(&[Completer::PathLookup, Completer::FileFromRoot])
-    ),
+        Completer::StaticNth(&[Completer::PathLookup, Completer::FileFromRoot]),
+    );
     prompt = (
         "prompt for input, then execute a command with it (the first argument should be the prompt text)",
         |mut app: App, args: &[&str]| {
@@ -405,8 +417,8 @@ make_lst!(
                     .map(|sc| Completer::Of(sc, 2))
                     .unwrap_or(Completer::None)
             }),
-        ])
-    ),
+        ]),
+    );
     prompt_init = (
         "prompt for input with an initial value, then execute a command with it (the first argument should be the prompt text)",
         |mut app: App, args: &[&str]| {
@@ -430,65 +442,63 @@ make_lst!(
                     .map(|sc| Completer::Of(sc, 3))
                     .unwrap_or(Completer::None)
             }),
-        ])
-    ),
+        ]),
+    );
     quit = (
         "save the state and quit with successful exit status",
         |mut app: App, _| {
             app.finish();
             app
         },
-        Completer::None
-    ),
+        Completer::None,
+    );
     split = (
         "create a new split base on this view, horizontal or vertical",
-        |mut app: App, args: &[&str]| {
-            match args.first() {
-                Some(&"horizontal") => {
-                    app.view_split(Direction::Horizontal);
-                    app
-                }
-                Some(&"vertical") => {
-                    app.view_split(Direction::Vertical);
-                    app
-                }
-                _ => app,
+        |mut app: App, args: &[&str]| match args.first() {
+            Some(&"horizontal") => {
+                app.view_split(Direction::Horizontal);
+                app
             }
+            Some(&"vertical") => {
+                app.view_split(Direction::Vertical);
+                app
+            }
+            _ => app,
         },
-        Completer::StaticWords(&["horizontal", "vertical"])
-    ),
+        Completer::StaticWords(&["horizontal", "vertical"]),
+    );
     close_split = (
         "close the current focused view",
         |mut app: App, _| {
             app.view_close();
             app
         },
-        Completer::None
-    ),
+        Completer::None,
+    );
     close_other_splits = (
         "close every other views, keeping only the current one",
         |mut app: App, _| {
             app.view_close_other();
             app
         },
-        Completer::None
-    ),
+        Completer::None,
+    );
     transpose_splits = (
         "transpose the split containing the focused view",
         |mut app: App, _| {
             app.view_transpose();
             app
         },
-        Completer::None
-    ),
+        Completer::None,
+    );
     fold_node = (
         "fold the node at the cursor",
         |mut app: App, _| {
             app.focused_mut().fold();
             app
         },
-        Completer::None
-    ),
+        Completer::None,
+    );
     unfold_node = (
         "try to unfold the node at the cursor (nothing happens if it is not a directory or a link to one)",
         |mut app: App, _| {
@@ -496,8 +506,8 @@ make_lst!(
             view.unfold(tree).ok();
             app
         },
-        Completer::None
-    ),
+        Completer::None,
+    );
     enter_node = (
         "try to enter the node at the cursor, unfolding it first",
         |mut app: App, _| {
@@ -507,40 +517,40 @@ make_lst!(
             }
             app
         },
-        Completer::None
-    ),
+        Completer::None,
+    );
     leave_node = (
         "leave the node at the cursor",
         |mut app: App, _| {
             app.focused_mut().leave();
             app
         },
-        Completer::None
-    ),
+        Completer::None,
+    );
     next_node = (
         "next the node at the cursor",
         |mut app: App, _| {
             app.focused_mut().next();
             app
         },
-        Completer::None
-    ),
+        Completer::None,
+    );
     prev_node = (
         "prev the node at the cursor",
         |mut app: App, _| {
             app.focused_mut().prev();
             app
         },
-        Completer::None
-    ),
+        Completer::None,
+    );
     toggle_marked = (
         "mark the node at the cursor",
         |mut app: App, _| {
             app.focused_mut().toggle_marked();
             app
         },
-        Completer::None
-    ),
+        Completer::None,
+    );
     scroll_view = (
         "scroll the focused view (vertically)",
         |mut app: App, args: &[&str]| {
@@ -548,8 +558,8 @@ make_lst!(
             app.focused_mut().view_offset().scroll += by;
             app
         },
-        Completer::None
-    ),
+        Completer::None,
+    );
     shift_view = (
         "shift the focused view (horizontally)",
         |mut app: App, args: &[&str]| {
@@ -557,8 +567,8 @@ make_lst!(
             app.focused_mut().view_offset().shift += by;
             app
         },
-        Completer::None
-    ),
+        Completer::None,
+    );
     to_view = (
         "move to a view right/left/down/up from the focused one",
         |mut app: App, args: &[&str]| {
@@ -571,24 +581,24 @@ make_lst!(
             }
             app
         },
-        Completer::StaticWords(&["right", "left", "down", "up"])
-    ),
+        Completer::StaticWords(&["right", "left", "down", "up"]),
+    );
     to_view_next = (
         "move to the next view in the same split",
         |mut app: App, _| {
             app.focus_to_view_adjacent(1);
             app
         },
-        Completer::None
-    ),
+        Completer::None,
+    );
     to_view_prev = (
         "move to the previous view in the same split",
         |mut app: App, _| {
             app.focus_to_view_adjacent(-1);
             app
         },
-        Completer::None
-    ),
+        Completer::None,
+    );
     echo = (
         "echo the arguments to standard output, usually to be captured by the calling process (eg. in shell script)",
         |app: App, args: &[&str]| {
@@ -623,8 +633,8 @@ make_lst!(
             println!();
             app
         },
-        Completer::None
-    ),
+        Completer::None,
+    );
     declare = (
         "declare a variable, giving it a value",
         |mut app: App, args: &[&str]| {
@@ -639,8 +649,8 @@ make_lst!(
             app.declare(name, value);
             app
         },
-        Completer::None
-    ),
+        Completer::None,
+    );
     read = (
         "read, into the variables with given name, from standard input, usually sent from the calling process (eg. in shell script)",
         |mut app: App, args: &[&str]| {
@@ -652,8 +662,8 @@ make_lst!(
             }
             app
         },
-        Completer::None
-    ),
+        Completer::None,
+    );
     bind = (
         "bind a key, or sequence, to a command (arguments can be provided for the command)",
         |mut app: App, args: &[&str]| {
@@ -682,12 +692,13 @@ make_lst!(
             Completer::None,
             Completer::StaticWords(COMMAND_LIST),
             Completer::Defered(|args, _, _| {
-                COMMAND_MAP.get(args[1])
+                COMMAND_MAP
+                    .get(args[1])
                     .map(|sc| Completer::Of(sc, 2))
                     .unwrap_or(Completer::None)
             }),
-        ])
-    ),
+        ]),
+    );
     bindings = (
         "list the current bindings",
         |mut app: App, _| {
@@ -697,8 +708,8 @@ make_lst!(
             }));
             app
         },
-        Completer::None
-    ),
+        Completer::None,
+    );
     source = (
         "source the given file, executing each line as a command",
         |mut app: App, args: &[&str]| {
@@ -715,7 +726,9 @@ make_lst!(
             };
             let res = fs::read_to_string(&filename);
             match res {
-                Err(err) => app.message(Message::Warning(format!("could not read file {filename}: {err}"))),
+                Err(err) => app.message(Message::Warning(format!(
+                    "could not read file {filename}: {err}"
+                ))),
                 Ok(content) => {
                     for (k, com0_args) in content
                         .lines()
@@ -735,8 +748,8 @@ make_lst!(
             } // match
             app
         },
-        Completer::FileFromRoot
-    ),
+        Completer::FileFromRoot,
+    );
     seq = (
         "execute a sequence of commands",
         |mut app: App, comms: &[&str]| {
@@ -754,8 +767,8 @@ make_lst!(
             }
             app
         },
-        Completer::None
-    ),
+        Completer::None,
+    );
     sort = (
         "change the way nodes are sorted for the focused view",
         |mut app: App, args: &[&str]| {
@@ -818,12 +831,12 @@ make_lst!(
                 "extension",
                 "atime",
                 "mtime",
-                "ctime"
+                "ctime",
             ]),
             Completer::StaticWords(&["dirs_first", "reverse"]),
             Completer::StaticWords(&["reverse"]),
-        ])
-    ),
+        ]),
+    );
     keys = (
         "send key events as if theses where pressed by the user (whatever you are doing, this should really be last resort)",
         |app: App, args: &[&str]| {
@@ -836,8 +849,8 @@ make_lst!(
                 })
             })
         },
-        Completer::None
-    ),
+        Completer::None,
+    );
     message = (
         "display a message, level should be one of info/warning/error",
         |mut app: App, args: &[&str]| {
@@ -845,12 +858,14 @@ make_lst!(
                 Some(&"info") => app.message(Message::Info(args[1..].join(" "))),
                 Some(&"warning") => app.message(Message::Warning(args[1..].join(" "))),
                 Some(&"error") => app.message(Message::Error(args[1..].join(" "))),
-                _ => app.message(Message::Warning("message needs a level and messages".to_string())),
+                _ => app.message(Message::Warning(
+                    "message needs a level and messages".to_string(),
+                )),
             }
             app
         },
-        Completer::StaticWords(&["info", "warning", "error"])
-    ),
+        Completer::StaticWords(&["info", "warning", "error"]),
+    );
     reload = (
         "reload the tree from the file system",
         |mut app: App, _| {
@@ -860,8 +875,8 @@ make_lst!(
             app.tree = ntree;
             app
         },
-        Completer::None
-    ),
+        Completer::None,
+    );
     filter = (
         "add or remove filters",
         |mut app: App, args: &[&str]| {
@@ -926,18 +941,9 @@ make_lst!(
             app
         },
         Completer::StaticNth(&[
-            Completer::StaticWords(&[
-                "add",
-                "remove",
-                "clear",
-                "list",
-            ]),
-            Completer::StaticWords(&[
-                "git",
-                "pattern",
-                "dotfiles",
-            ]),
+            Completer::StaticWords(&["add", "remove", "clear", "list"]),
+            Completer::StaticWords(&["git", "pattern", "dotfiles"]),
             Completer::None,
-        ])
-    ),
+        ]),
+    );
 );
