@@ -719,6 +719,7 @@ make_lst!(
             }
             let filename = if let Some(suffix) = args[0].strip_prefix("~/") {
                 let mut r = suffix.to_string();
+                r.insert(0, '/');
                 r.insert_str(0, home_dir().unwrap().to_string_lossy().as_ref());
                 r
             } else {

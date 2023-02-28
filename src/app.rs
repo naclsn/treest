@@ -260,6 +260,15 @@ impl App {
                     let (node, _) = view.at_cursor_pair(tree);
                     node.as_path().to_string_lossy().to_string()
                 }
+                "@" => {
+                    let (view, tree) = focused_and_tree();
+                    let (node, _) = view.at_cursor_pair(tree);
+                    node.as_path()
+                        .strip_prefix(tree.root.as_path())
+                        .unwrap()
+                        .to_string_lossy()
+                        .to_string()
+                }
                 "file_name" => {
                     let (view, tree) = focused_and_tree();
                     let (node, _) = view.at_cursor_pair(tree);
@@ -547,6 +556,15 @@ impl App {
                 let (view, tree) = self.focused_and_tree();
                 let (node, _) = view.at_cursor_pair(tree);
                 node.as_path().to_string_lossy().to_string()
+            }
+            "@" => {
+                let (view, tree) = self.focused_and_tree();
+                let (node, _) = view.at_cursor_pair(tree);
+                node.as_path()
+                    .strip_prefix(tree.root.as_path())
+                    .unwrap()
+                    .to_string_lossy()
+                    .to_string()
             }
             "file_name" => {
                 let (view, tree) = self.focused_and_tree();
