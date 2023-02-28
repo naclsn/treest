@@ -8,7 +8,7 @@ use std::io;
 #[derive(Serialize, Deserialize, Debug, Clone)]
 struct ViewSettings {
     sort: Sorting,
-    filter: Filtering,
+    filters: Vec<Filtering>,
     reverse: bool,
 }
 
@@ -16,7 +16,7 @@ impl ViewSettings {
     fn make_node_state_mapping(&self, chs: &[Node]) -> io::Result<Vec<(usize, State)>> {
         let mut r: Vec<_> = chs
             .iter()
-            .filter(|_| true) // TODO
+            .filter(|ch| !self.filters.iter().any(|f| f.matches(ch)))
             .enumerate()
             .collect();
 
@@ -41,7 +41,10 @@ impl ViewSettings {
     ) -> Vec<(usize, State)> {
         r.sort_unstable_by(|(lk, _), (rk, _)| Node::cmp_by(&chs[*lk], &chs[*rk], self.sort));
 
-        let iter = r.into_iter().filter(|_| true); // TODO
+        let iter = r.into_iter().filter(|(k, _)| {
+            let ch = &chs[*k];
+            !self.filters.iter().any(|f| f.matches(ch))
+        });
 
         if self.reverse {
             iter.rev().collect()
@@ -78,29 +81,26 @@ impl State {
             } else {
                 let Some(plo_chs) = pnode.loaded_children() else { unreachable!() };
                 let Some(lo_chs) = node.loaded_children() else { unreachable!() };
-                settings.correct_node_state_mapping(
-                    lo_chs,
-                    {
-                        let previous = &self.children;
-                        let mut children = Vec::with_capacity(previous.len());
-                        for (pk, st) in previous {
-                            // get the name from the previous tree
-                            let pch = &plo_chs[*pk];
-                            let name = pch.file_name();
-                            // because the tree might have been renewed,
-                            // we try to find nodes by name rather than
-                            // relying on the previous mapping
-                            let may_matching = lo_chs.iter().position(|ch| ch.file_name() == name);
-                            if let Some(k) = may_matching {
-                                let ch = &lo_chs[k];
-                                if let Ok(niw) = st.renew(pch, ch, settings).map(|st| (k, st)) {
-                                    children.push(niw);
-                                }
+                settings.correct_node_state_mapping(lo_chs, {
+                    let previous = &self.children;
+                    let mut children = Vec::with_capacity(previous.len());
+                    for (pk, st) in previous {
+                        // get the name from the previous tree
+                        let pch = &plo_chs[*pk];
+                        let name = pch.file_name();
+                        // because the tree might have been renewed,
+                        // we try to find nodes by name rather than
+                        // relying on the previous mapping
+                        let may_matching = lo_chs.iter().position(|ch| ch.file_name() == name);
+                        if let Some(k) = may_matching {
+                            let ch = &lo_chs[k];
+                            if let Ok(niw) = st.renew(pch, ch, settings).map(|st| (k, st)) {
+                                children.push(niw);
                             }
                         }
-                        children
                     }
-                )
+                    children
+                })
             },
         })
     }
@@ -153,7 +153,7 @@ impl View {
     pub fn new(root: &Node) -> io::Result<View> {
         let settings = ViewSettings {
             sort: Sorting::new(SortingProp::Name, false),
-            filter: Filtering::None,
+            filters: Vec::new(),
             reverse: false,
         };
         Ok(View {
@@ -376,5 +376,21 @@ impl View {
     pub fn set_sorting(&mut self, sort: Sorting, reverse: bool) {
         self.settings.sort = sort;
         self.settings.reverse = reverse;
+    }
+    pub fn add_filtering(&mut self, filter: Filtering) {
+        if !self.settings.filters.iter().any(|it| *it == filter) {
+            self.settings.filters.push(filter);
+        }
+    }
+    pub fn remove_filtering(&mut self, filter: Filtering) {
+        if let Some(found) = self.settings.filters.iter().position(|it| *it == filter) {
+            self.settings.filters.remove(found);
+        }
+    }
+    pub fn clear_filtering(&mut self) {
+        self.settings.filters.clear();
+    }
+    pub fn list_filtering(&self) -> &Vec<Filtering> {
+        &self.settings.filters
     }
 }

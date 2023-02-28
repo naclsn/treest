@@ -1,3 +1,4 @@
+use glob::Pattern;
 use serde::{Deserialize, Serialize};
 use std::{
     cmp::Ordering,
@@ -31,9 +32,51 @@ impl Sorting {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, Copy)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum Filtering {
-    None,
+    Git,
+    Pattern(String), // XXX: cannot serialize Pattern
+}
+
+impl PartialEq for Filtering {
+    fn eq(&self, other: &Filtering) -> bool {
+        match (self, other) {
+            (Filtering::Git, Filtering::Git) => true,
+            (Filtering::Pattern(a), Filtering::Pattern(b)) => a == b,
+            _ => false,
+        }
+    }
+}
+
+impl fmt::Display for Filtering {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Filtering::Git => write!(f, "# git ignore"),
+            Filtering::Pattern(pat) => write!(f, "{pat}"),
+        }
+    }
+}
+
+impl Filtering {
+    pub fn new_git() -> Filtering {
+        Filtering::Git
+    }
+    pub fn new_pattern(pat: String) -> Filtering {
+        Filtering::Pattern(pat)
+    }
+
+    pub fn matches(&self, node: &Node) -> bool {
+        match self {
+            Filtering::Git => todo!(),
+            Filtering::Pattern(pat) => {
+                if let Ok(p) = Pattern::new(pat) {
+                    p.matches(node.file_name())
+                } else {
+                    true
+                }
+            }
+        }
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -247,6 +290,7 @@ impl Node {
 
         // correct for any change, load children if any
         // (does not account for eg. dir became a link)
+        #[allow(clippy::single_match)]
         match (&self.info, &mut node.info) {
             // it was a loaded dir; if it still is a dir, load it
             (

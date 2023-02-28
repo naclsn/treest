@@ -38,7 +38,7 @@ pub struct App {
     #[serde(skip_serializing, skip_deserializing)]
     pause: bool,
     #[serde(skip_serializing, skip_deserializing)]
-    in_restored: Option<Box<dyn FnOnce(App) -> App>>
+    in_restored: Option<Box<dyn FnOnce(App) -> App>>,
 }
 
 fn draw_r<B: Backend>(

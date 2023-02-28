@@ -8,7 +8,7 @@ use crate::{
     app::App,
     completions::Completer,
     line::{split_line_args, Message},
-    node::{Sorting, SortingProp},
+    node::{Filtering, Sorting, SortingProp},
 };
 use crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers};
 use dirs::home_dir;
@@ -795,7 +795,7 @@ make_lst!(
                 ),
                 match args.get(skip) {
                     Some(&"reverse") => {
-                        skip += 1;
+                        // skip += 1;
                         true
                     }
                     _ => false,
@@ -803,11 +803,11 @@ make_lst!(
             );
             // (tree not changed, hence same)
             view.renew_root(tree, tree).unwrap();
-            if let Some(rest) = args.get(skip) {
-                app.message(Message::Warning(format!(
-                    "unknown extraneous argument '{rest}'"
-                )));
-            }
+            // if let Some(rest) = args.get(skip) {
+            //     app.message(Message::Warning(format!(
+            //         "unknown extraneous argument '{rest}'"
+            //     )));
+            // }
             app
         },
         Completer::StaticNth(&[
@@ -851,8 +851,8 @@ make_lst!(
         },
         Completer::StaticWords(&["info", "warning", "error"])
     ),
-    refresh = (
-        "refresh the tree or something",
+    reload = (
+        "reload the tree from the file system",
         |mut app: App, _| {
             let (view, tree) = app.focused_and_tree_mut();
             let ntree = tree.renew().unwrap();
@@ -861,5 +861,83 @@ make_lst!(
             app
         },
         Completer::None
+    ),
+    filter = (
+        "add or remove filters",
+        |mut app: App, args: &[&str]| {
+            let (view, tree) = app.focused_and_tree_mut();
+            match args {
+                [does @ ("add" | "remove"), what, ..] => {
+                    let f = match *what {
+                        "git" => Filtering::new_git(),
+                        "pattern" => Filtering::new_pattern({
+                            if let Some(pat) = args.get(2) {
+                                pat.to_string()
+                            } else {
+                                app.message(Message::Warning("missing filter pattern".to_string()));
+                                return app;
+                            }
+                        }),
+                        "dotfiles" => Filtering::new_pattern(".*".to_string()),
+                        incorrect => {
+                            app.message(Message::Warning(format!(
+                                "incorrect filter type: {incorrect:?}"
+                            )));
+                            return app;
+                        }
+                    };
+                    match *does {
+                        "add" => view.add_filtering(f),
+                        "remove" => view.remove_filtering(f),
+                        _ => unreachable!(),
+                    }
+                    view.renew_root(tree, tree).unwrap();
+                }
+                ["clear", ..] => {
+                    view.clear_filtering();
+                    view.renew_root(tree, tree).unwrap();
+                }
+                ["list", ..] => {
+                    let l = view.list_filtering();
+                    if l.is_empty() {
+                        app.message(Message::Info("# (no filter)".to_string()));
+                    } else {
+                        let s = l
+                            .iter()
+                            .map(|it| format!("{it}"))
+                            .collect::<Vec<_>>()
+                            .join("\n");
+                        app.message(Message::Info(format!("# filters:\n{s}")));
+                    }
+                }
+                [incorrect, ..] => {
+                    app.message(Message::Warning(format!(
+                        "incorrect action for filter: {incorrect:?}"
+                    )));
+                    return app;
+                }
+                [] => {
+                    app.message(Message::Warning(
+                        "filter needs a action and an optional argument".to_string(),
+                    ));
+                    return app;
+                }
+            };
+            app
+        },
+        Completer::StaticNth(&[
+            Completer::StaticWords(&[
+                "add",
+                "remove",
+                "clear",
+                "list",
+            ]),
+            Completer::StaticWords(&[
+                "git",
+                "pattern",
+                "dotfiles",
+            ]),
+            Completer::None,
+        ])
     ),
 );
