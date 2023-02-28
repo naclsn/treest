@@ -71,7 +71,6 @@ impl<W: io::Write> Drop for TerminalWrap<W> {
 
 fn main() -> Result<(), Box<dyn Error>> {
     let res = run_app(Args::parse());
-    print!("\r\n");
 
     if let Err(err) = res {
         println!("{err:?}");

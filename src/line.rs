@@ -192,10 +192,12 @@ pub fn split_line_args_cursor_indices(
 
         if in_escape {
             cur.push(ch);
+            in_escape = false;
         } else if in_lookup {
             if '}' == ch {
                 cur.push_str(&lookup(&lookup_name));
                 lookup_name = String::new();
+                in_lookup = false;
             } else {
                 lookup_name.push(ch);
             }
@@ -208,8 +210,7 @@ pub fn split_line_args_cursor_indices(
         } else if in_double {
             match ch {
                 '"' => in_double = false,
-                '\\' => in_escape = true,
-                '}' => in_lookup = false,
+                '{' => in_lookup = true,
                 _ => cur.push(ch),
             }
         } else {
@@ -706,5 +707,54 @@ fn complete(p: &mut Prompt, lookup: &impl Fn(&str) -> String) {
             }
             p.hints = Some(res);
         }
+    }
+}
+
+// tests for split_line_args_..
+#[cfg(test)]
+mod tests {
+    use super::split_line_args as s;
+
+    fn lu(name: &str) -> String {
+        if name.is_empty() {
+            "[file_path]".to_string()
+        } else {
+            format!("name:{name}")
+        }
+        .to_string()
+    }
+
+    macro_rules! t {
+        ($(($in:literal, $out:expr),)*) => {
+            $(assert_eq!(s($in, &lu), $out);)*
+        };
+    }
+
+    #[test]
+    fn test_split_args() {
+        assert!(s("", &lu).is_empty());
+        assert!(s(" ", &lu).is_empty());
+
+        t![
+            (r#" a "#, ["a"]),
+            (r#"a b c d"#, ["a", "b", "c", "d"]),
+            (r#"a 'b c' d"#, ["a", "b c", "d"]),
+            (r#"a "b c" d"#, ["a", "b c", "d"]),
+            (r#"a {w} d"#, ["a", "name:w", "d"]),
+            (r#"a '{w}' d"#, ["a", "{w}", "d"]),
+            (r#"a "{w}" d"#, ["a", "name:w", "d"]),
+            (r#"a \{w} d"#, ["a", "{w}", "d"]),
+            (r#"a \n d"#, ["a", "n", "d"]),
+            (r#"a '\n' d"#, ["a", "\\n", "d"]),
+            (r#"a "\n" d"#, ["a", "\\n", "d"]),
+            (
+                r#"bind e expand shell_wait 'sh -c "$EDITOR {}"'"#,
+                ["bind", "e", "expand", "shell_wait", "sh -c \"$EDITOR {}\""]
+            ),
+            (
+                r#"bind a expand prompt_init '-> {} shell mv {}'"#,
+                ["bind", "a", "expand", "prompt_init", "-> {} shell mv {}"]
+            ),
+        ];
     }
 }
