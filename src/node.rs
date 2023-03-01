@@ -49,7 +49,7 @@ impl PartialEq for Filtering {
 }
 
 impl fmt::Display for Filtering {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Filtering::Git => write!(f, "# git ignore"),
             Filtering::Pattern(pat) => write!(f, "{pat}"),
@@ -107,13 +107,13 @@ pub struct Node {
 impl fmt::Display for Node {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let depth = f.precision().unwrap_or(0);
-        let ident = "   ".repeat(depth);
+        let indent = "   ".repeat(depth);
 
         let name = self.path.file_name().unwrap().to_str().unwrap();
 
         match &self.info {
             NodeInfo::Dir { loaded, children } => {
-                write!(f, "{ident}{name}/",)?;
+                write!(f, "{indent}{name}/",)?;
                 if *loaded {
                     if children.is_empty() {
                         writeln!(f, " (/)")
@@ -129,7 +129,7 @@ impl fmt::Display for Node {
             }
 
             NodeInfo::Link { target } => {
-                write!(f, "{ident}{name}@ -> ")?;
+                write!(f, "{indent}{name}@ -> ")?;
                 match target {
                     Ok(node) => write!(f, "{node}"),
                     Err(path) => write!(f, "~{}~", path.to_string_lossy()),
@@ -137,10 +137,10 @@ impl fmt::Display for Node {
             }
 
             NodeInfo::File { kind } => match kind {
-                FileKind::NamedPipe => writeln!(f, "{ident}{name}|"),
-                FileKind::Socket => writeln!(f, "{ident}{name}="),
-                FileKind::Executable => writeln!(f, "{ident}{name}*"),
-                _ => writeln!(f, "{ident}{name}"),
+                FileKind::NamedPipe => writeln!(f, "{indent}{name}|"),
+                FileKind::Socket => writeln!(f, "{indent}{name}="),
+                FileKind::Executable => writeln!(f, "{indent}{name}*"),
+                _ => writeln!(f, "{indent}{name}"),
             },
         }
     }

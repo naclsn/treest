@@ -1,4 +1,9 @@
-use crate::{commands::Action, textblock::TextBlock, tree::Tree, view::View};
+use crate::{
+    commands::{Action, Key},
+    textblock::TextBlock,
+    tree::Tree,
+    view::View,
+};
 use crossterm::event::{Event, KeyCode, KeyModifiers};
 use tui::{
     buffer::Buffer,
@@ -38,7 +43,7 @@ pub struct Prompt {
 
 #[derive(Default)]
 pub struct Status {
-    pending: Vec<char>,
+    pending: Vec<Key>,
     message: Option<Message>,
     message_tb: Option<TextBlock>,
     input: Option<Prompt>,
@@ -154,7 +159,11 @@ impl StatefulWidget for Line<'_> {
                 buf.set_string(
                     area.x + area.width - state.pending.len() as u16 - 1,
                     area.y,
-                    state.pending.iter().collect::<String>(),
+                    state
+                        .pending
+                        .iter()
+                        .map(|k| k.to_string())
+                        .collect::<String>(),
                     Style::default(),
                 );
             }
@@ -270,11 +279,11 @@ pub fn split_line_args(c: &str, lookup: &impl Fn(&str) -> String) -> Vec<String>
 }
 
 impl Status {
-    pub fn push_pending(&mut self, key: char) {
+    pub fn push_pending(&mut self, key: Key) {
         self.pending.push(key);
     }
 
-    pub fn get_pending(&self) -> &Vec<char> {
+    pub fn get_pending(&self) -> &Vec<Key> {
         &self.pending
     }
 

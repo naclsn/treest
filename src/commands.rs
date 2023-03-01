@@ -13,7 +13,10 @@ use crate::{
 use crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers};
 use dirs::home_dir;
 use lazy_static::lazy_static;
-use std::{collections::HashMap, default::Default, fmt, fs, io, process::Command as SysCommand};
+use std::{
+    collections::HashMap, default::Default, fmt, fs, io, process::Command as SysCommand,
+    str::FromStr,
+};
 use tui::layout::Direction;
 
 #[derive(Debug, Clone)]
@@ -21,6 +24,23 @@ pub enum Action {
     Fn(&'static StaticCommand),
     Bind(&'static StaticCommand, Vec<String>),
     Chain(Vec<Action>),
+}
+
+impl fmt::Display for Action {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Action::Fn(sc) => write!(f, "{}", sc.name),
+            Action::Bind(sc, bound) => write!(f, "{} {}", sc.name, bound.join(" ")),
+            Action::Chain(v) => write!(
+                f,
+                "[{}]",
+                v.iter()
+                    .map(|a| a.to_string())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ), // TODO: better
+        }
+    }
 }
 
 impl Action {
@@ -58,20 +78,233 @@ impl Action {
     }
 }
 
-#[derive(Debug, Clone)]
-enum CommandGraph {
-    Immediate(Action),
-    Pending(HashMap<char, CommandGraph>),
+#[derive(Hash, PartialEq, Eq, Debug, Clone, Copy)]
+pub struct Key {
+    kch: KeyCode,
+    kmod: KeyModifiers,
+}
+
+mod key_names {
+    pub const SPACE: &str = "space";
+    pub const LESS_THAN: &str = "lt";
+    pub const GREATER_THAN: &str = "gt";
+    pub const BACKSPACE: &str = "backspace";
+    pub const ENTER: &str = "enter";
+    pub const LEFT: &str = "left";
+    pub const RIGHT: &str = "right";
+    pub const UP: &str = "up";
+    pub const DOWN: &str = "down";
+    pub const HOME: &str = "home";
+    pub const END: &str = "end";
+    pub const PAGEUP: &str = "pageup";
+    pub const PAGEDOWN: &str = "pagedown";
+    pub const TAB: &str = "tab";
+    pub const DELETE: &str = "delete";
+    pub const INSERT: &str = "insert";
+}
+
+// ZZZ: might be temporary
+impl From<char> for Key {
+    fn from(ch: char) -> Key {
+        Key {
+            kch: KeyCode::Char(ch),
+            kmod: if ch.is_ascii_uppercase() {
+                KeyModifiers::SHIFT
+            } else {
+                KeyModifiers::NONE
+            },
+        }
+    }
+}
+
+impl From<&KeyEvent> for Key {
+    fn from(ev: &KeyEvent) -> Key {
+        Key {
+            kch: ev.code,
+            kmod: ev.modifiers,
+        }
+    }
+}
+
+impl FromStr for Key {
+    type Err = (); // ZZZ: fleme
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let mut chs = s.chars();
+        match chs.next() {
+            Some('<') => {
+                let mut chs = chs.peekable();
+                let mut accmod = KeyModifiers::NONE;
+
+                while let Some(&m @ ('S' | 'A' | 'C')) = chs.peek() {
+                    chs.next();
+                    if let Some('-') = chs.next() {
+                        accmod.insert(match m {
+                            'S' => KeyModifiers::SHIFT,
+                            'A' => KeyModifiers::ALT,
+                            'C' => KeyModifiers::CONTROL,
+                            _ => unreachable!(),
+                        });
+                    } else {
+                        return Err(());
+                    }
+                }
+
+                let name = chs.take_while(|ch| '>' != *ch).collect::<String>();
+                Ok(Key {
+                    kch: match name.as_str() {
+                        h if 1 == h.len() => KeyCode::Char(h.as_bytes()[0] as char),
+                        key_names::SPACE => KeyCode::Char(' '),
+                        key_names::LESS_THAN => KeyCode::Char('<'),
+                        key_names::GREATER_THAN => KeyCode::Char('>'),
+                        key_names::BACKSPACE => KeyCode::Backspace,
+                        key_names::ENTER => KeyCode::Enter,
+                        key_names::LEFT => KeyCode::Left,
+                        key_names::RIGHT => KeyCode::Right,
+                        key_names::UP => KeyCode::Up,
+                        key_names::DOWN => KeyCode::Down,
+                        key_names::HOME => KeyCode::Home,
+                        key_names::END => KeyCode::End,
+                        key_names::PAGEUP => KeyCode::PageUp,
+                        key_names::PAGEDOWN => KeyCode::PageDown,
+                        key_names::TAB => KeyCode::Tab,
+                        key_names::DELETE => KeyCode::Delete,
+                        key_names::INSERT => KeyCode::Insert,
+                        // ...
+                        _ => todo!("parsing more keys: {s:?}"),
+                        _ => {
+                            return Err(());
+                        }
+                    },
+                    kmod: accmod,
+                })
+            }
+
+            Some(ch) => Ok(ch.into()),
+
+            None => Err(()),
+        }
+    }
+}
+
+impl fmt::Display for Key {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let mut hasmod = false;
+        let mut putmod = |f: &mut fmt::Formatter<'_>| -> fmt::Result {
+            if !hasmod {
+                write!(f, "<")?;
+                hasmod = true;
+            }
+            Ok(())
+        };
+
+        if self.kmod.contains(KeyModifiers::SHIFT) {
+            match self.kch {
+                KeyCode::Char(ch) if ch.is_ascii_uppercase() => (),
+                _ => {
+                    putmod(f)?;
+                    write!(f, "S-")?;
+                }
+            }
+        }
+        if self.kmod.contains(KeyModifiers::ALT) {
+            putmod(f)?;
+            write!(f, "A-")?;
+        }
+        if self.kmod.contains(KeyModifiers::CONTROL) {
+            putmod(f)?;
+            write!(f, "C-")?;
+        }
+
+        match self.kch {
+            KeyCode::Char(' ') => {
+                putmod(f)?;
+                f.write_str(key_names::SPACE)
+            }
+            KeyCode::Char('<') => {
+                putmod(f)?;
+                f.write_str(key_names::LESS_THAN)
+            }
+            KeyCode::Char('>') => {
+                putmod(f)?;
+                f.write_str(key_names::GREATER_THAN)
+            }
+
+            KeyCode::Char(ch) => write!(f, "{ch}"),
+
+            other => {
+                putmod(f)?;
+                match other {
+                    KeyCode::Backspace => f.write_str(key_names::BACKSPACE),
+                    KeyCode::Enter => f.write_str(key_names::ENTER),
+                    KeyCode::Left => f.write_str(key_names::LEFT),
+                    KeyCode::Right => f.write_str(key_names::RIGHT),
+                    KeyCode::Up => f.write_str(key_names::UP),
+                    KeyCode::Down => f.write_str(key_names::DOWN),
+                    KeyCode::Home => f.write_str(key_names::HOME),
+                    KeyCode::End => f.write_str(key_names::END),
+                    KeyCode::PageUp => f.write_str(key_names::PAGEUP),
+                    KeyCode::PageDown => f.write_str(key_names::PAGEDOWN),
+                    KeyCode::Tab => f.write_str(key_names::TAB),
+                    KeyCode::Delete => f.write_str(key_names::DELETE),
+                    KeyCode::Insert => f.write_str(key_names::INSERT),
+                    // ...
+                    _ => todo!(),
+                }
+            }
+        }?;
+
+        if hasmod {
+            write!(f, ">")?;
+        }
+        Ok(())
+    }
 }
 
 #[derive(Debug, Clone)]
-pub struct CommandMap(HashMap<char, CommandGraph>);
+enum CommandGraph {
+    Immediate(Action),
+    Pending(HashMap<Key, CommandGraph>),
+}
+
+#[derive(Debug, Clone)]
+pub struct CommandMap(HashMap<Key, CommandGraph>);
+
+fn display_graph_keymap(
+    map: &HashMap<Key, CommandGraph>,
+    f: &mut fmt::Formatter<'_>,
+) -> fmt::Result {
+    let depth = f.precision().unwrap_or(0);
+    let indent = "   ".repeat(depth);
+    write!(
+        f,
+        "{}",
+        map.iter()
+            .map(|(k, c)| format!("{k}  {c:.*}", depth + 1))
+            .collect::<Vec<_>>()
+            .join(&format!("\n{indent}"))
+    )
+}
+impl fmt::Display for CommandGraph {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            CommandGraph::Immediate(act) => write!(f, "{act}"),
+            CommandGraph::Pending(map) => display_graph_keymap(map, f),
+        }
+    }
+}
+
+impl fmt::Display for CommandMap {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        display_graph_keymap(&self.0, f)
+    }
+}
 
 macro_rules! make_map_one {
-    ($key:literal => [$(($key2:literal, $value:tt),)*]) => {
+    ($key:expr => [$(($key2:literal, $value:tt),)*]) => {
         ($key, CommandGraph::Pending(make_map!($(($key2, $value),)*)))
     };
-    ($key:literal => $action:tt) => {
+    ($key:expr => $action:tt) => {
         ($key, CommandGraph::Immediate(make_map_one!(@ $action)))
     };
     (@ $sc:ident) => {
@@ -91,7 +324,7 @@ macro_rules! make_map_one {
 macro_rules! make_map {
     ($(($key:literal, $value:tt),)*) => {
         HashMap::from([
-            $(make_map_one!($key => $value),)*
+            $(make_map_one!($key.into() => $value),)*
         ])
     };
 }
@@ -158,7 +391,7 @@ impl Default for CommandMap {
 
 // TODO: handle mouse events and modifier keys
 impl CommandMap {
-    pub fn try_get_action(&self, key_path: &[char]) -> (Option<&Action>, bool) {
+    pub fn try_get_action(&self, key_path: &[Key]) -> (Option<&Action>, bool) {
         if key_path.is_empty() {
             return (None, true);
         }
@@ -179,7 +412,7 @@ impl CommandMap {
         }
     }
 
-    pub fn rebind(&mut self, key_path: &[char], action: Action) {
+    pub fn rebind(&mut self, key_path: &[Key], action: Action) {
         let mut acc = &mut self.0;
         for ch in &key_path[..key_path.len() - 1] {
             acc = {
@@ -276,7 +509,7 @@ make_lst! {
             }
             let key_path = args[0]
                 .split_whitespace()
-                .map(|s| s.chars().next().unwrap())
+                .map(|s| s.parse().unwrap())
                 .collect::<Vec<_>>();
             let Some(sc) = COMMAND_MAP.get(args[1]) else {
                 app.message(Message::Warning(format!("cannot bind unknown command '{}'", args[1])));
@@ -306,7 +539,7 @@ make_lst! {
         |mut app: App, _| {
             app.message(Message::Info({
                 let b = app.get_bindings();
-                format!("{b:#?}")
+                format!("{b}")
             }));
             app
         },

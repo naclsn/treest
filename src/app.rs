@@ -1,5 +1,5 @@
 use crate::{
-    commands::{Action, CommandMap},
+    commands::{Action, CommandMap, Key},
     line::{Line, Message, Status},
     tree::Tree,
     view::View,
@@ -135,7 +135,7 @@ impl App {
         }
     }
 
-    pub fn rebind(&mut self, key_path: &[char], action: Action) {
+    pub fn rebind(&mut self, key_path: &[Key], action: Action) {
         self.bindings.rebind(key_path, action);
     }
 
@@ -295,8 +295,10 @@ impl App {
         }
 
         if let Event::Key(key) = event {
-            if let KeyCode::Char(c) = key.code {
-                self.status.push_pending(c);
+            if let KeyCode::Esc = key.code {
+                self.status.clear_pending();
+            } else {
+                self.status.push_pending(key.into());
                 let crap = self.bindings.clone(); // XXX: this should not be needed
                 let (may, continues) = crap.try_get_action(self.status.get_pending());
 
@@ -307,8 +309,6 @@ impl App {
                 if !continues {
                     self.status.clear_pending();
                 }
-            } else if let KeyCode::Esc = key.code {
-                self.status.clear_pending();
             }
             // } else if let Event::Mouse(mouse) = event {
             //     match mouse.kind {
