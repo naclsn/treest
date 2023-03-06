@@ -1,9 +1,8 @@
-/// All this is quite confused, but here is the idea. A `CommandGraph`
-/// is a tree of `Action`s (where `Immediate` are leafs). An `Action`
-/// can be just a StaticCommand (`Fn`), potentially with bound arguments
-/// (`Bind`) or a `Chain` of `Action` applied one after the other. Finally a
-/// `StaticCommand` is a rust `fn` (the actual action) with some meta (such
-/// as name/doc/completion).
+/// A `CommandGraph` is a tree of `Action`s (where `Immediate` are
+/// leafs). An `Action` can be just a StaticCommand (`Fn`), potentially
+/// with bound arguments (`Bind`) or a `Chain` of `Action` applied
+/// one after the other. Finally a `StaticCommand` is a rust `fn`
+/// (the actual action) with some meta (such as name/doc/completion).
 use crate::{
     app::App,
     completions::Completer,
@@ -154,6 +153,9 @@ impl FromStr for Key {
                 Ok(Key {
                     kch: match name.as_str() {
                         h if 1 == h.len() => KeyCode::Char(h.as_bytes()[0] as char),
+                        h if 1 < h.len() && b'F' == h.as_bytes()[0] => {
+                            KeyCode::F(h[1..].parse().unwrap())
+                        }
                         key_names::SPACE => KeyCode::Char(' '),
                         key_names::LESS_THAN => KeyCode::Char('<'),
                         key_names::GREATER_THAN => KeyCode::Char('>'),
@@ -170,15 +172,19 @@ impl FromStr for Key {
                         key_names::TAB => KeyCode::Tab,
                         key_names::DELETE => KeyCode::Delete,
                         key_names::INSERT => KeyCode::Insert,
-                        // ...
-                        _ => todo!("parsing more keys: {s:?}"),
                         _ => {
+                            // YYY: weird(er) keys not handled on purpose
                             return Err(());
                         }
                     },
                     kmod: accmod,
                 })
             }
+
+            Some('F') => Ok(Key {
+                kch: KeyCode::F(chs.collect::<String>().parse().unwrap()),
+                kmod: KeyModifiers::NONE,
+            }),
 
             Some(ch) => Ok(ch.into()),
 
@@ -232,6 +238,8 @@ impl fmt::Display for Key {
 
             KeyCode::Char(ch) => write!(f, "{ch}"),
 
+            KeyCode::F(n) => write!(f, "F{n}"),
+
             other => {
                 putmod(f)?;
                 match other {
@@ -248,8 +256,7 @@ impl fmt::Display for Key {
                     KeyCode::Tab => f.write_str(key_names::TAB),
                     KeyCode::Delete => f.write_str(key_names::DELETE),
                     KeyCode::Insert => f.write_str(key_names::INSERT),
-                    // ...
-                    _ => todo!(),
+                    _ => Ok(()), // YYY: weird(er) keys not handled on purpose
                 }
             }
         }?;
@@ -389,7 +396,6 @@ impl Default for CommandMap {
     }
 }
 
-// TODO: handle mouse events and modifier keys
 impl CommandMap {
     pub fn try_get_action(&self, key_path: &[Key]) -> (Option<&Action>, bool) {
         if key_path.is_empty() {
@@ -784,12 +790,11 @@ make_lst! {
         "send key events as if theses where pressed by the user (whatever you are doing, this should really be last resort)",
         |app: App, args: &[&str]| {
             args.iter().fold(app, |app, ks| {
-                ks.chars().fold(app, |app, k| {
-                    app.do_event(&Event::Key(KeyEvent::new(
-                        KeyCode::Char(k),
-                        KeyModifiers::empty(),
-                    )))
-                })
+                ks.split_whitespace()
+                    .map(|s| s.parse().unwrap())
+                    .fold(app, |app, k: Key| {
+                        app.do_event(&Event::Key(KeyEvent::new(k.kch, k.kmod)))
+                    })
             })
         },
         Completer::None,
