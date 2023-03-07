@@ -131,6 +131,58 @@ impl State {
     pub fn fold(&mut self) {
         self.unfolded = false;
     }
+
+    pub fn scan_to(
+        &mut self,
+        node: &mut Node,
+        predicate: &impl Fn(&Node) -> ScanToChoice,
+        out_path: &mut Vec<usize>,
+    ) -> bool {
+        if let Some(chs) = node.loaded_children_mut() {
+            for (idx, (k, st)) in self.children.iter_mut().enumerate() {
+                let ch = &mut chs[*k];
+                match predicate(ch) {
+                    ScanToChoice::Break(mark) => {
+                        if mark {
+                            st.marked = true;
+                        }
+                        out_path.push(idx);
+                        return true;
+                    }
+                    ScanToChoice::Continue(mark) => {
+                        if mark {
+                            st.marked = true;
+                        }
+                        continue;
+                    }
+                    ScanToChoice::Recurse => {
+                        out_path.push(idx);
+                        if st.scan_to(ch, predicate, out_path) {
+                            return true;
+                        } else {
+                            out_path.pop();
+                            continue;
+                        }
+                    }
+                    ScanToChoice::Abort(mark) => {
+                        if mark {
+                            st.marked = true;
+                        }
+                        return false;
+                    }
+                }
+            }
+        }
+        false
+    }
+}
+
+/// used with View::scan_to
+pub enum ScanToChoice {
+    Break(bool),    // ie. found, stop there (bool = set marked?)
+    Continue(bool), // ie. not this one, try next (bool = set marked?)
+    Recurse,        // ie. in this node
+    Abort(bool),    // ie. give up, stop there (bool = set marked?)
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Copy)]
@@ -145,7 +197,6 @@ pub struct View {
     cursor: Vec<usize>,
     cursor_path_len: usize,
     offset: Offset,
-    // selection: Vec<State>,
     settings: ViewSettings,
 }
 
@@ -172,6 +223,10 @@ impl View {
     pub fn cursor_path(&self) -> &[usize] {
         &self.cursor[..self.cursor_path_len]
     }
+
+    // pub fn collect_marked(&self) -> Vec<> {
+    //     // TODO
+    // }
 
     pub fn view_offset(&self) -> Offset {
         self.offset
@@ -246,6 +301,7 @@ impl View {
             })
     }
 
+    // TODO: change pair order for consistency
     pub fn at_cursor_pair<'a>(&'a self, tree: &'a Tree) -> (&'a Node, &'a State) {
         self.cursor.iter().take(self.cursor_path_len).fold(
             (&tree.root, &self.root),
@@ -261,6 +317,7 @@ impl View {
         )
     }
 
+    // TODO: change pair order for consistency
     pub fn at_cursor_pair_mut<'a>(
         &'a mut self,
         tree: &'a mut Tree,
@@ -327,6 +384,21 @@ impl View {
             if 0 < *idx {
                 *idx -= 1
             }
+        }
+    }
+
+    // self mutable because moves cursor if finds
+    // tree mutable because `ScanToChoice::Recurse` needs to unfold
+    pub fn scan_to(&mut self, tree: &mut Tree, predicate: &impl Fn(&Node) -> ScanToChoice) -> bool {
+        let (node, state) = self.at_cursor_pair_mut(tree);
+        let mut path = Vec::new();
+        if state.scan_to(node, predicate, &mut path) {
+            self.cursor.truncate(self.cursor_path_len);
+            self.cursor.extend_from_slice(&path);
+            self.cursor_path_len = self.cursor.len();
+            true
+        } else {
+            false
         }
     }
 

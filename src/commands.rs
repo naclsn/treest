@@ -8,9 +8,11 @@ use crate::{
     completions::Completer,
     line::{split_line_args, Message},
     node::{Filtering, Sorting, SortingProp},
+    view::ScanToChoice,
 };
 use crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers};
 use dirs::home_dir;
+use glob::Pattern;
 use lazy_static::lazy_static;
 use std::{
     collections::HashMap, default::Default, fmt, fs, io, process::Command as SysCommand,
@@ -363,6 +365,7 @@ impl Default for CommandMap {
             ),
             ('?', help),
             (':', command),
+            ('/', (prompt, "/", "find_in")),
             ('H', fold_node),
             ('L', unfold_node),
             ('h', leave_node),
@@ -755,6 +758,80 @@ make_lst! {
         ]),
     );
 
+    find = (
+        "find a node, which name contains the search string, in the folder at the currsor",
+        |mut app: App, args: &[&str]| {
+            if args.is_empty() {
+                app.message(Message::Warning(
+                    "find needs a search string".to_string()
+                ));
+                return app;
+            }
+            let search = args[0];
+            let (view, tree) = app.focused_and_tree_mut();
+            view.scan_to(tree, &|node| {
+                if node.file_name().contains(search) {
+                    ScanToChoice::Break(false)
+                } else {
+                    ScanToChoice::Continue(false)
+                }
+            });
+            app
+        },
+        Completer::FileFromCursor,
+    );
+
+    find_and_mark = (
+        "find nodes matching the pattern and mark them, in the folder at the cursor",
+        |mut app: App, args: &[&str]| {
+            if args.is_empty() {
+                app.message(Message::Warning(
+                    "find_and_mark needs a search string".to_string(),
+                ));
+                return app;
+            }
+            let Ok(search) = Pattern::new(args[0]) else {
+                app.message(Message::Warning(
+                    format!("error parsing the pattern '{}'", args[0])
+                ));
+                return app;
+            };
+            let (view, tree) = app.focused_and_tree_mut();
+            view.scan_to(tree, &|node| {
+                ScanToChoice::Continue(search.matches(node.file_name()))
+            });
+            app
+        },
+        Completer::FileFromCursor,
+    );
+
+    find_in = (
+        "find a node, which name contains the search string, in the folder the cursor is in",
+        |mut app: App, args: &[&str]| {
+            if args.is_empty() {
+                app.message(Message::Warning(
+                    "find_in needs a search string".to_string()
+                ));
+                return app;
+            }
+            let search = args[0];
+            app.focused_mut().leave();
+            let (view, tree) = app.focused_and_tree_mut();
+            let found = view.scan_to(tree, &|node| {
+                if node.file_name().contains(search) {
+                    ScanToChoice::Break(false)
+                } else {
+                    ScanToChoice::Continue(false)
+                }
+            });
+            if !found {
+                app.focused_mut().enter();
+            }
+            app
+        },
+        Completer::FileFromCursor,
+    );
+
     fold_node = (
         "fold the node at the cursor",
         |mut app: App, _| {
@@ -801,7 +878,7 @@ make_lst! {
     );
 
     leave_node = (
-        "leave the node at the cursor",
+        "move the cursor to the parent node",
         |mut app: App, _| {
             app.focused_mut().leave();
             app
@@ -826,7 +903,7 @@ make_lst! {
     );
 
     next_node = (
-        "next the node at the cursor",
+        "move the cursor to the next node",
         |mut app: App, _| {
             app.focused_mut().next();
             app
@@ -835,7 +912,7 @@ make_lst! {
     );
 
     prev_node = (
-        "prev the node at the cursor",
+        "move the cursor to the previous node",
         |mut app: App, _| {
             app.focused_mut().prev();
             app
@@ -1162,7 +1239,7 @@ make_lst! {
     );
 
     toggle_marked = (
-        "mark the node at the cursor",
+        "mark/unmark the node at the cursor",
         |mut app: App, _| {
             app.focused_mut().toggle_marked();
             app
