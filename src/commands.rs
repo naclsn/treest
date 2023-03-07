@@ -769,7 +769,7 @@ make_lst! {
             }
             let search = args[0];
             let (view, tree) = app.focused_and_tree_mut();
-            view.scan_to(tree, &|node| {
+            view.scan_to(tree, &|_, node| {
                 if node.file_name().contains(search) {
                     ScanToChoice::Break(false)
                 } else {
@@ -781,12 +781,12 @@ make_lst! {
         Completer::FileFromCursor,
     );
 
-    find_and_mark = (
-        "find nodes matching the pattern and mark them, in the folder at the cursor",
+    find_and_toggle_marked = (
+        "find nodes matching the pattern and mark/unmark them, in the folder at the cursor",
         |mut app: App, args: &[&str]| {
             if args.is_empty() {
                 app.message(Message::Warning(
-                    "find_and_mark needs a search string".to_string(),
+                    "find_and_toggle_marked needs a search string".to_string(),
                 ));
                 return app;
             }
@@ -797,8 +797,8 @@ make_lst! {
                 return app;
             };
             let (view, tree) = app.focused_and_tree_mut();
-            view.scan_to(tree, &|node| {
-                ScanToChoice::Continue(search.matches(node.file_name()))
+            view.scan_to(tree, &|state, node| {
+                ScanToChoice::Continue(state.marked != search.matches(node.file_name()))
             });
             app
         },
@@ -817,7 +817,7 @@ make_lst! {
             let search = args[0];
             app.focused_mut().leave();
             let (view, tree) = app.focused_and_tree_mut();
-            let found = view.scan_to(tree, &|node| {
+            let found = view.scan_to(tree, &|_, node| {
                 if node.file_name().contains(search) {
                     ScanToChoice::Break(false)
                 } else {

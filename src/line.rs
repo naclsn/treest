@@ -141,7 +141,7 @@ impl StatefulWidget for Line<'_> {
             state.message_tb = Some(TextBlock::wrapped(text, width, style));
         } else {
             {
-                let (node, _) = self.focused.at_cursor_pair(self.tree);
+                let (_, node) = self.focused.at_cursor_pair(self.tree);
                 buf.set_spans(
                     area.x + 1,
                     area.y,

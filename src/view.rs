@@ -135,24 +135,20 @@ impl State {
     pub fn scan_to(
         &mut self,
         node: &mut Node,
-        predicate: &impl Fn(&Node) -> ScanToChoice,
+        predicate: &impl Fn(&State, &Node) -> ScanToChoice,
         out_path: &mut Vec<usize>,
     ) -> bool {
         if let Some(chs) = node.loaded_children_mut() {
             for (idx, (k, st)) in self.children.iter_mut().enumerate() {
                 let ch = &mut chs[*k];
-                match predicate(ch) {
+                match predicate(st, ch) {
                     ScanToChoice::Break(mark) => {
-                        if mark {
-                            st.marked = true;
-                        }
+                        st.marked = mark;
                         out_path.push(idx);
                         return true;
                     }
                     ScanToChoice::Continue(mark) => {
-                        if mark {
-                            st.marked = true;
-                        }
+                        st.marked = mark;
                         continue;
                     }
                     ScanToChoice::Recurse => {
@@ -165,9 +161,7 @@ impl State {
                         }
                     }
                     ScanToChoice::Abort(mark) => {
-                        if mark {
-                            st.marked = true;
-                        }
+                        st.marked = mark;
                         return false;
                     }
                 }
@@ -301,37 +295,35 @@ impl View {
             })
     }
 
-    // TODO: change pair order for consistency
-    pub fn at_cursor_pair<'a>(&'a self, tree: &'a Tree) -> (&'a Node, &'a State) {
+    pub fn at_cursor_pair<'a>(&'a self, tree: &'a Tree) -> (&'a State, &'a Node) {
         self.cursor.iter().take(self.cursor_path_len).fold(
-            (&tree.root, &self.root),
-            |(acc_node, acc_state): (&Node, &State), in_state_idx| {
+            (&self.root, &tree.root),
+            |(acc_state, acc_node): (&State, &Node), in_state_idx| {
                 let (in_node_idx, next_state) = &acc_state.children[*in_state_idx];
                 let next_node = &acc_node
                     .loaded_children()
                     .unwrap()
                     .get(*in_node_idx)
                     .unwrap();
-                (next_node, next_state)
+                (next_state, next_node)
             },
         )
     }
 
-    // TODO: change pair order for consistency
     pub fn at_cursor_pair_mut<'a>(
         &'a mut self,
         tree: &'a mut Tree,
-    ) -> (&'a mut Node, &'a mut State) {
+    ) -> (&'a mut State, &'a mut Node) {
         self.cursor.iter().take(self.cursor_path_len).fold(
-            (&mut tree.root, &mut self.root),
-            |(acc_node, acc_state): (&mut Node, &mut State), in_state_idx| {
+            (&mut self.root, &mut tree.root),
+            |(acc_state, acc_node): (&mut State, &mut Node), in_state_idx| {
                 let (in_node_idx, next_state) = &mut acc_state.children[*in_state_idx];
                 let next_node = acc_node
                     .loaded_children_mut()
                     .unwrap()
                     .get_mut(*in_node_idx)
                     .unwrap();
-                (next_node, next_state)
+                (next_state, next_node)
             },
         )
     }
@@ -389,8 +381,12 @@ impl View {
 
     // self mutable because moves cursor if finds
     // tree mutable because `ScanToChoice::Recurse` needs to unfold
-    pub fn scan_to(&mut self, tree: &mut Tree, predicate: &impl Fn(&Node) -> ScanToChoice) -> bool {
-        let (node, state) = self.at_cursor_pair_mut(tree);
+    pub fn scan_to(
+        &mut self,
+        tree: &mut Tree,
+        predicate: &impl Fn(&State, &Node) -> ScanToChoice,
+    ) -> bool {
+        let (state, node) = self.at_cursor_pair_mut(tree);
         let mut path = Vec::new();
         if state.scan_to(node, predicate, &mut path) {
             self.cursor.truncate(self.cursor_path_len);
@@ -424,7 +420,7 @@ impl View {
 
     pub fn unfold(&mut self, tree: &mut Tree) -> io::Result<()> {
         let f_u = self.settings.clone();
-        let (node, state) = self.at_cursor_pair_mut(tree);
+        let (state, node) = self.at_cursor_pair_mut(tree);
         state.unfold(node, &f_u)
     }
 

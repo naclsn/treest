@@ -102,8 +102,8 @@ fn render_name(
 }
 
 fn render_r(
-    tree_node: &Node,
     state_node: &State,
+    tree_node: &Node,
     buf: &mut Buffer,
     curr: &mut Offset,
     bump: i32,
@@ -156,8 +156,8 @@ fn render_r(
             let p_indent = curr.shift;
             let p_line = curr.scroll;
             render_r(
-                tree_node,
                 state_node,
+                tree_node,
                 buf,
                 curr,
                 bump,
@@ -219,8 +219,8 @@ impl StatefulWidget for &Tree {
         };
 
         render_r(
-            &self.root,
             &state.root,
+            &self.root,
             buf,
             &mut origin,
             0,

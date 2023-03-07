@@ -257,12 +257,12 @@ impl App {
             match name {
                 "" => {
                     let (view, tree) = focused_and_tree();
-                    let (node, _) = view.at_cursor_pair(tree);
+                    let (_, node) = view.at_cursor_pair(tree);
                     node.as_path().to_string_lossy().to_string()
                 }
                 "@" => {
                     let (view, tree) = focused_and_tree();
-                    let (node, _) = view.at_cursor_pair(tree);
+                    let (_, node) = view.at_cursor_pair(tree);
                     node.as_path()
                         .strip_prefix(tree.root.as_path())
                         .unwrap()
@@ -271,12 +271,12 @@ impl App {
                 }
                 "file_name" => {
                     let (view, tree) = focused_and_tree();
-                    let (node, _) = view.at_cursor_pair(tree);
+                    let (_, node) = view.at_cursor_pair(tree);
                     node.file_name().to_string()
                 }
                 "extension" => {
                     let (view, tree) = focused_and_tree();
-                    let (node, _) = view.at_cursor_pair(tree);
+                    let (_, node) = view.at_cursor_pair(tree);
                     node.extension().unwrap_or("").to_string()
                 }
                 "root" => self.tree.root.as_path().to_string_lossy().to_string(),
@@ -554,12 +554,12 @@ impl App {
         match name {
             "" => {
                 let (view, tree) = self.focused_and_tree();
-                let (node, _) = view.at_cursor_pair(tree);
+                let (_, node) = view.at_cursor_pair(tree);
                 node.as_path().to_string_lossy().to_string()
             }
             "@" => {
                 let (view, tree) = self.focused_and_tree();
-                let (node, _) = view.at_cursor_pair(tree);
+                let (_, node) = view.at_cursor_pair(tree);
                 node.as_path()
                     .strip_prefix(tree.root.as_path())
                     .unwrap()
@@ -568,12 +568,12 @@ impl App {
             }
             "file_name" => {
                 let (view, tree) = self.focused_and_tree();
-                let (node, _) = view.at_cursor_pair(tree);
+                let (_, node) = view.at_cursor_pair(tree);
                 node.file_name().to_string()
             }
             "extension" => {
                 let (view, tree) = self.focused_and_tree();
-                let (node, _) = view.at_cursor_pair(tree);
+                let (_, node) = view.at_cursor_pair(tree);
                 node.extension().unwrap_or("").to_string()
             }
             "root" => self.tree.root.as_path().to_string_lossy().to_string(),
