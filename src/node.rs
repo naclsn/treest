@@ -2,6 +2,7 @@ use glob::Pattern;
 use serde::{Deserialize, Serialize};
 use std::{
     cmp::Ordering,
+    collections::HashSet,
     fmt,
     fs::{metadata, read_link, symlink_metadata, Metadata},
     io,
@@ -300,12 +301,25 @@ impl Node {
                 },
                 NodeInfo::Dir { loaded, children },
             ) => {
+                let mut done = HashSet::<&str>::new();
+
                 children.reserve(previous.len());
                 for ch in previous {
                     if let Ok(niw) = ch.renew() {
                         children.push(niw);
+                        done.insert(ch.file_name());
                     }
                 }
+
+                children.extend(
+                    self.path
+                        .read_dir()?
+                        .filter_map(Result::ok)
+                        .filter(|ent| !done.contains(ent.file_name().to_str().unwrap()))
+                        .map(|ent| ent.metadata().and_then(|meta| Node::new(ent.path(), meta)))
+                        .filter_map(Result::ok),
+                );
+
                 *loaded = true;
             }
 
@@ -353,12 +367,10 @@ impl Node {
             SortingProp::None => Ordering::Equal,
             SortingProp::Name => self.file_name().cmp(other.file_name()),
             SortingProp::Size => cmp_in(&self.meta, &other.meta, Metadata::len),
-            SortingProp::Extension => {
-                match (self.extension(), other.extension()) {
-                    (Some(a), Some(b)) => a.cmp(b),
-                    _ => self.file_name().cmp(other.file_name()),
-                }
-            }
+            SortingProp::Extension => match (self.extension(), other.extension()) {
+                (Some(a), Some(b)) => a.cmp(b),
+                _ => self.file_name().cmp(other.file_name()),
+            },
             SortingProp::ATime => cmp_in(&self.meta, &other.meta, |m| m.accessed().unwrap()),
             SortingProp::MTime => cmp_in(&self.meta, &other.meta, |m| m.modified().unwrap()),
             SortingProp::CTime => cmp_in(&self.meta, &other.meta, |m| m.created().unwrap()),
@@ -392,12 +404,10 @@ impl Node {
                     *children = self
                         .path
                         .read_dir()?
-                        .map(|maybe_ent| {
-                            maybe_ent.and_then(|ent| {
-                                ent.metadata().and_then(|meta| Node::new(ent.path(), meta))
-                            })
-                        })
-                        .collect::<Result<_, _>>()?;
+                        .filter_map(Result::ok)
+                        .map(|ent| ent.metadata().and_then(|meta| Node::new(ent.path(), meta)))
+                        .filter_map(Result::ok)
+                        .collect();
                     *loaded = true;
                 }
                 Ok(children)
@@ -432,24 +442,15 @@ impl Node {
     }
 
     pub fn is_dir(&self) -> bool {
-        match self.info {
-            NodeInfo::Dir { .. } => true,
-            _ => false,
-        }
+        matches!(self.info, NodeInfo::Dir { .. })
     }
 
     pub fn is_link(&self) -> bool {
-        match self.info {
-            NodeInfo::Link { .. } => true,
-            _ => false,
-        }
+        matches!(self.info, NodeInfo::Link { .. })
     }
 
     pub fn is_file(&self) -> bool {
-        match self.info {
-            NodeInfo::File { .. } => true,
-            _ => false,
-        }
+        matches!(self.info, NodeInfo::File { .. })
     }
 
     pub fn file_name(&self) -> &str {

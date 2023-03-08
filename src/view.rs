@@ -3,7 +3,7 @@ use crate::{
     tree::Tree,
 };
 use serde::{Deserialize, Serialize};
-use std::io;
+use std::{collections::HashSet, io};
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 struct ViewSettings {
@@ -89,15 +89,19 @@ impl State {
                 let Some(plo_chs) = pnode.loaded_children() else { unreachable!() };
                 let Some(lo_chs) = node.loaded_children() else { unreachable!() };
 
+                let mut done = HashSet::<&str>::new();
+
                 let previous = &self.children;
                 let mut children = Vec::with_capacity(previous.len());
                 for (pk, st) in previous {
                     // get the name from the previous tree
                     let pch = &plo_chs[*pk];
                     let name = pch.file_name();
+                    done.insert(name);
 
                     // cursor path was going through this node
-                    let path_through = out_path_cur < out_path.len() && out_path[out_path_cur] == *pk;
+                    let path_through =
+                        out_path_cur < out_path.len() && out_path[out_path_cur] == *pk;
 
                     // because the tree might have been renewed,
                     // we try to find nodes by name rather than
@@ -117,7 +121,15 @@ impl State {
                             out_path.truncate(out_path_cur);
                         }
                     }
-                }
+                } // for in previous
+
+                children.extend(
+                    lo_chs
+                        .iter()
+                        .enumerate()
+                        .filter(|(_, ch)| !done.contains(ch.file_name()))
+                        .filter_map(|(k, ch)| State::new(ch, settings).map(|st| (k, st)).ok()),
+                );
 
                 settings.correct_node_state_mapping(lo_chs, children)
             },
@@ -421,7 +433,9 @@ impl View {
     /// while trying to keep the same state (eg.
     /// unfolded, selected, cursor...)
     pub fn fixup(&mut self, ptree: &Tree, tree: &Tree) {
-        self.root = self.root.renew(&ptree.root, &tree.root, &self.settings, &mut self.cursor, 0);
+        self.root = self
+            .root
+            .renew(&ptree.root, &tree.root, &self.settings, &mut self.cursor, 0);
         self.cursor_path_len = self.cursor.len();
     }
 
