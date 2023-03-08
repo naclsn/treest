@@ -22,311 +22,15 @@ enum ViewTree {
 }
 
 #[derive(Serialize, Deserialize)]
-pub struct App {
-    pub tree: Tree,
+struct Internal {
+    tree: Tree,
     views: ViewTree,
     focus: Vec<usize>,
 
     variables: HashMap<String, String>,
-
-    #[serde(skip_serializing, skip_deserializing)]
-    bindings: CommandMap,
-    #[serde(skip_serializing, skip_deserializing)]
-    status: Status,
-    #[serde(skip_serializing, skip_deserializing)]
-    quit: bool,
-    #[serde(skip_serializing, skip_deserializing)]
-    pause: bool,
-    #[serde(skip_serializing, skip_deserializing)]
-    in_restored: Option<Box<dyn FnOnce(App) -> App>>,
 }
 
-fn draw_r<B: Backend>(
-    view_node: &mut ViewTree,
-    tree: &Tree,
-    f: &mut Frame<'_, B>,
-    area: Rect,
-    focus_path: Option<&[usize]>,
-) {
-    let (is_focus, next_focus) = if let Some(v) = focus_path {
-        (v.is_empty(), 1 == v.len())
-    } else {
-        (false, false)
-    };
-
-    match view_node {
-        ViewTree::Leaf(view) => {
-            let surround = Block::default()
-                .borders(Borders::ALL)
-                .border_style(Style::default().fg(Color::Gray));
-            if is_focus {
-                f.render_widget(surround.clone(), area);
-            }
-            f.render_stateful_widget(tree, surround.inner(area), view);
-        }
-
-        ViewTree::Split(children, dir) => {
-            if next_focus {
-                let surround = Block::default()
-                    .borders(Borders::ALL)
-                    .border_style(Style::default().fg(Color::DarkGray));
-                f.render_widget(surround.clone(), area);
-            }
-            let chunks = Layout::default()
-                .direction(if 0 == *dir {
-                    Direction::Vertical
-                } else {
-                    Direction::Horizontal
-                })
-                .constraints(
-                    children
-                        .iter()
-                        .map(|_| Constraint::Percentage(100 / children.len() as u16))
-                        .collect::<Vec<_>>(),
-                )
-                .split(area);
-            for (idx, (chunk, child)) in iter::zip(chunks, children).enumerate() {
-                draw_r(
-                    child,
-                    tree,
-                    f,
-                    chunk,
-                    focus_path.and_then(|p_slice| {
-                        if p_slice.is_empty() {
-                            return None;
-                        }
-                        let (head, tail) = p_slice.split_at(1);
-                        if idx == head[0] {
-                            return Some(tail);
-                        }
-                        None
-                    }),
-                );
-            }
-        }
-    }
-}
-
-impl App {
-    pub fn new(path: PathBuf) -> io::Result<App> {
-        let mut tree = Tree::new(path)?;
-        let mut view = View::new(&tree.root)?;
-        view.unfold_root(&mut tree)?;
-        Ok(App {
-            tree,
-            views: ViewTree::Leaf(view),
-            focus: Vec::new(),
-
-            variables: HashMap::new(),
-
-            bindings: CommandMap::default(),
-            status: Status::default(),
-            quit: false,
-            pause: false,
-            in_restored: None,
-        })
-    }
-
-    fn fixup_r(vt: &mut ViewTree, ptree: &Tree, tree: &Tree) {
-        match vt {
-            ViewTree::Leaf(view) => view.fixup(ptree, tree),
-            ViewTree::Split(list, _) => {
-                for it in list {
-                    App::fixup_r(it, ptree, tree);
-                }
-            }
-        }
-    }
-    pub fn fixup(&mut self) {
-        let new = self.tree.renew().unwrap();
-        App::fixup_r(&mut self.views, &self.tree, &new);
-        self.tree = new;
-    }
-
-    pub fn rebind(&mut self, key_path: &[Key], action: Action) {
-        self.bindings.rebind(key_path, action);
-    }
-
-    pub fn get_bindings(&self) -> &CommandMap {
-        &self.bindings
-    }
-
-    pub fn finish(&mut self) {
-        self.quit = true;
-    }
-    pub fn done(&self) -> bool {
-        self.quit
-    }
-
-    pub fn pause(&mut self) {
-        self.pause = true;
-    }
-    pub fn resume(&mut self) {
-        self.pause = false;
-    }
-    pub fn stopped(&self) -> bool {
-        self.pause
-    }
-
-    pub fn pending(&self) -> bool {
-        self.in_restored.is_some()
-    }
-    pub fn execute_in_restored(&mut self, f: Box<dyn FnOnce(App) -> App>) {
-        self.in_restored = Some(f);
-    }
-    pub fn do_execute_in_restored(mut self) -> App {
-        let f = self.in_restored.unwrap();
-        self.in_restored = None;
-        f(self)
-    }
-
-    pub fn draw<B: Backend>(&mut self, f: &mut Frame<'_, B>) {
-        let main0_line1 = Layout::default()
-            .direction(Direction::Vertical)
-            .constraints([Constraint::Min(0), Constraint::Length(1)].as_ref())
-            .split(f.size());
-        let (main, line) = (main0_line1[0], main0_line1[1]);
-
-        match &mut self.views {
-            ViewTree::Leaf(view) => f.render_stateful_widget(&self.tree, main, view),
-            ViewTree::Split(_, _) => {
-                draw_r(&mut self.views, &self.tree, f, main, Some(&self.focus))
-            }
-        }
-
-        let (pair, status) = (
-            {
-                //self.focused_and_tree() // y this no work! rust?
-                let ViewTree::Leaf(r) = self.focus.iter().fold(&self.views, |acc, idx| {
-                    let ViewTree::Split(chs, _) = acc else { unreachable!() };
-                    chs.get(*idx).unwrap()
-                }) else { unreachable!() };
-                (r, &self.tree)
-            },
-            &mut self.status,
-        );
-        f.render_stateful_widget(Line::new(pair), line, status);
-
-        if let Some(tb) = self.status.long_message() {
-            let h = tb.height();
-            let r = if line.y < h {
-                f.size()
-            } else {
-                Rect::new(line.x, line.y - h, line.width, h)
-            };
-            f.render_widget(Clear, r);
-            f.render_widget(tb, r);
-        }
-
-        if let Some(s) = self.status.cursor_shift() {
-            f.set_cursor(line.x + s, line.y);
-        }
-    }
-
-    pub fn message(&mut self, message: Message) {
-        self.status.message(message);
-    }
-
-    pub fn prompt(&mut self, prompt: String, action: Action, initial: Option<&str>) {
-        self.status.prompt(prompt, action, initial);
-    }
-
-    pub fn do_event(mut self, event: &Event) -> App {
-        // ZZZ: hard-coded for now
-        if let Event::Key(key) = event {
-            if key.modifiers.contains(KeyModifiers::CONTROL) {
-                match key.code {
-                    KeyCode::Char('c') => {
-                        self.finish();
-                        return self;
-                    }
-                    KeyCode::Char('z') => {
-                        self.pause();
-                        return self;
-                    }
-                    _ => (),
-                }
-            }
-        }
-
-        let (prompt_action, event_consumed) = self.status.do_event(event, &|name| {
-            // FIXME: HOW CAN I JUST USE APP::LOOKUP?! RUST!!
-
-            // let (view, tree) = self.focused_and_tree();
-            let focused_and_tree = || -> (&View, &Tree) {
-                let ViewTree::Leaf(r) = self.focus.iter().fold(&self.views, |acc, idx| {
-                        let ViewTree::Split(chs, _) = acc else { unreachable!() };
-                        chs.get(*idx).unwrap()
-                    }) else { unreachable!() };
-                (r, &self.tree)
-            };
-
-            // self.lookup(name.as_str())
-            match name {
-                "" => {
-                    let (view, tree) = focused_and_tree();
-                    let (_, node) = view.at_cursor_pair(tree);
-                    node.as_path().to_string_lossy().to_string()
-                }
-                "@" => {
-                    let (view, tree) = focused_and_tree();
-                    let (_, node) = view.at_cursor_pair(tree);
-                    node.as_path()
-                        .strip_prefix(tree.root.as_path())
-                        .unwrap()
-                        .to_string_lossy()
-                        .to_string()
-                }
-                "file_name" => {
-                    let (view, tree) = focused_and_tree();
-                    let (_, node) = view.at_cursor_pair(tree);
-                    node.file_name().to_string()
-                }
-                "extension" => {
-                    let (view, tree) = focused_and_tree();
-                    let (_, node) = view.at_cursor_pair(tree);
-                    node.extension().unwrap_or("").to_string()
-                }
-                "root" => self.tree.root.as_path().to_string_lossy().to_string(),
-                _ => self
-                    .variables
-                    .get(name)
-                    .map(|v| v.to_string())
-                    .unwrap_or_else(String::new),
-            }
-        });
-        if let Some((action, args)) = prompt_action {
-            return action.apply(self, &args.iter().map(|s| s.as_str()).collect::<Vec<_>>());
-        }
-        if event_consumed {
-            return self;
-        }
-
-        if let Event::Key(key) = event {
-            if let KeyCode::Esc = key.code {
-                self.status.clear_pending();
-            } else {
-                self.status.push_pending(key.into());
-                let crap = self.bindings.clone(); // XXX: this should not be needed
-                let (may, continues) = crap.try_get_action(self.status.get_pending());
-
-                if let Some(action) = may {
-                    self.status.clear_pending();
-                    return action.apply(self, &[]);
-                }
-                if !continues {
-                    self.status.clear_pending();
-                }
-            }
-            // } else if let Event::Mouse(mouse) = event {
-            //     match mouse.kind {
-            //         _ => (),
-            //     }
-        }
-        self
-    }
-
-    #[allow(dead_code)] // convenience, not used yet
+impl Internal {
     pub fn focused(&self) -> &View {
         let ViewTree::Leaf(r) = self.focus.iter().fold(&self.views, |acc, idx| {
             let ViewTree::Split(chs, _) = acc else { unreachable!() };
@@ -343,7 +47,6 @@ impl App {
         r
     }
 
-    #[allow(dead_code)] // convenience, not used yet
     pub fn focused_and_tree(&self) -> (&View, &Tree) {
         let ViewTree::Leaf(r) = self.focus.iter().fold(&self.views, |acc, idx| {
             let ViewTree::Split(chs, _) = acc else { unreachable!() };
@@ -491,7 +194,7 @@ impl App {
         }
     }
 
-    // for now movement should only be +1 or -1
+    // movement should only be +1 or -1
     // eg moving 'left' in a d=1(Horizontal) split is +1
     // FIXME: this is still not it: `wswvwswjwj`
     pub fn focus_to_view(&mut self, d: Direction, movement: i8) {
@@ -558,7 +261,6 @@ impl App {
     }
 
     pub fn lookup(&self, name: &str) -> String {
-        // XXX: code is duplicated in `do_event` (see the FIXME)
         match name {
             "" => {
                 let (view, tree) = self.focused_and_tree();
@@ -592,4 +294,277 @@ impl App {
                 .unwrap_or_else(String::new),
         }
     }
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct App {
+    i: Internal,
+
+    #[serde(skip_serializing, skip_deserializing)]
+    bindings: CommandMap,
+    #[serde(skip_serializing, skip_deserializing)]
+    status: Status,
+    #[serde(skip_serializing, skip_deserializing)]
+    quit: bool,
+    #[serde(skip_serializing, skip_deserializing)]
+    pause: bool,
+    #[serde(skip_serializing, skip_deserializing)]
+    in_restored: Option<Box<dyn FnOnce(App) -> App>>,
+}
+
+fn draw_r<B: Backend>(
+    view_node: &mut ViewTree,
+    tree: &Tree,
+    f: &mut Frame<'_, B>,
+    area: Rect,
+    focus_path: Option<&[usize]>,
+) {
+    let (is_focus, next_focus) = if let Some(v) = focus_path {
+        (v.is_empty(), 1 == v.len())
+    } else {
+        (false, false)
+    };
+
+    match view_node {
+        ViewTree::Leaf(view) => {
+            let surround = Block::default()
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(Color::Gray));
+            if is_focus {
+                f.render_widget(surround.clone(), area);
+            }
+            f.render_stateful_widget(tree, surround.inner(area), view);
+        }
+
+        ViewTree::Split(children, dir) => {
+            if next_focus {
+                let surround = Block::default()
+                    .borders(Borders::ALL)
+                    .border_style(Style::default().fg(Color::DarkGray));
+                f.render_widget(surround.clone(), area);
+            }
+            let chunks = Layout::default()
+                .direction(if 0 == *dir {
+                    Direction::Vertical
+                } else {
+                    Direction::Horizontal
+                })
+                .constraints(
+                    children
+                        .iter()
+                        .map(|_| Constraint::Percentage(100 / children.len() as u16))
+                        .collect::<Vec<_>>(),
+                )
+                .split(area);
+            for (idx, (chunk, child)) in iter::zip(chunks, children).enumerate() {
+                draw_r(
+                    child,
+                    tree,
+                    f,
+                    chunk,
+                    focus_path.and_then(|p_slice| {
+                        if p_slice.is_empty() {
+                            return None;
+                        }
+                        let (head, tail) = p_slice.split_at(1);
+                        if idx == head[0] {
+                            return Some(tail);
+                        }
+                        None
+                    }),
+                );
+            }
+        }
+    }
+}
+
+impl App {
+    pub fn new(path: PathBuf) -> io::Result<App> {
+        let mut tree = Tree::new(path)?;
+        let mut view = View::new(&tree.root)?;
+        view.unfold_root(&mut tree)?;
+        Ok(App {
+            i: Internal {
+                tree,
+                views: ViewTree::Leaf(view),
+                focus: Vec::new(),
+
+                variables: HashMap::new(),
+            },
+
+            bindings: CommandMap::default(),
+            status: Status::default(),
+            quit: false,
+            pause: false,
+            in_restored: None,
+        })
+    }
+
+    fn fixup_r(vt: &mut ViewTree, ptree: &Tree, tree: &Tree) {
+        match vt {
+            ViewTree::Leaf(view) => view.fixup(ptree, tree),
+            ViewTree::Split(list, _) => {
+                for it in list {
+                    App::fixup_r(it, ptree, tree);
+                }
+            }
+        }
+    }
+    pub fn fixup(&mut self) {
+        let new = self.i.tree.renew().unwrap();
+        App::fixup_r(&mut self.i.views, &self.i.tree, &new);
+        self.i.tree = new;
+    }
+
+    pub fn rebind(&mut self, key_path: &[Key], action: Action) {
+        self.bindings.rebind(key_path, action);
+    }
+
+    pub fn get_bindings(&self) -> &CommandMap {
+        &self.bindings
+    }
+
+    pub fn finish(&mut self) {
+        self.quit = true;
+    }
+    pub fn done(&self) -> bool {
+        self.quit
+    }
+
+    pub fn pause(&mut self) {
+        self.pause = true;
+    }
+    pub fn resume(&mut self) {
+        self.pause = false;
+    }
+    pub fn stopped(&self) -> bool {
+        self.pause
+    }
+
+    pub fn pending(&self) -> bool {
+        self.in_restored.is_some()
+    }
+    pub fn execute_in_restored(&mut self, f: Box<dyn FnOnce(App) -> App>) {
+        self.in_restored = Some(f);
+    }
+    pub fn do_execute_in_restored(mut self) -> App {
+        let f = self.in_restored.unwrap();
+        self.in_restored = None;
+        f(self)
+    }
+
+    pub fn draw<B: Backend>(&mut self, f: &mut Frame<'_, B>) {
+        let main0_line1 = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([Constraint::Min(0), Constraint::Length(1)].as_ref())
+            .split(f.size());
+        let (main, line) = (main0_line1[0], main0_line1[1]);
+
+        match &mut self.i.views {
+            ViewTree::Leaf(view) => f.render_stateful_widget(&self.i.tree, main, view),
+            ViewTree::Split(_, _) => {
+                draw_r(&mut self.i.views, &self.i.tree, f, main, Some(&self.i.focus))
+            }
+        }
+
+        let (view, tree) = self.i.focused_and_tree();
+        f.render_stateful_widget(Line::new(view, tree), line, &mut self.status);
+
+        if let Some(tb) = self.status.long_message() {
+            let h = tb.height();
+            let r = if line.y < h {
+                f.size()
+            } else {
+                Rect::new(line.x, line.y - h, line.width, h)
+            };
+            f.render_widget(Clear, r);
+            f.render_widget(tb, r);
+        }
+
+        if let Some(s) = self.status.cursor_shift() {
+            f.set_cursor(line.x + s, line.y);
+        }
+    }
+
+    pub fn message(&mut self, message: Message) {
+        self.status.message(message);
+    }
+
+    pub fn prompt(&mut self, prompt: String, action: Action, initial: Option<&str>) {
+        self.status.prompt(prompt, action, initial);
+    }
+
+    pub fn do_event(mut self, event: &Event) -> App {
+        // ZZZ: hard-coded for now
+        if let Event::Key(key) = event {
+            if key.modifiers.contains(KeyModifiers::CONTROL) {
+                match key.code {
+                    KeyCode::Char('c') => {
+                        self.finish();
+                        return self;
+                    }
+                    KeyCode::Char('z') => {
+                        self.pause();
+                        return self;
+                    }
+                    _ => (),
+                }
+            }
+        }
+
+        let (prompt_action, event_consumed) = self.status.do_event(event, &|name| self.i.lookup(name));
+        if let Some((action, args)) = prompt_action {
+            return action.apply(self, &args.iter().map(|s| s.as_str()).collect::<Vec<_>>());
+        }
+        if event_consumed {
+            return self;
+        }
+
+        if let Event::Key(key) = event {
+            if let KeyCode::Esc = key.code {
+                self.status.clear_pending();
+            } else {
+                self.status.push_pending(key.into());
+                let crap = self.bindings.clone(); // XXX: this should not be needed
+                let (may, continues) = crap.try_get_action(self.status.get_pending());
+
+                if let Some(action) = may {
+                    self.status.clear_pending();
+                    return action.apply(self, &[]);
+                }
+                if !continues {
+                    self.status.clear_pending();
+                }
+            }
+            // } else if let Event::Mouse(mouse) = event {
+            //     match mouse.kind {
+            //         _ => (),
+            //     }
+        }
+        self
+    }
+
+    pub fn focused(&self) -> &View { self.i.focused() }
+
+    pub fn focused_mut(&mut self) -> &mut View { self.i.focused_mut() }
+
+    //pub fn focused_and_tree(&self) -> (&View, &Tree) { self.i.focused_and_tree() }
+
+    pub fn focused_and_tree_mut(&mut self) -> (&mut View, &mut Tree) { self.i.focused_and_tree_mut() }
+
+    pub fn view_split(&mut self, d: Direction) { self.i.view_split(d) }
+
+    pub fn view_transpose(&mut self) { self.i.view_transpose() }
+
+    pub fn view_close(&mut self) { self.i.view_close() }
+
+    pub fn view_close_other(&mut self) { self.i.view_close_other() }
+
+    pub fn focus_to_view_adjacent(&mut self, movement: i8) { self.i.focus_to_view_adjacent(movement) }
+
+    pub fn focus_to_view(&mut self, d: Direction, movement: i8) { self.i.focus_to_view(d, movement) }
+
+    pub fn declare(&mut self, name: &str, value: &str) { self.i.declare(name, value) }
+
+    pub fn lookup(&self, name: &str) -> String { self.i.lookup(name) }
 }

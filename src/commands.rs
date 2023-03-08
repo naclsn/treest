@@ -992,12 +992,9 @@ make_lst! {
     );
 
     reload = (
-        "reload the tree from the file system",
+        "reload the tree from the file system and update every views",
         |mut app: App, _| {
-            let (view, tree) = app.focused_and_tree_mut();
-            let ntree = tree.renew().unwrap();
-            view.fixup(tree, &ntree);
-            app.tree = ntree;
+            app.fixup();
             app
         },
         Completer::None,

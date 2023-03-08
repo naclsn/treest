@@ -549,7 +549,7 @@ impl Status {
 }
 
 impl Line<'_> {
-    pub fn new<'app>((focused, tree): (&'app View, &'app Tree)) -> Line<'app> {
+    pub fn new<'app>(focused: &'app View, tree: &'app Tree) -> Line<'app> {
         Line { focused, tree }
     }
 }
