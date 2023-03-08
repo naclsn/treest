@@ -72,7 +72,14 @@ impl State {
         })
     }
 
-    fn renew(&self, pnode: &Node, node: &Node, settings: &ViewSettings) -> State {
+    fn renew(
+        &self,
+        pnode: &Node,
+        node: &Node,
+        settings: &ViewSettings,
+        out_path: &mut Vec<usize>,
+        out_path_cur: usize,
+    ) -> State {
         State {
             unfolded: self.unfolded,
             marked: self.marked,
@@ -81,25 +88,38 @@ impl State {
             } else {
                 let Some(plo_chs) = pnode.loaded_children() else { unreachable!() };
                 let Some(lo_chs) = node.loaded_children() else { unreachable!() };
-                settings.correct_node_state_mapping(lo_chs, {
-                    let previous = &self.children;
-                    let mut children = Vec::with_capacity(previous.len());
-                    for (pk, st) in previous {
-                        // get the name from the previous tree
-                        let pch = &plo_chs[*pk];
-                        let name = pch.file_name();
-                        // because the tree might have been renewed,
-                        // we try to find nodes by name rather than
-                        // relying on the previous mapping
-                        let may_matching = lo_chs.iter().position(|ch| ch.file_name() == name);
-                        if let Some(k) = may_matching {
-                            let ch = &lo_chs[k];
-                            let st = st.renew(pch, ch, settings);
-                            children.push((k, st));
+
+                let previous = &self.children;
+                let mut children = Vec::with_capacity(previous.len());
+                for (pk, st) in previous {
+                    // get the name from the previous tree
+                    let pch = &plo_chs[*pk];
+                    let name = pch.file_name();
+
+                    // cursor path was going through this node
+                    let path_through = out_path_cur < out_path.len() && out_path[out_path_cur] == *pk;
+
+                    // because the tree might have been renewed,
+                    // we try to find nodes by name rather than
+                    // relying on the previous mapping
+                    let may_matching = lo_chs.iter().position(|ch| ch.file_name() == name);
+                    if let Some(k) = may_matching {
+                        // path can be updated
+                        if path_through {
+                            out_path[out_path_cur] = k;
+                        }
+                        let ch = &lo_chs[k];
+                        let st = st.renew(pch, ch, settings, out_path, out_path_cur + 1);
+                        children.push((k, st));
+                    } else {
+                        // path cannot be updated further
+                        if path_through {
+                            out_path.truncate(out_path_cur);
                         }
                     }
-                    children
-                })
+                }
+
+                settings.correct_node_state_mapping(lo_chs, children)
             },
         }
     }
@@ -401,10 +421,8 @@ impl View {
     /// while trying to keep the same state (eg.
     /// unfolded, selected, cursor...)
     pub fn fixup(&mut self, ptree: &Tree, tree: &Tree) {
-        self.root = self.root.renew(&ptree.root, &tree.root, &self.settings);
-        // TODO: try to update accordingly
-        self.cursor.clear();
-        self.cursor_path_len = 0;
+        self.root = self.root.renew(&ptree.root, &tree.root, &self.settings, &mut self.cursor, 0);
+        self.cursor_path_len = self.cursor.len();
     }
 
     pub fn unfold_root(&mut self, tree: &mut Tree) -> io::Result<()> {

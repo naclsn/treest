@@ -132,14 +132,14 @@ impl App {
             ViewTree::Leaf(view) => view.fixup(ptree, tree),
             ViewTree::Split(list, _) => {
                 for it in list {
-                    Self::fixup_r(it, ptree, tree);
+                    App::fixup_r(it, ptree, tree);
                 }
             }
         }
     }
     pub fn fixup(&mut self) {
         let new = self.tree.renew().unwrap();
-        Self::fixup_r(&mut self.views, &self.tree, &new);
+        App::fixup_r(&mut self.views, &self.tree, &new);
         self.tree = new;
     }
 
