@@ -72,8 +72,8 @@ impl State {
         })
     }
 
-    fn renew(&self, pnode: &Node, node: &Node, settings: &ViewSettings) -> io::Result<State> {
-        Ok(State {
+    fn renew(&self, pnode: &Node, node: &Node, settings: &ViewSettings) -> State {
+        State {
             unfolded: self.unfolded,
             marked: self.marked,
             children: if !self.unfolded {
@@ -94,15 +94,14 @@ impl State {
                         let may_matching = lo_chs.iter().position(|ch| ch.file_name() == name);
                         if let Some(k) = may_matching {
                             let ch = &lo_chs[k];
-                            if let Ok(niw) = st.renew(pch, ch, settings).map(|st| (k, st)) {
-                                children.push(niw);
-                            }
+                            let st = st.renew(pch, ch, settings);
+                            children.push((k, st));
                         }
                     }
                     children
                 })
             },
-        })
+        }
     }
 
     pub fn visible_height(&self) -> usize {
@@ -401,13 +400,11 @@ impl View {
     /// re-create the view against the given tree
     /// while trying to keep the same state (eg.
     /// unfolded, selected, cursor...)
-    /// @see also `Tree::renew_root`
-    pub fn renew_root(&mut self, ptree: &Tree, tree: &Tree) -> io::Result<()> {
-        self.root = self.root.renew(&ptree.root, &tree.root, &self.settings)?;
+    pub fn fixup(&mut self, ptree: &Tree, tree: &Tree) {
+        self.root = self.root.renew(&ptree.root, &tree.root, &self.settings);
         // TODO: try to update accordingly
         self.cursor.clear();
         self.cursor_path_len = 0;
-        Ok(())
     }
 
     pub fn unfold_root(&mut self, tree: &mut Tree) -> io::Result<()> {
@@ -444,6 +441,9 @@ impl View {
     pub fn set_sorting(&mut self, sort: Sorting, reverse: bool) {
         self.settings.sort = sort;
         self.settings.reverse = reverse;
+    }
+    pub fn get_sorting(&self) -> (Sorting, bool) {
+        (self.settings.sort, self.settings.reverse)
     }
     pub fn add_filtering(&mut self, filter: Filtering) {
         if !self.settings.filters.iter().any(|it| *it == filter) {

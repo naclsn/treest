@@ -127,12 +127,20 @@ impl App {
         })
     }
 
-    pub fn fixup(&mut self) {
-        // TODO: todo (needs to also update the views in parallel eg. removed files)
-        let still_exists = self.tree.root.fixup();
-        if !still_exists {
-            panic!("at least root is supposed to still exist");
+    fn fixup_r(vt: &mut ViewTree, ptree: &Tree, tree: &Tree) {
+        match vt {
+            ViewTree::Leaf(view) => view.fixup(ptree, tree),
+            ViewTree::Split(list, _) => {
+                for it in list {
+                    Self::fixup_r(it, ptree, tree);
+                }
+            }
         }
+    }
+    pub fn fixup(&mut self) {
+        let new = self.tree.renew().unwrap();
+        Self::fixup_r(&mut self.views, &self.tree, &new);
+        self.tree = new;
     }
 
     pub fn rebind(&mut self, key_path: &[Key], action: Action) {

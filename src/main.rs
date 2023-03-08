@@ -19,23 +19,18 @@ use dirs::home_dir;
 use std::{
     env::current_dir,
     error::Error,
-    fs,
-    io::{self, Write},
+    fs, io,
     path::{Component, Path, PathBuf},
 };
-use tui::{
-    backend::{Backend, CrosstermBackend},
-    terminal::Terminal,
-};
+use tui::{backend::CrosstermBackend, terminal::Terminal};
 
 struct TerminalWrap<W: io::Write>(Terminal<CrosstermBackend<W>>);
 
 impl<W: io::Write> TerminalWrap<W> {
     fn new(mut bla: W) -> Result<TerminalWrap<W>, Box<dyn Error>> {
         enable_raw_mode()?;
-        execute!(bla, EnterAlternateScreen, EnableMouseCapture)?;
+        execute!(bla, EnterAlternateScreen /*, EnableMouseCapture*/)?;
         let backend = CrosstermBackend::new(bla);
-        io::stderr().write_all(&vec![b'\n'; backend.size()?.height.into()])?;
         let terminal = Terminal::new(backend)?;
         Ok(TerminalWrap(terminal))
     }
@@ -45,7 +40,7 @@ impl<W: io::Write> TerminalWrap<W> {
         execute!(
             self.0.backend_mut(),
             EnterAlternateScreen,
-            EnableMouseCapture
+            // EnableMouseCapture
         )?;
         self.0.hide_cursor()?;
         Ok(())
@@ -56,7 +51,7 @@ impl<W: io::Write> TerminalWrap<W> {
         execute!(
             self.0.backend_mut(),
             LeaveAlternateScreen,
-            DisableMouseCapture
+            // DisableMouseCapture
         )?;
         self.0.show_cursor()?;
         Ok(())
@@ -129,7 +124,7 @@ fn run_app(args: Args) -> Result<(), Box<dyn Error>> {
     if !args.clean {
         let p = args.userconf.unwrap_or_else(get_default_userconf_path);
         if p.exists() {
-            app = Action::Fn(&commands::source).apply(app, &[&p.to_string_lossy()]);
+            app = Action::Fn(&commands::cmd::source).apply(app, &[&p.to_string_lossy()]);
         }
     }
 

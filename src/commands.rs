@@ -317,10 +317,10 @@ macro_rules! make_map_one {
         ($key, CommandGraph::Immediate(make_map_one!(@ $action)))
     };
     (@ $sc:ident) => {
-        Action::Fn(&$sc)
+        Action::Fn(&cmd::$sc)
     };
     (@ ($sc:ident, $($bound:literal),+)) => {
-        Action::Bind(&$sc, vec![$($bound.to_string()),+])
+        Action::Bind(&cmd::$sc, vec![$($bound.to_string()),+])
     };
     (@ ($($actions:tt),*)) => {
         Action::Chain(vec![$(make_map_one!(@ $actions)),*])
@@ -485,21 +485,24 @@ impl StaticCommand {
 
 macro_rules! make_lst {
     ($($name:ident = ($doc:literal, $action:expr, $comp:expr,);)*) => {
-        $(
-            #[allow(non_upper_case_globals)]
-            pub const $name: StaticCommand = StaticCommand {
-                name: stringify!($name),
-                doc: $doc,
-                action: $action,
-                comp: $comp,
-            };
-        )*
+        pub mod cmd {
+            use super::*;
+            $(
+                #[allow(non_upper_case_globals)]
+                pub const $name: StaticCommand = StaticCommand {
+                    name: stringify!($name),
+                    doc: $doc,
+                    action: $action,
+                    comp: $comp,
+                };
+            )*
 
-        pub const COMMAND_LIST: &'static[&'static str] = &[$(stringify!($name),)*];
+            pub const COMMAND_LIST: &'static[&'static str] = &[$(stringify!($name),)*];
 
-        lazy_static! {
-            pub static ref COMMAND_MAP: HashMap<&'static str, &'static StaticCommand> =
-                HashMap::from([$((stringify!($name), &$name),)*]);
+            lazy_static! {
+                pub static ref COMMAND_MAP: HashMap<&'static str, &'static StaticCommand> =
+                    HashMap::from([$((stringify!($name), &$name),)*]);
+            }
         }
     };
 }
@@ -717,13 +720,13 @@ make_lst! {
                         "remove" => view.remove_filtering(f),
                         _ => unreachable!(),
                     }
-                    view.renew_root(tree, tree).unwrap();
+                    view.fixup(tree, tree);
                 }
                 ["clear", ..] => {
                     view.clear_filtering();
-                    view.renew_root(tree, tree).unwrap();
+                    view.fixup(tree, tree);
                 }
-                ["list", ..] => {
+                ["list", ..] | [] => {
                     let l = view.list_filtering();
                     if l.is_empty() {
                         app.message(Message::Info("# (no filter)".to_string()));
@@ -740,12 +743,6 @@ make_lst! {
                     app.message(Message::Warning(format!(
                         "incorrect action for filter: {incorrect:?}"
                     )));
-                    return app;
-                }
-                [] => {
-                    app.message(Message::Warning(
-                        "filter needs a action and an optional argument".to_string(),
-                    ));
                     return app;
                 }
             };
@@ -999,7 +996,7 @@ make_lst! {
         |mut app: App, _| {
             let (view, tree) = app.focused_and_tree_mut();
             let ntree = tree.renew().unwrap();
-            view.renew_root(tree, &ntree).unwrap();
+            view.fixup(tree, &ntree);
             app.tree = ntree;
             app
         },
@@ -1129,9 +1126,22 @@ make_lst! {
                     return app;
                 }
                 None => {
-                    app.message(Message::Warning(
-                        "sort needs a propery to sort by".to_string(),
-                    ));
+                    let view = app.focused();
+                    let (s, rev) = view.get_sorting();
+                    app.message(Message::Info(format!(
+                        "{}{}\n{}reversed",
+                        match s.prop {
+                            SortingProp::None => "none",
+                            SortingProp::Name => "name",
+                            SortingProp::Size => "size",
+                            SortingProp::Extension => "extension",
+                            SortingProp::ATime => "atime",
+                            SortingProp::MTime => "mtime",
+                            SortingProp::CTime => "ctime",
+                        },
+                        if s.dirs_first { " (dirs first)" } else { "" },
+                        if rev { "" } else { "not " }
+                    )));
                     return app;
                 }
             };
@@ -1157,7 +1167,7 @@ make_lst! {
                 },
             );
             // (tree not changed, hence same)
-            view.renew_root(tree, tree).unwrap();
+            view.fixup(tree, tree);
             // if let Some(rest) = args.get(skip) {
             //     app.message(Message::Warning(format!(
             //         "unknown extraneous argument '{rest}'"

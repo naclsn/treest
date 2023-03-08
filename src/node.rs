@@ -22,8 +22,8 @@ pub enum SortingProp {
 
 #[derive(Serialize, Deserialize, Debug, Clone, Copy)]
 pub struct Sorting {
-    prop: SortingProp,
-    dirs_first: bool,
+    pub prop: SortingProp,
+    pub dirs_first: bool,
 }
 
 impl Sorting {
@@ -309,6 +309,7 @@ impl Node {
                 *loaded = true;
             }
 
+            // TODO:
             // // it was a link; if it still is,
             // (NodeInfo::Link { target: previous }, NodeInfo::Link { target }) => {
             //     todo!("not sure but maybe something (think link to dir)");
@@ -352,10 +353,12 @@ impl Node {
             SortingProp::None => Ordering::Equal,
             SortingProp::Name => self.file_name().cmp(other.file_name()),
             SortingProp::Size => cmp_in(&self.meta, &other.meta, Metadata::len),
-            SortingProp::Extension => self
-                .extension()
-                .or_else(|| Some(self.file_name()))
-                .cmp(&other.extension().or_else(|| Some(self.file_name()))),
+            SortingProp::Extension => {
+                match (self.extension(), other.extension()) {
+                    (Some(a), Some(b)) => a.cmp(b),
+                    _ => self.file_name().cmp(other.file_name()),
+                }
+            }
             SortingProp::ATime => cmp_in(&self.meta, &other.meta, |m| m.accessed().unwrap()),
             SortingProp::MTime => cmp_in(&self.meta, &other.meta, |m| m.modified().unwrap()),
             SortingProp::CTime => cmp_in(&self.meta, &other.meta, |m| m.created().unwrap()),
@@ -428,49 +431,26 @@ impl Node {
         }
     }
 
-    pub fn fixup_meta(&mut self) -> io::Result<()> {
-        self.meta = Some(self.path.metadata()?);
-        Ok(())
-    }
-
-    pub fn fixup(&mut self) -> bool {
-        let Ok(()) = self.fixup_meta() else { return false };
-        match &mut self.info {
-            NodeInfo::Dir {
-                loaded: true,
-                children,
-            } => {
-                // FIXME: raw edits to the vec will cause a panic at unwrap in some view!
-                children.retain_mut(Node::fixup);
-            }
-            NodeInfo::Link { target: Ok(node) } => {
-                node.fixup();
-            }
-            _ => (),
+    pub fn is_dir(&self) -> bool {
+        match self.info {
+            NodeInfo::Dir { .. } => true,
+            _ => false,
         }
-        true
     }
 
-    // pub fn is_dir(&self) -> bool {
-    //     match self.info {
-    //         NodeInfo::Dir { .. } => true,
-    //         _ => false,
-    //     }
-    // }
+    pub fn is_link(&self) -> bool {
+        match self.info {
+            NodeInfo::Link { .. } => true,
+            _ => false,
+        }
+    }
 
-    // pub fn is_link(&self) -> bool {
-    //     match self.info {
-    //         NodeInfo::Link { .. } => true,
-    //         _ => false,
-    //     }
-    // }
-
-    // pub fn is_file(&self) -> bool {
-    //     match self.info {
-    //         NodeInfo::File { .. } => true,
-    //         _ => false,
-    //     }
-    // }
+    pub fn is_file(&self) -> bool {
+        match self.info {
+            NodeInfo::File { .. } => true,
+            _ => false,
+        }
+    }
 
     pub fn file_name(&self) -> &str {
         self.path.file_name().unwrap().to_str().unwrap()
