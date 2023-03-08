@@ -65,7 +65,7 @@ impl Action {
         args: &[&str],
         arg_idx: usize,
         ch_idx: usize,
-        lookup: &impl Fn(&str) -> String,
+        lookup: &impl Fn(&str) -> Vec<String>,
     ) -> Vec<String> {
         match self {
             Action::Fn(sc) => sc.get_comp(args, arg_idx, ch_idx, lookup),
@@ -473,7 +473,7 @@ impl StaticCommand {
         args: &[&str],
         arg_idx: usize,
         ch_idx: usize,
-        lookup: &impl Fn(&str) -> String,
+        lookup: &impl Fn(&str) -> Vec<String>,
     ) -> Vec<String> {
         self.comp.get_comp(args, arg_idx, ch_idx, lookup)
     }
@@ -624,35 +624,7 @@ make_lst! {
     echo = (
         "echo the arguments to standard output, usually to be captured by the calling process (eg. in shell script)",
         |app: App, args: &[&str]| {
-            let mut first = true;
-            for it in args {
-                if first {
-                    first = false;
-                } else {
-                    print!(" ");
-                }
-                if let Some((before, rest)) = it.split_once('$') {
-                    print!("{before}");
-                    if let Some(stripped) = rest.strip_prefix('{') {
-                        if let Some((name, rest)) = stripped.split_once('}') {
-                            print!("{}{rest}", app.lookup(name));
-                        } else {
-                            print!("{rest}")
-                        }
-                    } else {
-                        let mut chs = it.chars();
-                        let name = chs
-                            .by_ref()
-                            .take_while(|c| c.is_ascii_alphanumeric())
-                            .collect::<String>();
-                        let rest = chs.collect::<String>();
-                        print!("{}{rest}", app.lookup(&name));
-                    }
-                } else {
-                    print!("{it}");
-                }
-            }
-            println!();
+            println!("{}", args.join(" "));
             app
         },
         Completer::None,
@@ -1210,7 +1182,7 @@ make_lst! {
                 Ok(content) => {
                     for (k, com0_args) in content
                         .lines()
-                        .map(|l| split_line_args(l, &|name| format!("{{{name}}}"))) // interpolation in not enabled when sourcing
+                        .map(|l| split_line_args(l, &|name| vec![format!("{{{name}}}")])) // interpolation in not enabled when sourcing
                         .enumerate()
                         .filter(|(_, v)| !v.is_empty())
                     {

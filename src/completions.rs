@@ -82,7 +82,7 @@ impl Completer {
         args: &[&str],
         arg_idx: usize,
         ch_idx: usize,
-        lookup: &impl Fn(&str) -> String,
+        lookup: &impl Fn(&str) -> Vec<String>,
     ) -> Vec<String> {
         match self {
             Completer::None => Vec::new(),
@@ -174,9 +174,11 @@ impl Completer {
                     .unwrap_or(Vec::new())
             }
 
-            Completer::FileFromRoot => complete_file_from(args, arg_idx, ch_idx, &lookup("root")),
+            Completer::FileFromRoot => {
+                complete_file_from(args, arg_idx, ch_idx, &lookup("root")[0])
+            }
 
-            Completer::FileFromCursor => complete_file_from(args, arg_idx, ch_idx, &lookup("")), // at cursor full path
+            Completer::FileFromCursor => complete_file_from(args, arg_idx, ch_idx, &lookup("")[0]), // at cursor full path
         }
     }
 }

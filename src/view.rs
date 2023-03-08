@@ -200,6 +200,26 @@ impl State {
         }
         false
     }
+
+    fn collect_marked<'a>(&'a self, out_res: &mut Vec<&'a State>) {
+        if self.marked {
+            out_res.push(self);
+        }
+        for (_, st) in &self.children {
+            st.collect_marked(out_res);
+        }
+    }
+
+    fn collect_marked_pair<'a>(&'a self, node: &'a Node, out_res: &mut Vec<(&'a State, &'a Node)>) {
+        if self.marked {
+            out_res.push((self, node));
+        }
+        if let Some(chs) = node.loaded_children() {
+            for (k, st) in &self.children {
+                st.collect_marked_pair(&chs[*k], out_res);
+            }
+        }
+    }
 }
 
 /// used with View::scan_to
@@ -248,10 +268,6 @@ impl View {
     pub fn cursor_path(&self) -> &[usize] {
         &self.cursor[..self.cursor_path_len]
     }
-
-    // pub fn collect_marked(&self) -> Vec<> {
-    //     // TODO
-    // }
 
     pub fn view_offset(&self) -> Offset {
         self.offset
@@ -372,6 +388,18 @@ impl View {
                     }),
             )
         }
+    }
+
+    pub fn collect_marked(&self) -> Vec<&State> {
+        let mut ret = Vec::new();
+        self.root.collect_marked(&mut ret);
+        ret
+    }
+
+    pub fn collect_marked_pair<'a>(&'a self, tree: &'a Tree) -> Vec<(&'a State, &'a Node)> {
+        let mut ret = Vec::new();
+        self.root.collect_marked_pair(&tree.root, &mut ret);
+        ret
     }
 
     pub fn enter(&mut self) {

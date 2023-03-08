@@ -173,7 +173,7 @@ impl StatefulWidget for Line<'_> {
 
 pub fn split_line_args_cursor_indices(
     c: &str,
-    lookup: &impl Fn(&str) -> String,
+    lookup: &impl Fn(&str) -> Vec<String>,
     cursor: usize,
     add_phantom_arg_at_cursor: bool, // when true, will add a fake empty argument on floaty cursor
 ) -> (Vec<String>, usize, usize) {
@@ -204,7 +204,22 @@ pub fn split_line_args_cursor_indices(
             in_escape = false;
         } else if in_lookup {
             if '}' == ch {
-                cur.push_str(&lookup(&lookup_name));
+                let subst = lookup(&lookup_name);
+                if !subst.is_empty() {
+                    if in_double {
+                        // push all in cur with spaces
+                        cur.push_str(&subst.join(" "));
+                    } else {
+                        // push first in cur, then all in separate (stay on last one)
+                        let len = subst.len();
+                        cur.push_str(&subst[0]);
+                        if 1 < len {
+                            r.push(cur);
+                            r.extend_from_slice(&subst[1..len - 1]);
+                            cur = subst[len - 1].clone();
+                        }
+                    }
+                }
                 lookup_name = String::new();
                 in_lookup = false;
             } else {
@@ -274,7 +289,7 @@ pub fn split_line_args_cursor_indices(
     (r, arg_idx, ch_idx)
 }
 
-pub fn split_line_args(c: &str, lookup: &impl Fn(&str) -> String) -> Vec<String> {
+pub fn split_line_args(c: &str, lookup: &impl Fn(&str) -> Vec<String>) -> Vec<String> {
     split_line_args_cursor_indices(c, lookup, 0, false).0
 }
 
@@ -333,7 +348,7 @@ impl Status {
     pub fn do_event(
         &mut self,
         event: &Event,
-        lookup: &impl Fn(&str) -> String,
+        lookup: &impl Fn(&str) -> Vec<String>,
     ) -> (Option<(Action, Vec<String>)>, bool) {
         let Some(p) = &mut self.input else { return (None, false); };
         p.hints = None;
@@ -671,7 +686,8 @@ fn trans(p: &mut Prompt, to_left: TextObject, to_right: TextObject) {
     p.cursor = rb;
 }
 
-fn complete(p: &mut Prompt, lookup: &impl Fn(&str) -> String) {
+// TODO: var completion (after a '{' or a '.' in '{}')
+fn complete(p: &mut Prompt, lookup: &impl Fn(&str) -> Vec<String>) {
     let (args, arg_idx, ch_idx) =
         split_line_args_cursor_indices(&p.content, lookup, p.cursor, true);
     let res = p.action.get_comp(
@@ -724,13 +740,13 @@ fn complete(p: &mut Prompt, lookup: &impl Fn(&str) -> String) {
 mod tests {
     use super::split_line_args as s;
 
-    fn lu(name: &str) -> String {
-        if name.is_empty() {
+    fn lu(name: &str) -> Vec<String> {
+        vec![if name.is_empty() {
             "[file_path]".to_string()
         } else {
             format!("name:{name}")
         }
-        .to_string()
+        .to_string()]
     }
 
     macro_rules! t {

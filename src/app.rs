@@ -260,38 +260,58 @@ impl Internal {
         self.variables.insert(name.to_string(), value.to_string());
     }
 
-    pub fn lookup(&self, name: &str) -> String {
-        match name {
-            "" => {
+    pub fn lookup(&self, name: &str) -> Vec<String> {
+        if name.is_empty() {
+            // same as "{.}", ie at cursor full path
+            let (view, tree) = self.focused_and_tree();
+            let (_, node) = view.at_cursor_pair(tree);
+            return vec![node.as_path().to_string_lossy().to_string()];
+        }
+
+        match name.split_once('.').unwrap_or((name, "")) {
+            (obj @ ("" | "root" | "selection"), ppt) => {
                 let (view, tree) = self.focused_and_tree();
-                let (_, node) = view.at_cursor_pair(tree);
-                node.as_path().to_string_lossy().to_string()
+
+                let nodes = match obj {
+                    "" => vec![view.at_cursor_pair(tree).1],
+                    "root" => vec![&tree.root],
+                    "selection" => view
+                        .collect_marked_pair(tree)
+                        .into_iter()
+                        .map(|(_, node)| node)
+                        .collect(),
+                    _ => unreachable!(),
+                };
+
+                match ppt {
+                    "" => nodes
+                        .iter()
+                        .map(|it| it.as_path().to_string_lossy().to_string())
+                        .collect(),
+                    "relative" => nodes
+                        .iter()
+                        .map(|it| {
+                            it.as_path()
+                                .strip_prefix(tree.root.as_path())
+                                .unwrap()
+                                .to_string_lossy()
+                                .to_string()
+                        })
+                        .collect(),
+                    "file_name" => nodes.iter().map(|it| it.file_name().to_string()).collect(),
+                    "extension" => nodes
+                        .iter()
+                        .map(|it| it.extension().unwrap_or("").to_string())
+                        .collect(),
+                    _ => panic!("unknown property on object: '{obj}.{ppt}'"),
+                }
             }
-            "@" => {
-                let (view, tree) = self.focused_and_tree();
-                let (_, node) = view.at_cursor_pair(tree);
-                node.as_path()
-                    .strip_prefix(tree.root.as_path())
-                    .unwrap()
-                    .to_string_lossy()
-                    .to_string()
+
+            (obj, "") => {
+                vec![self.variables[obj].clone()]
             }
-            "file_name" => {
-                let (view, tree) = self.focused_and_tree();
-                let (_, node) = view.at_cursor_pair(tree);
-                node.file_name().to_string()
-            }
-            "extension" => {
-                let (view, tree) = self.focused_and_tree();
-                let (_, node) = view.at_cursor_pair(tree);
-                node.extension().unwrap_or("").to_string()
-            }
-            "root" => self.tree.root.as_path().to_string_lossy().to_string(),
-            _ => self
-                .variables
-                .get(name)
-                .map(|v| v.to_string())
-                .unwrap_or_else(String::new),
+
+            _ => todo!("taking propery on arbitrary variables"),
         }
     }
 }
@@ -462,9 +482,13 @@ impl App {
 
         match &mut self.i.views {
             ViewTree::Leaf(view) => f.render_stateful_widget(&self.i.tree, main, view),
-            ViewTree::Split(_, _) => {
-                draw_r(&mut self.i.views, &self.i.tree, f, main, Some(&self.i.focus))
-            }
+            ViewTree::Split(_, _) => draw_r(
+                &mut self.i.views,
+                &self.i.tree,
+                f,
+                main,
+                Some(&self.i.focus),
+            ),
         }
 
         let (view, tree) = self.i.focused_and_tree();
@@ -512,7 +536,8 @@ impl App {
             }
         }
 
-        let (prompt_action, event_consumed) = self.status.do_event(event, &|name| self.i.lookup(name));
+        let (prompt_action, event_consumed) =
+            self.status.do_event(event, &|name| self.i.lookup(name));
         if let Some((action, args)) = prompt_action {
             return action.apply(self, &args.iter().map(|s| s.as_str()).collect::<Vec<_>>());
         }
@@ -544,27 +569,49 @@ impl App {
         self
     }
 
-    pub fn focused(&self) -> &View { self.i.focused() }
+    pub fn focused(&self) -> &View {
+        self.i.focused()
+    }
 
-    pub fn focused_mut(&mut self) -> &mut View { self.i.focused_mut() }
+    pub fn focused_mut(&mut self) -> &mut View {
+        self.i.focused_mut()
+    }
 
     //pub fn focused_and_tree(&self) -> (&View, &Tree) { self.i.focused_and_tree() }
 
-    pub fn focused_and_tree_mut(&mut self) -> (&mut View, &mut Tree) { self.i.focused_and_tree_mut() }
+    pub fn focused_and_tree_mut(&mut self) -> (&mut View, &mut Tree) {
+        self.i.focused_and_tree_mut()
+    }
 
-    pub fn view_split(&mut self, d: Direction) { self.i.view_split(d) }
+    pub fn view_split(&mut self, d: Direction) {
+        self.i.view_split(d)
+    }
 
-    pub fn view_transpose(&mut self) { self.i.view_transpose() }
+    pub fn view_transpose(&mut self) {
+        self.i.view_transpose()
+    }
 
-    pub fn view_close(&mut self) { self.i.view_close() }
+    pub fn view_close(&mut self) {
+        self.i.view_close()
+    }
 
-    pub fn view_close_other(&mut self) { self.i.view_close_other() }
+    pub fn view_close_other(&mut self) {
+        self.i.view_close_other()
+    }
 
-    pub fn focus_to_view_adjacent(&mut self, movement: i8) { self.i.focus_to_view_adjacent(movement) }
+    pub fn focus_to_view_adjacent(&mut self, movement: i8) {
+        self.i.focus_to_view_adjacent(movement)
+    }
 
-    pub fn focus_to_view(&mut self, d: Direction, movement: i8) { self.i.focus_to_view(d, movement) }
+    pub fn focus_to_view(&mut self, d: Direction, movement: i8) {
+        self.i.focus_to_view(d, movement)
+    }
 
-    pub fn declare(&mut self, name: &str, value: &str) { self.i.declare(name, value) }
+    pub fn declare(&mut self, name: &str, value: &str) {
+        self.i.declare(name, value)
+    }
 
-    pub fn lookup(&self, name: &str) -> String { self.i.lookup(name) }
+    pub fn lookup(&self, name: &str) -> Vec<String> {
+        self.i.lookup(name)
+    }
 }
