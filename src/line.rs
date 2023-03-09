@@ -175,7 +175,7 @@ pub fn split_line_args_cursor_indices(
     c: &str,
     lookup: &impl Fn(&str) -> Vec<String>,
     cursor: usize,
-    add_phantom_arg_at_cursor: bool, // when true, will add a fake empty argument on floaty cursor
+    add_phantom_arg_at_cursor_and_skip_lookup: bool, // when true, will add a fake empty argument on floaty cursor and not perform lookup interpolation
 ) -> (Vec<String>, usize, usize) {
     let mut r = Vec::new();
     let mut cur = String::new();
@@ -183,7 +183,7 @@ pub fn split_line_args_cursor_indices(
     let mut passed_cursor = false;
     let mut arg_idx = 0;
     let mut ch_idx = 0;
-    let mut done_with_cursor_stuff = !add_phantom_arg_at_cursor;
+    let mut done_with_cursor_stuff = !add_phantom_arg_at_cursor_and_skip_lookup;
 
     let mut in_simple = false;
     let mut in_double = false;
@@ -234,7 +234,7 @@ pub fn split_line_args_cursor_indices(
         } else if in_double {
             match ch {
                 '"' => in_double = false,
-                '{' => in_lookup = true,
+                '{' if !add_phantom_arg_at_cursor_and_skip_lookup => in_lookup = true,
                 _ => cur.push(ch),
             }
         } else {
@@ -242,7 +242,7 @@ pub fn split_line_args_cursor_indices(
                 '\'' => in_simple = true,
                 '"' => in_double = true,
                 '\\' => in_escape = true,
-                '{' => in_lookup = true,
+                '{' if !add_phantom_arg_at_cursor_and_skip_lookup => in_lookup = true,
                 ' ' | '\t' => {
                     if !cur.is_empty() {
                         if !done_with_cursor_stuff && k == cursor {
@@ -278,7 +278,7 @@ pub fn split_line_args_cursor_indices(
         r.push(cur);
     }
 
-    if !done_with_cursor_stuff {
+    if !done_with_cursor_stuff && !passed_cursor {
         arg_idx = r.len();
         // the case where the cursor is not on a word, eg.:
         // `somecommand somearg1 somearg2 |`
@@ -686,20 +686,57 @@ fn trans(p: &mut Prompt, to_left: TextObject, to_right: TextObject) {
     p.cursor = rb;
 }
 
-// TODO: var completion (after a '{' or a '.' in '{}')
 fn complete(p: &mut Prompt, lookup: &impl Fn(&str) -> Vec<String>) {
     let (args, arg_idx, ch_idx) =
         split_line_args_cursor_indices(&p.content, lookup, p.cursor, true);
-    let res = p.action.get_comp(
-        &args.iter().map(|s| s.as_str()).collect::<Vec<_>>(),
-        arg_idx,
-        ch_idx,
-        lookup,
-    );
+
+    // is it in "{.}"? (does not account for single quotes)
+    let mut in_obj = 0; // ie after a '{'
+    let mut in_ppt = 0; // ie after a '.' after a '{' (in_obj stays true)
+    let mut obj = String::new();
+    let mut ppt = String::new();
+    for (k, ch) in args[arg_idx].chars().enumerate().take(ch_idx) {
+        match ch {
+            '{' if 0 == in_obj => in_obj = k + 1,
+            '.' if 0 != in_obj && 0 == in_ppt => in_ppt = k + 1,
+            '}' if 0 != in_obj => {
+                in_obj = 0;
+                in_ppt = 0;
+                obj.clear();
+                ppt.clear();
+            }
+            _ if 0 != in_ppt => ppt.push(ch),
+            _ if 0 != in_obj => obj.push(ch),
+            _ => (),
+        }
+    }
+
+    let res = if 0 != in_obj {
+        if 0 != in_ppt {
+            ["file_name", "extension"]
+                .iter()
+                .filter(|it| it.starts_with(&ppt))
+                .map(|it| "#".repeat(in_ppt) + it)
+                .collect()
+        } else {
+            ["root", "selection"]
+                .iter()
+                .filter(|it| it.starts_with(&obj))
+                .map(|it| "#".repeat(in_obj) + it)
+                .collect()
+        }
+    } else {
+        p.action.get_comp(
+            &args.iter().map(|s| s.as_str()).collect::<Vec<_>>(),
+            arg_idx,
+            ch_idx,
+            lookup,
+        )
+    };
 
     match res.len() {
         0 => {
-            eprint!("\x07"); // XXX: that how you supposed to do it?
+            eprint!("\x07"); // bell
             p.hints = None;
         }
         1 => {
