@@ -174,7 +174,7 @@ fn render_r(
                 }),
             );
 
-            if INDENT_WIDTH as i32 <= curr.shift && 0 <= curr.scroll {
+            if INDENT_WIDTH as i32 <= p_indent && 0 <= p_line {
                 buf.set_string(
                     area.x + (p_indent as u16) - INDENT_WIDTH,
                     area.y + (p_line as u16),
