@@ -668,7 +668,7 @@ make_lst! {
         |mut app: App, args: &[&str]| {
             let (view, tree) = app.focused_and_tree_mut();
             match args {
-                [does @ ("add" | "remove"), what, ..] => {
+                [does @ ("add" | "remove" | "toggle"), what, ..] => {
                     let f = match *what {
                         "git" => Filtering::new_git(),
                         "pattern" => Filtering::new_pattern({
@@ -690,6 +690,7 @@ make_lst! {
                     match *does {
                         "add" => view.add_filtering(f),
                         "remove" => view.remove_filtering(f),
+                        "toggle" => view.toggle_filtering(f),
                         _ => unreachable!(),
                     }
                     view.fixup(tree, tree);

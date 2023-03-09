@@ -99,27 +99,14 @@ impl State {
                     let name = pch.file_name();
                     done.insert(name);
 
-                    // cursor path was going through this node
-                    let path_through =
-                        out_path_cur < out_path.len() && out_path[out_path_cur] == *pk;
-
                     // because the tree might have been renewed,
                     // we try to find nodes by name rather than
                     // relying on the previous mapping
                     let may_matching = lo_chs.iter().position(|ch| ch.file_name() == name);
                     if let Some(k) = may_matching {
-                        // path can be updated
-                        if path_through {
-                            out_path[out_path_cur] = k;
-                        }
                         let ch = &lo_chs[k];
                         let st = st.renew(pch, ch, settings, out_path, out_path_cur + 1);
                         children.push((k, st));
-                    } else {
-                        // path cannot be updated further
-                        if path_through {
-                            out_path.truncate(out_path_cur);
-                        }
                     }
                 } // for in previous
 
@@ -131,7 +118,24 @@ impl State {
                         .filter_map(|(k, ch)| State::new(ch, settings).map(|st| (k, st)).ok()),
                 );
 
-                settings.correct_node_state_mapping(lo_chs, children)
+                let children = settings.correct_node_state_mapping(lo_chs, children);
+
+                // if the cursor was on a children of self
+                if out_path_cur < out_path.len() {
+                    // find where it should land in the new one
+                    let (pk, _) = &self.children[out_path[out_path_cur]];
+                    let name = plo_chs[*pk].file_name();
+                    let may_matching = children
+                        .iter()
+                        .position(|(k, _)| lo_chs[*k].file_name() == name);
+                    if let Some(idx) = may_matching {
+                        out_path[out_path_cur] = idx;
+                    } else {
+                        out_path.truncate(out_path_cur);
+                    }
+                }
+
+                children
             },
         }
     }
@@ -513,6 +517,13 @@ impl View {
     pub fn remove_filtering(&mut self, filter: Filtering) {
         if let Some(found) = self.settings.filters.iter().position(|it| *it == filter) {
             self.settings.filters.remove(found);
+        }
+    }
+    pub fn toggle_filtering(&mut self, filter: Filtering) {
+        if let Some(found) = self.settings.filters.iter().position(|it| *it == filter) {
+            self.settings.filters.remove(found);
+        } else {
+            self.settings.filters.push(filter)
         }
     }
     pub fn clear_filtering(&mut self) {
