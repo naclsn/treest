@@ -7,7 +7,7 @@ use crate::{
     app::App,
     completions::Completer,
     line::{split_line_args, Message},
-    node::{Filtering, Sorting, SortingProp},
+    node::{Filtering, Movement, Sorting, SortingProp},
     view::ScanToChoice,
 };
 use crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers};
@@ -366,6 +366,8 @@ impl Default for CommandMap {
             ('?', help),
             (':', command),
             ('/', (prompt, "/", "find_in")),
+            ('n', find_in_next),
+            ('N', find_in_prev),
             ('H', fold_node),
             ('L', unfold_node),
             ('h', leave_node),
@@ -507,7 +509,6 @@ macro_rules! make_lst {
     };
 }
 
-// YYY: for some reason it stopped formatting this macro when adding longer doc strings...
 make_lst! {
 
     bind = (
@@ -602,23 +603,6 @@ make_lst! {
                     .unwrap_or(Completer::None)
             }),
         ]),
-    );
-
-    declare = (
-        "declare a variable, giving it a value",
-        |mut app: App, args: &[&str]| {
-            if args.is_empty() {
-                app.message(Message::Warning(
-                    "declare needs a name and optional value".to_string(),
-                ));
-                return app;
-            }
-            let name = args[0];
-            let value = args.get(1).unwrap_or(&"");
-            app.declare(name, value);
-            app
-        },
-        Completer::None,
     );
 
     echo = (
@@ -738,14 +722,18 @@ make_lst! {
                 return app;
             }
             let search = args[0];
+            app.declare("search", search);
             let (view, tree) = app.focused_and_tree_mut();
-            view.scan_to(tree, &|_, node| {
+            let found = view.scan_to(tree, Movement::Forward, &mut |_, node| {
                 if node.file_name().contains(search) {
                     ScanToChoice::Break(false)
                 } else {
                     ScanToChoice::Continue(false)
                 }
             });
+            if !found {
+                app.message(Message::Warning("not found".to_string()));
+            }
             app
         },
         Completer::FileFromCursor,
@@ -766,10 +754,18 @@ make_lst! {
                 ));
                 return app;
             };
+            app.declare("search", args[0]);
             let (view, tree) = app.focused_and_tree_mut();
-            view.scan_to(tree, &|state, node| {
-                ScanToChoice::Continue(state.marked != search.matches(node.file_name()))
+            let mut count = 0;
+            view.scan_to(tree, Movement::Forward, &mut |state, node| {
+                let marked = state.marked != search.matches(node.file_name());
+                if marked { count+= 1; }
+                ScanToChoice::Continue(marked)
             });
+            app.message(Message::Info(format!(
+                "marked {} node{}",
+                count, if 1 < count { "s" } else { "" }
+            )));
             app
         },
         Completer::FileFromCursor,
@@ -785,9 +781,10 @@ make_lst! {
                 return app;
             }
             let search = args[0];
+            app.declare("search", search);
             app.focused_mut().leave();
             let (view, tree) = app.focused_and_tree_mut();
-            let found = view.scan_to(tree, &|_, node| {
+            let found = view.scan_to(tree, Movement::Forward, &mut |_, node| {
                 if node.file_name().contains(search) {
                     ScanToChoice::Break(false)
                 } else {
@@ -796,10 +793,98 @@ make_lst! {
             });
             if !found {
                 app.focused_mut().enter();
+                app.message(Message::Warning("not found".to_string()));
             }
             app
         },
         Completer::FileFromCursor,
+    );
+
+    find_in_next = (
+        "find the next node, which name contains the search string, in the folder the cursor is in",
+        |mut app: App, _| {
+            let lu = app.lookup("search");
+            let Some(search) = lu.get(0) else {
+                app.message(Message::Warning(
+                    "no previous search for find_in_next".to_string()
+                ));
+                return app;
+            };
+            let view = app.focused();
+            let idx = *view.cursor_path().last().unwrap();
+            app.focused_mut().leave();
+            let (view, tree) = app.focused_and_tree_mut();
+            let found = view.scan_to_skip(tree, Movement::Forward, idx + 1, &mut |_, node| {
+                if node.file_name().contains(search) {
+                    ScanToChoice::Break(false)
+                } else {
+                    ScanToChoice::Continue(false)
+                }
+            });
+            if !found {
+                // try again from 0
+                let found = view.scan_to_skip(tree, Movement::Forward, 0, &mut |_, node| {
+                    if node.file_name().contains(search) {
+                        ScanToChoice::Break(false)
+                    } else {
+                        ScanToChoice::Continue(false)
+                    }
+                });
+                if !found {
+                    // still not found
+                    app.focused_mut().enter();
+                    app.message(Message::Warning("not found".to_string()));
+                } else {
+                    app.message(Message::Info("search wrapped".to_string()));
+                }
+            }
+            app
+        },
+        Completer::None,
+    );
+
+    // FIXME: doesn't work quite work well
+    find_in_prev = (
+        "find the previous node, which name contains the search string, in the folder the cursor is in",
+        |mut app: App, _| {
+            let lu = app.lookup("search");
+            let Some(search) = lu.get(0) else {
+                app.message(Message::Warning(
+                    "no previous search for find_in_prev".to_string()
+                ));
+                return app;
+            };
+            let view = app.focused();
+            let idx = *view.cursor_path().last().unwrap();
+            app.focused_mut().leave();
+            let (view, tree) = app.focused_and_tree_mut();
+            let found = view.scan_to_skip(tree, Movement::Backward, idx, &mut |_, node| {
+                if node.file_name().contains(search) {
+                    ScanToChoice::Break(false)
+                } else {
+                    ScanToChoice::Continue(false)
+                }
+            });
+            if !found {
+                // try again from 0 (ie. the end because backward)
+                let found = view.scan_to_skip(tree, Movement::Backward, 0, &mut |_, node| {
+                    if node.file_name().contains(search) {
+                        ScanToChoice::Break(false)
+                    } else {
+                        ScanToChoice::Continue(false)
+                    }
+                });
+                if !found {
+                    // still not found
+                    app.focused_mut().enter();
+                    app.message(Message::Warning("not found".to_string()));
+                } else {
+                    app.message(Message::Info("search wrapped".to_string()));
+                }
+            }
+            app
+        },
+        Completer::None,
     );
 
     fold_node = (
@@ -1231,10 +1316,10 @@ make_lst! {
         "move to a view right/left/down/up from the focused one",
         |mut app: App, args: &[&str]| {
             match args.first() {
-                Some(&"right") => app.focus_to_view(Direction::Horizontal, -1),
-                Some(&"left") => app.focus_to_view(Direction::Horizontal, 1),
-                Some(&"down") => app.focus_to_view(Direction::Vertical, 1),
-                Some(&"up") => app.focus_to_view(Direction::Vertical, -1),
+                Some(&"right") => app.focus_to_view(Direction::Horizontal, Movement::Backward),
+                Some(&"left") => app.focus_to_view(Direction::Horizontal, Movement::Forward),
+                Some(&"down") => app.focus_to_view(Direction::Vertical, Movement::Forward),
+                Some(&"up") => app.focus_to_view(Direction::Vertical, Movement::Backward),
                 _ => (),
             }
             app
@@ -1245,7 +1330,7 @@ make_lst! {
     to_view_next = (
         "move to the next view in the same split",
         |mut app: App, _| {
-            app.focus_to_view_adjacent(1);
+            app.focus_to_view_adjacent(Movement::Forward);
             app
         },
         Completer::None,
@@ -1254,7 +1339,7 @@ make_lst! {
     to_view_prev = (
         "move to the previous view in the same split",
         |mut app: App, _| {
-            app.focus_to_view_adjacent(-1);
+            app.focus_to_view_adjacent(Movement::Backward);
             app
         },
         Completer::None,
@@ -1274,6 +1359,23 @@ make_lst! {
         |mut app: App, _| {
             let (view, tree) = app.focused_and_tree_mut();
             view.unfold(tree).ok();
+            app
+        },
+        Completer::None,
+    );
+
+    var = (
+        "declare a variable, giving it a value",
+        |mut app: App, args: &[&str]| {
+            if args.is_empty() {
+                app.message(Message::Warning(
+                    "declare needs a name and optional value".to_string(),
+                ));
+                return app;
+            }
+            let name = args[0];
+            let value = args.get(1).unwrap_or(&"");
+            app.declare(name, value);
             app
         },
         Completer::None,

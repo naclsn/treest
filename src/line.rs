@@ -243,7 +243,7 @@ pub fn split_line_args_cursor_indices(
                 '"' => in_double = true,
                 '\\' => in_escape = true,
                 '{' if !add_phantom_arg_at_cursor_and_skip_lookup => in_lookup = true,
-                ' ' | '\t' => {
+                ' ' | '\t' | '\n' | '\r' => {
                     if !cur.is_empty() {
                         if !done_with_cursor_stuff && k == cursor {
                             arg_idx = r.len();
@@ -716,13 +716,13 @@ fn complete(p: &mut Prompt, lookup: &impl Fn(&str) -> Vec<String>) {
             ["file_name", "extension"]
                 .iter()
                 .filter(|it| it.starts_with(&ppt))
-                .map(|it| "#".repeat(in_ppt) + it)
+                .map(|it| " ".repeat(in_ppt) + it)
                 .collect()
         } else {
             ["root", "selection"]
                 .iter()
                 .filter(|it| it.starts_with(&obj))
-                .map(|it| "#".repeat(in_obj) + it)
+                .map(|it| " ".repeat(in_obj) + it)
                 .collect()
         }
     } else {
@@ -767,7 +767,7 @@ fn complete(p: &mut Prompt, lookup: &impl Fn(&str) -> Vec<String>) {
                 p.content.insert_str(p.cursor, rest);
                 p.cursor += rest.len();
             }
-            p.hints = Some(res);
+            p.hints = Some(res.into_iter().map(|s| s.trim().to_string()).collect());
         }
     }
 }

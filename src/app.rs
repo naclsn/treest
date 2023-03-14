@@ -1,6 +1,7 @@
 use crate::{
     commands::{Action, CommandMap, Key},
     line::{Line, Message, Status},
+    node::Movement,
     tree::Tree,
     view::View,
 };
@@ -174,30 +175,31 @@ impl Internal {
         self.focus.clear();
     }
 
-    pub fn focus_to_view_adjacent(&mut self, movement: i8) {
+    pub fn focus_to_view_adjacent(&mut self, movement: Movement) {
         let Some(ViewTree::Split(v, _)) = self.focused_group() else { return; };
         let max = v.len();
         if !self.focus.is_empty() {
             if let Some(it) = self.focus.last_mut() {
-                if 0 < movement {
-                    *it += 1;
-                    if max <= *it {
-                        *it = 0;
+                match movement {
+                    Movement::Forward => {
+                        *it += 1;
+                        if max <= *it {
+                            *it = 0;
+                        }
                     }
-                } else {
-                    if 0 == *it {
-                        *it = max;
+                    Movement::Backward => {
+                        if 0 == *it {
+                            *it = max;
+                        }
+                        *it -= 1
                     }
-                    *it -= 1
                 }
             }
         }
     }
 
-    // movement should only be +1 or -1
-    // eg moving 'left' in a d=1(Horizontal) split is +1
     // FIXME: this is still not it: `wswvwswjwj`
-    pub fn focus_to_view(&mut self, d: Direction, movement: i8) {
+    pub fn focus_to_view(&mut self, d: Direction, movement: Movement) {
         if self.focus.is_empty() {
             return;
         }
@@ -236,7 +238,10 @@ impl Internal {
                         while let ViewTree::Split(v, dd) = a {
                             // not even sure this is possible
                             a = &v[if d == *dd {
-                                let border = if 0 < movement { v.len() - 1 } else { 0 };
+                                let border = match movement {
+                                    Movement::Forward => v.len() - 1,
+                                    Movement::Backward => 0,
+                                };
                                 self.focus.push(border);
                                 border
                             } else {
@@ -308,7 +313,11 @@ impl Internal {
             }
 
             (obj, "") => {
-                vec![self.variables[obj].clone()]
+                if let Some(it) = self.variables.get(obj) {
+                    vec![it.clone()]
+                } else {
+                    vec![]
+                }
             }
 
             _ => todo!("taking propery on arbitrary variables"),
@@ -599,11 +608,11 @@ impl App {
         self.i.view_close_other()
     }
 
-    pub fn focus_to_view_adjacent(&mut self, movement: i8) {
+    pub fn focus_to_view_adjacent(&mut self, movement: Movement) {
         self.i.focus_to_view_adjacent(movement)
     }
 
-    pub fn focus_to_view(&mut self, d: Direction, movement: i8) {
+    pub fn focus_to_view(&mut self, d: Direction, movement: Movement) {
         self.i.focus_to_view(d, movement)
     }
 

@@ -1,5 +1,5 @@
 use crate::{
-    node::{Filtering, Node, Sorting, SortingProp},
+    node::{Filtering, Movement, Node, Sorting, SortingProp},
     tree::Tree,
 };
 use serde::{Deserialize, Serialize};
@@ -167,40 +167,51 @@ impl State {
         self.unfolded = false;
     }
 
+    // special case: movement::backward with skip 0 means starts at -1
     pub fn scan_to(
         &mut self,
         node: &mut Node,
-        predicate: &impl Fn(&State, &Node) -> ScanToChoice,
+        movement: Movement,
+        skip: usize,
+        predicate: &mut impl FnMut(&State, &Node) -> ScanToChoice,
         out_path: &mut Vec<usize>,
     ) -> bool {
         if let Some(chs) = node.loaded_children_mut() {
-            for (idx, (k, st)) in self.children.iter_mut().enumerate() {
+            let base = self.children.iter_mut().enumerate();
+            let clo = |arg: (usize, &mut (usize, State))| {
+                let (idx, (k, st)) = arg;
                 let ch = &mut chs[*k];
                 match predicate(st, ch) {
                     ScanToChoice::Break(mark) => {
                         st.marked = mark;
                         out_path.push(idx);
-                        return true;
+                        Some(true)
                     }
                     ScanToChoice::Continue(mark) => {
                         st.marked = mark;
-                        continue;
+                        None
                     }
                     ScanToChoice::Recurse => {
                         out_path.push(idx);
-                        if st.scan_to(ch, predicate, out_path) {
-                            return true;
+                        if st.scan_to(ch, movement, 0, predicate, out_path) {
+                            Some(true)
                         } else {
                             out_path.pop();
-                            continue;
+                            None
                         }
                     }
                     ScanToChoice::Abort(mark) => {
                         st.marked = mark;
-                        return false;
+                        Some(false)
                     }
                 }
+            };
+            return match movement {
+                Movement::Forward => base.skip(skip).filter_map(clo).next(),
+                Movement::Backward if 0 == skip => base.take(skip).rev().filter_map(clo).next(),
+                Movement::Backward => base.rev().filter_map(clo).next(),
             }
+            .unwrap_or(false);
         }
         false
     }
@@ -447,11 +458,34 @@ impl View {
     pub fn scan_to(
         &mut self,
         tree: &mut Tree,
-        predicate: &impl Fn(&State, &Node) -> ScanToChoice,
+        movement: Movement,
+        predicate: &mut impl FnMut(&State, &Node) -> ScanToChoice,
     ) -> bool {
         let (state, node) = self.at_cursor_pair_mut(tree);
         let mut path = Vec::new();
-        if state.scan_to(node, predicate, &mut path) {
+        if state.scan_to(node, movement, 0, predicate, &mut path) {
+            self.cursor.truncate(self.cursor_path_len);
+            self.cursor.extend_from_slice(&path);
+            self.cursor_path_len = self.cursor.len();
+            true
+        } else {
+            false
+        }
+    }
+
+    // self mutable because moves cursor if finds
+    // tree mutable because `ScanToChoice::Recurse` needs to unfold
+    // skips n (at first level only)
+    pub fn scan_to_skip(
+        &mut self,
+        tree: &mut Tree,
+        movement: Movement,
+        skip: usize,
+        predicate: &mut impl FnMut(&State, &Node) -> ScanToChoice,
+    ) -> bool {
+        let (state, node) = self.at_cursor_pair_mut(tree);
+        let mut path = Vec::new();
+        if state.scan_to(node, movement, skip, predicate, &mut path) {
             self.cursor.truncate(self.cursor_path_len);
             self.cursor.extend_from_slice(&path);
             self.cursor_path_len = self.cursor.len();

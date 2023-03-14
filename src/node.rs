@@ -10,6 +10,12 @@ use std::{
 };
 use tui::style::{Color, Modifier, Style};
 
+#[derive(Debug, Clone, Copy)]
+pub enum Movement {
+    Forward = 1,
+    Backward = -1,
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone, Copy)]
 pub enum SortingProp {
     None,
