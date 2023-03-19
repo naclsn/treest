@@ -724,11 +724,11 @@ make_lst! {
             let search = args[0];
             app.declare("search", search);
             let (view, tree) = app.focused_and_tree_mut();
-            let found = view.scan_to(tree, Movement::Forward, &mut |_, node| {
+            let found = view.scan_to(tree, Movement::Forward, &mut |state, node| {
                 if node.file_name().contains(search) {
-                    ScanToChoice::Break(false)
+                    ScanToChoice::Break(state.marked)
                 } else {
-                    ScanToChoice::Continue(false)
+                    ScanToChoice::Continue(state.marked)
                 }
             });
             if !found {
@@ -784,11 +784,11 @@ make_lst! {
             app.declare("search", search);
             app.focused_mut().leave();
             let (view, tree) = app.focused_and_tree_mut();
-            let found = view.scan_to(tree, Movement::Forward, &mut |_, node| {
+            let found = view.scan_to(tree, Movement::Forward, &mut |state, node| {
                 if node.file_name().contains(search) {
-                    ScanToChoice::Break(false)
+                    ScanToChoice::Break(state.marked)
                 } else {
-                    ScanToChoice::Continue(false)
+                    ScanToChoice::Continue(state.marked)
                 }
             });
             if !found {
@@ -814,20 +814,20 @@ make_lst! {
             let idx = *view.cursor_path().last().unwrap();
             app.focused_mut().leave();
             let (view, tree) = app.focused_and_tree_mut();
-            let found = view.scan_to_skip(tree, Movement::Forward, idx + 1, &mut |_, node| {
+            let found = view.scan_to_skip(tree, Movement::Forward, idx + 1, &mut |state, node| {
                 if node.file_name().contains(search) {
-                    ScanToChoice::Break(false)
+                    ScanToChoice::Break(state.marked)
                 } else {
-                    ScanToChoice::Continue(false)
+                    ScanToChoice::Continue(state.marked)
                 }
             });
             if !found {
                 // try again from 0
-                let found = view.scan_to_skip(tree, Movement::Forward, 0, &mut |_, node| {
+                let found = view.scan_to_skip(tree, Movement::Forward, 0, &mut |state, node| {
                     if node.file_name().contains(search) {
-                        ScanToChoice::Break(false)
+                        ScanToChoice::Break(state.marked)
                     } else {
-                        ScanToChoice::Continue(false)
+                        ScanToChoice::Continue(state.marked)
                     }
                 });
                 if !found {
@@ -858,20 +858,20 @@ make_lst! {
             let idx = *view.cursor_path().last().unwrap();
             app.focused_mut().leave();
             let (view, tree) = app.focused_and_tree_mut();
-            let found = view.scan_to_skip(tree, Movement::Backward, idx, &mut |_, node| {
+            let found = view.scan_to_skip(tree, Movement::Backward, idx, &mut |state, node| {
                 if node.file_name().contains(search) {
-                    ScanToChoice::Break(false)
+                    ScanToChoice::Break(state.marked)
                 } else {
-                    ScanToChoice::Continue(false)
+                    ScanToChoice::Continue(state.marked)
                 }
             });
             if !found {
                 // try again from 0 (ie. the end because backward)
-                let found = view.scan_to_skip(tree, Movement::Backward, 0, &mut |_, node| {
+                let found = view.scan_to_skip(tree, Movement::Backward, 0, &mut |state, node| {
                     if node.file_name().contains(search) {
-                        ScanToChoice::Break(false)
+                        ScanToChoice::Break(state.marked)
                     } else {
-                        ScanToChoice::Continue(false)
+                        ScanToChoice::Continue(state.marked)
                     }
                 });
                 if !found {
