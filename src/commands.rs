@@ -11,6 +11,7 @@ use crate::{
     view::ScanToChoice,
 };
 use crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers};
+use dash_conversion::dash_conversion;
 use dirs::home_dir;
 use glob::Pattern;
 use lazy_static::lazy_static;
@@ -492,18 +493,18 @@ macro_rules! make_lst {
             $(
                 #[allow(non_upper_case_globals)]
                 pub const $name: StaticCommand = StaticCommand {
-                    name: stringify!($name),
+                    name: dash_conversion!($name),
                     doc: $doc,
                     action: $action,
                     comp: $comp,
                 };
             )*
 
-            pub const COMMAND_LIST: &'static[&'static str] = &[$(stringify!($name),)*];
+            pub const COMMAND_LIST: &'static[&'static str] = &[$(dash_conversion!($name),)*];
 
             lazy_static! {
                 pub static ref COMMAND_MAP: HashMap<&'static str, &'static StaticCommand> =
-                    HashMap::from([$((stringify!($name), &$name),)*]);
+                    HashMap::from([$((dash_conversion!($name), &$name),)*]);
             }
         }
     };

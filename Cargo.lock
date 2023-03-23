@@ -95,6 +95,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "dash_conversion"
+version = "0.1.0"
+
+[[package]]
 name = "dirs"
 version = "4.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -483,6 +487,7 @@ version = "0.2.1"
 dependencies = [
  "clap",
  "crossterm",
+ "dash_conversion",
  "dirs",
  "glob",
  "lazy_static",
