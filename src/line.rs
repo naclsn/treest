@@ -189,7 +189,10 @@ pub fn split_line_args_cursor_indices(
     let mut in_double = false;
     let mut in_escape = false;
     let mut in_lookup = false;
+
     let mut lookup_name = String::new();
+    let mut lookup_cond = false;
+
     let mut last_k = 0;
     for (k, ch) in c.chars().enumerate() {
         last_k = k;
@@ -203,27 +206,39 @@ pub fn split_line_args_cursor_indices(
             cur.push(ch);
             in_escape = false;
         } else if in_lookup {
-            if '}' == ch {
-                let subst = lookup(&lookup_name);
-                if !subst.is_empty() {
-                    if in_double {
-                        // push all in cur with spaces
-                        cur.push_str(&subst.join(" "));
-                    } else {
-                        // push first in cur, then all in separate (stay on last one)
-                        let len = subst.len();
-                        cur.push_str(&subst[0]);
-                        if 1 < len {
-                            r.push(cur);
-                            r.extend_from_slice(&subst[1..len - 1]);
-                            cur = subst[len - 1].clone();
+            match (ch, lookup_cond) {
+                ('?', false) => {
+                    lookup_cond = lookup(&lookup_name)
+                        .first()
+                        .map(|x| !x.is_empty())
+                        .unwrap_or(false);
+                    lookup_name.clear();
+                }
+                (':', true) | ('}', false) => {
+                    let subst = lookup(&lookup_name);
+                    if !subst.is_empty() {
+                        if in_double {
+                            // push all in cur with spaces
+                            cur.push_str(&subst.join(" "));
+                        } else {
+                            // push first in cur, then all in separate (stay on last one)
+                            let len = subst.len();
+                            cur.push_str(&subst[0]);
+                            if 1 < len {
+                                r.push(cur);
+                                r.extend_from_slice(&subst[1..len - 1]);
+                                cur = subst[len - 1].clone();
+                            }
                         }
                     }
+                    lookup_name.clear();
                 }
-                lookup_name = String::new();
+                (':', false) => lookup_name.clear(),
+                _ => lookup_name.push(ch),
+            }
+            if '}' == ch {
                 in_lookup = false;
-            } else {
-                lookup_name.push(ch);
+                lookup_cond = false;
             }
         } else if in_simple {
             if '\'' == ch {
@@ -699,6 +714,12 @@ fn complete(p: &mut Prompt, lookup: &impl Fn(&str) -> Vec<String>) {
         match ch {
             '{' if 0 == in_obj => in_obj = k + 1,
             '.' if 0 != in_obj && 0 == in_ppt => in_ppt = k + 1,
+            '?' | ':' if 0 != in_obj => {
+                in_obj = k + 1;
+                in_ppt = 0;
+                obj.clear();
+                ppt.clear();
+            }
             '}' if 0 != in_obj => {
                 in_obj = 0;
                 in_ppt = 0;
@@ -713,7 +734,7 @@ fn complete(p: &mut Prompt, lookup: &impl Fn(&str) -> Vec<String>) {
 
     let res = if 0 != in_obj {
         if 0 != in_ppt {
-            ["file_name", "extension"]
+            ["relative", "file_name", "extension"]
                 .iter()
                 .filter(|it| it.starts_with(&ppt))
                 .map(|it| " ".repeat(in_ppt) + it)
