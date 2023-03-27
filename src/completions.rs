@@ -3,14 +3,25 @@ use dirs::home_dir;
 use std::{env, fmt, fs::Metadata, path::PathBuf};
 
 #[cfg(unix)]
-fn is_executable_like(_name: &str, meta: &Metadata) -> bool {
+fn is_executable_like(path: &PathBuf, meta: &Metadata) -> bool {
     use std::os::unix::fs::PermissionsExt;
-    meta.permissions().mode() & 0o111 != 0
+    if meta.is_symlink() {
+        if let Ok(meta) = path.metadata() {
+            meta.permissions()
+        } else {
+            meta.permissions()
+        }
+    } else {
+        meta.permissions()
+    }
+    .mode()
+        & 0o111
+        != 0
 }
 
 #[cfg(windows)]
-fn is_executable_like(name: &str, _meta: &Metadata) -> bool {
-    name.ends_with(".exe") || name.ends_with(".com")
+fn is_executable_like(path: &PathBuf, _meta: &Metadata) -> bool {
+    path.ends_with(".exe") || path.ends_with(".com")
 }
 
 #[derive(Clone)]
@@ -150,8 +161,8 @@ impl Completer {
                                                 ent.file_name().to_string_lossy().to_string();
                                             if name.starts_with(wor) {
                                                 ent.metadata().ok().and_then(|meta| {
-                                                    if meta.is_file()
-                                                        && is_executable_like(&name, &meta)
+                                                    if !meta.is_dir()
+                                                        && is_executable_like(&ent.path(), &meta)
                                                     {
                                                         Some(name + " ")
                                                     } else {

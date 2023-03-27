@@ -734,7 +734,7 @@ fn complete(p: &mut Prompt, lookup: &impl Fn(&str) -> Vec<String>) {
 
     let res = if 0 != in_obj {
         if 0 != in_ppt {
-            ["relative", "file_name", "extension"]
+            ["relative", "file-name", "extension"]
                 .iter()
                 .filter(|it| it.starts_with(&ppt))
                 .map(|it| " ".repeat(in_ppt) + it)
@@ -831,12 +831,12 @@ mod tests {
             (r#"a '\n' d"#, ["a", "\\n", "d"]),
             (r#"a "\n" d"#, ["a", "\\n", "d"]),
             (
-                r#"bind e expand shell_wait 'sh -c "$EDITOR {}"'"#,
-                ["bind", "e", "expand", "shell_wait", "sh -c \"$EDITOR {}\""]
+                r#"bind e expand shell-wait 'sh -c "$EDITOR {}"'"#,
+                ["bind", "e", "expand", "shell-wait", "sh -c \"$EDITOR {}\""]
             ),
             (
-                r#"bind a expand prompt_init '-> {} shell mv {}'"#,
-                ["bind", "a", "expand", "prompt_init", "-> {} shell mv {}"]
+                r#"bind a expand prompt-init '-> {} shell mv {}'"#,
+                ["bind", "a", "expand", "prompt-init", "-> {} shell mv {}"]
             ),
         ];
     }

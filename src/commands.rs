@@ -366,7 +366,7 @@ impl Default for CommandMap {
             ),
             ('?', help),
             (':', command),
-            ('/', (prompt, "/", "find_in")),
+            ('/', (prompt, "/", "find-in")),
             ('n', find_in_next),
             ('N', find_in_prev),
             ('H', fold_node),
@@ -745,7 +745,7 @@ make_lst! {
         |mut app: App, args: &[&str]| {
             if args.is_empty() {
                 app.message(Message::Warning(
-                    "find_and_toggle_marked needs a search string".to_string(),
+                    "find-and-toggle-marked needs a search string".to_string(),
                 ));
                 return app;
             }
@@ -777,7 +777,7 @@ make_lst! {
         |mut app: App, args: &[&str]| {
             if args.is_empty() {
                 app.message(Message::Warning(
-                    "find_in needs a search string".to_string()
+                    "find-in needs a search string".to_string()
                 ));
                 return app;
             }
@@ -1005,7 +1005,7 @@ make_lst! {
         "prompt for input with an initial value, then execute a command with it (the first argument should be the prompt text)",
         |mut app: App, args: &[&str]| {
             if args.len() < 3 {
-                app.message(Message::Warning("prompt_init needs a prompt text, an initial value, a command name and optional arguments".to_string()));
+                app.message(Message::Warning("prompt-init needs a prompt text, an initial value, a command name and optional arguments".to_string()));
                 return app;
             }
             if let Some(then) = COMMAND_MAP.get(args[2]) {
@@ -1207,7 +1207,7 @@ make_lst! {
                 Sorting::new(
                     prop,
                     match args.get(skip) {
-                        Some(&"dirs_first") => {
+                        Some(&"dirs-first") => {
                             skip += 1;
                             true
                         }
@@ -1241,7 +1241,7 @@ make_lst! {
                 "mtime",
                 "ctime",
             ]),
-            Completer::StaticWords(&["dirs_first", "reverse"]),
+            Completer::StaticWords(&["dirs-first", "reverse"]),
             Completer::StaticWords(&["reverse"]),
         ]),
     );

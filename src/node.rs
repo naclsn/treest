@@ -1,4 +1,5 @@
 use glob::Pattern;
+use lscolors::LsColors;
 use serde::{Deserialize, Serialize};
 use std::{
     cmp::Ordering,
@@ -262,6 +263,67 @@ fn cmp_in<T, C: Ord>(l: &Option<T>, r: &Option<T>, sel: fn(&T) -> C) -> Ordering
         .map_or(Ordering::Equal, |(m, o)| sel(m).cmp(&sel(o)))
 }
 
+fn lscolors_to_tui_color(lco: &lscolors::style::Color) -> Color {
+    match lco {
+        lscolors::style::Color::Black => Color::Black,
+        lscolors::style::Color::Red => Color::Red,
+        lscolors::style::Color::Green => Color::Green,
+        lscolors::style::Color::Yellow => Color::Yellow,
+        lscolors::style::Color::Blue => Color::Blue,
+        lscolors::style::Color::Magenta => Color::Magenta,
+        lscolors::style::Color::Cyan => Color::Cyan,
+        lscolors::style::Color::White => Color::Gray,
+        lscolors::style::Color::BrightBlack => Color::DarkGray,
+        lscolors::style::Color::BrightRed => Color::LightRed,
+        lscolors::style::Color::BrightGreen => Color::LightGreen,
+        lscolors::style::Color::BrightYellow => Color::LightYellow,
+        lscolors::style::Color::BrightBlue => Color::LightBlue,
+        lscolors::style::Color::BrightMagenta => Color::LightMagenta,
+        lscolors::style::Color::BrightCyan => Color::LightCyan,
+        lscolors::style::Color::BrightWhite => Color::White,
+        lscolors::style::Color::Fixed(k) => Color::Indexed(*k),
+        lscolors::style::Color::RGB(r, g, b) => Color::Rgb(*r, *g, *b),
+    }
+}
+
+fn lscolors_to_tui_style(lsy: &lscolors::style::Style) -> Style {
+    let mut r = Style::default();
+    if let Some(fg) = lsy.foreground.as_ref().map(lscolors_to_tui_color) {
+        r = r.fg(fg);
+    }
+    if let Some(bg) = lsy.background.as_ref().map(lscolors_to_tui_color) {
+        r = r.bg(bg);
+    }
+    if lsy.font_style.bold {
+        r = r.add_modifier(Modifier::BOLD);
+    }
+    if lsy.font_style.dimmed {
+        r = r.add_modifier(Modifier::DIM);
+    }
+    if lsy.font_style.italic {
+        r = r.add_modifier(Modifier::ITALIC);
+    }
+    if lsy.font_style.underline {
+        r = r.add_modifier(Modifier::UNDERLINED);
+    }
+    if lsy.font_style.slow_blink {
+        r = r.add_modifier(Modifier::SLOW_BLINK);
+    }
+    if lsy.font_style.rapid_blink {
+        r = r.add_modifier(Modifier::RAPID_BLINK);
+    }
+    if lsy.font_style.reverse {
+        r = r.add_modifier(Modifier::REVERSED);
+    }
+    if lsy.font_style.hidden {
+        r = r.add_modifier(Modifier::HIDDEN);
+    }
+    if lsy.font_style.strikethrough {
+        r = r.add_modifier(Modifier::CROSSED_OUT);
+    }
+    r
+}
+
 impl Node {
     pub fn new(path: PathBuf, meta: Metadata) -> io::Result<Node> {
         let info = if meta.is_dir() {
@@ -485,30 +547,10 @@ impl Node {
     }
 
     pub fn style(&self) -> Style {
-        let r = Style::default();
-        match &self.info {
-            NodeInfo::Dir { .. } => r.fg(Color::Blue).add_modifier(Modifier::BOLD),
-            NodeInfo::Link { target } => match target {
-                Ok(_node) => r.fg(Color::Cyan).add_modifier(Modifier::BOLD), // LS_COLOR allows using target's
-                Err(_path) => r
-                    .fg(Color::Red)
-                    .bg(Color::Black)
-                    .add_modifier(Modifier::CROSSED_OUT),
-            },
-            NodeInfo::File { kind } => match kind {
-                FileKind::NamedPipe => r.fg(Color::Yellow).bg(Color::Black),
-                FileKind::CharDevice => r
-                    .fg(Color::Yellow)
-                    .bg(Color::Black)
-                    .add_modifier(Modifier::BOLD),
-                FileKind::BlockDevice => r
-                    .fg(Color::Yellow)
-                    .bg(Color::Black)
-                    .add_modifier(Modifier::BOLD),
-                FileKind::Regular => r,
-                FileKind::Socket => r.fg(Color::Magenta).add_modifier(Modifier::BOLD),
-                FileKind::Executable => r.fg(Color::Green).add_modifier(Modifier::BOLD),
-            },
-        }
+        let ls_colors = LsColors::from_env().unwrap_or_default();
+        ls_colors
+            .style_for_path_with_metadata(&self.path, self.meta.as_ref())
+            .map(lscolors_to_tui_style)
+            .unwrap_or_else(Style::default)
     }
 }

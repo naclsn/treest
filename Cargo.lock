@@ -234,6 +234,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "lscolors"
+version = "0.13.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c2dedc85d67baf5327114fad78ab9418f8893b1121c17d5538dd11005ad1ddf2"
+
+[[package]]
 name = "mio"
 version = "0.8.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -491,6 +497,7 @@ dependencies = [
  "dirs",
  "glob",
  "lazy_static",
+ "lscolors",
  "serde",
  "serde_json",
  "signal-hook",

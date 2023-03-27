@@ -303,7 +303,7 @@ impl Internal {
                                 .to_string()
                         })
                         .collect(),
-                    "file_name" => nodes.iter().map(|it| it.file_name().to_string()).collect(),
+                    "file-name" => nodes.iter().map(|it| it.file_name().to_string()).collect(),
                     "extension" => nodes
                         .iter()
                         .map(|it| it.extension().unwrap_or("").to_string())
