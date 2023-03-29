@@ -723,7 +723,7 @@ make_lst! {
                 return app;
             }
             let search = args[0];
-            app.declare("search", search);
+            app.declare("search", &[search]);
             let (view, tree) = app.focused_and_tree_mut();
             let found = view.scan_to(tree, Movement::Forward, &mut |state, node| {
                 if node.file_name().contains(search) {
@@ -755,7 +755,7 @@ make_lst! {
                 ));
                 return app;
             };
-            app.declare("search", args[0]);
+            app.declare("search", &[args[0]]);
             let (view, tree) = app.focused_and_tree_mut();
             let mut count = 0;
             view.scan_to(tree, Movement::Forward, &mut |state, node| {
@@ -782,7 +782,7 @@ make_lst! {
                 return app;
             }
             let search = args[0];
-            app.declare("search", search);
+            app.declare("search", &[search]);
             app.focused_mut().leave();
             let (view, tree) = app.focused_and_tree_mut();
             let found = view.scan_to(tree, Movement::Forward, &mut |state, node| {
@@ -1043,7 +1043,7 @@ make_lst! {
             let Ok(_) = io::stdin().read_line(&mut line) else { return app; };
             let mut values = line.split_whitespace();
             for it in args {
-                app.declare(it, values.next().unwrap_or(""));
+                app.declare(it, &[values.next().unwrap_or("")]);
             }
             app
         },
@@ -1370,13 +1370,11 @@ make_lst! {
         |mut app: App, args: &[&str]| {
             if args.is_empty() {
                 app.message(Message::Warning(
-                    "declare needs a name and optional value".to_string(),
+                    "declare needs a name and optional values".to_string(),
                 ));
                 return app;
             }
-            let name = args[0];
-            let value = args.get(1).unwrap_or(&"");
-            app.declare(name, value);
+            app.declare(args[0], &args[1..]);
             app
         },
         Completer::None,

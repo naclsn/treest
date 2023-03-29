@@ -28,7 +28,7 @@ struct Internal {
     views: ViewTree,
     focus: Vec<usize>,
 
-    variables: HashMap<String, String>,
+    variables: HashMap<String, Vec<String>>,
 }
 
 impl Internal {
@@ -261,8 +261,11 @@ impl Internal {
         } {}
     }
 
-    pub fn declare(&mut self, name: &str, value: &str) {
-        self.variables.insert(name.to_string(), value.to_string());
+    pub fn declare(&mut self, name: &str, value: &[&str]) {
+        self.variables.insert(
+            name.to_string(),
+            value.iter().map(|it| it.to_string()).collect(),
+        );
     }
 
     pub fn lookup(&self, name: &str) -> Vec<String> {
@@ -314,7 +317,7 @@ impl Internal {
 
             (obj, "") => {
                 if let Some(it) = self.variables.get(obj) {
-                    vec![it.clone()]
+                    it.clone()
                 } else {
                     vec![]
                 }
@@ -616,7 +619,7 @@ impl App {
         self.i.focus_to_view(d, movement)
     }
 
-    pub fn declare(&mut self, name: &str, value: &str) {
+    pub fn declare(&mut self, name: &str, value: &[&str]) {
         self.i.declare(name, value)
     }
 
