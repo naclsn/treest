@@ -40,6 +40,7 @@ pub enum Completer {
     FileFromCursor,
 }
 
+// XXX: remove, unusable
 impl fmt::Display for Completer {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let depth = f.precision().unwrap_or(0);
@@ -148,48 +149,54 @@ impl Completer {
 
             Completer::PathLookup => {
                 let word = args[arg_idx];
-                let (k, _) = word.char_indices().nth(ch_idx).unwrap_or((word.len(), ' '));
-                let wor = &word[..k];
-                env::var_os("PATH")
-                    .map(|paths| {
-                        let mut r = env::split_paths(&paths)
-                            .filter_map(|dir| {
-                                dir.read_dir().ok().map(|ent_iter| {
-                                    ent_iter.filter_map(|maybe_ent| {
-                                        maybe_ent.ok().and_then(|ent| {
-                                            let name =
-                                                ent.file_name().to_string_lossy().to_string();
-                                            if name.starts_with(wor) {
-                                                ent.metadata().ok().and_then(|meta| {
-                                                    if !meta.is_dir()
-                                                        && is_executable_like(&ent.path(), &meta)
-                                                    {
-                                                        Some(name + " ")
-                                                    } else {
-                                                        None
-                                                    }
-                                                }) // ent |meta|
-                                            } else {
-                                                None
-                                            }
-                                        }) // maybe_ent |ent|
-                                    }) // ent_iter |maybe_ent|
-                                }) // dir |ent_iter|
-                            })
-                            .flatten()
-                            .collect::<Vec<String>>();
-                        r.sort_unstable();
-                        r.dedup();
-                        r
-                    })
-                    .unwrap_or(Vec::new())
+                if word.starts_with('/') {
+                    complete_file_from(args, arg_idx, ch_idx, "/", true)
+                } else if word.contains('/') {
+                    complete_file_from(args, arg_idx, ch_idx, &lookup("root")[0], true)
+                } else {
+                    let (k, _) = word.char_indices().nth(ch_idx).unwrap_or((word.len(), ' '));
+                    let wor = &word[..k];
+                    env::var_os("PATH")
+                        .map(|paths| {
+                            let mut r = env::split_paths(&paths)
+                                .filter_map(|dir| {
+                                    dir.read_dir().ok().map(|ent_iter| {
+                                        ent_iter.filter_map(|maybe_ent| {
+                                            maybe_ent.ok().and_then(|ent| {
+                                                let name =
+                                                    ent.file_name().to_string_lossy().to_string();
+                                                if name.starts_with(wor) {
+                                                    ent.metadata().ok().and_then(|meta| {
+                                                        if !meta.is_dir()
+                                                            && is_executable_like(&ent.path(), &meta)
+                                                        {
+                                                            Some(name + " ")
+                                                        } else {
+                                                            None
+                                                        }
+                                                    }) // ent |meta|
+                                                } else {
+                                                    None
+                                                }
+                                            }) // maybe_ent |ent|
+                                        }) // ent_iter |maybe_ent|
+                                    }) // dir |ent_iter|
+                                })
+                                .flatten()
+                                .collect::<Vec<String>>();
+                            r.sort_unstable();
+                            r.dedup();
+                            r
+                        })
+                        .unwrap_or(Vec::new())
+                }
             }
 
             Completer::FileFromRoot => {
-                complete_file_from(args, arg_idx, ch_idx, &lookup("root")[0])
+                complete_file_from(args, arg_idx, ch_idx, &lookup("root")[0], false)
             }
 
-            Completer::FileFromCursor => complete_file_from(args, arg_idx, ch_idx, &lookup("")[0]), // at cursor full path
+            Completer::FileFromCursor => complete_file_from(args, arg_idx, ch_idx, &lookup("")[0], false), // at cursor full path
         }
     }
 }
@@ -199,6 +206,7 @@ fn complete_file_from(
     arg_idx: usize,
     ch_idx: usize,
     path_from: &str,
+    filter_exec: bool,
 ) -> Vec<String> {
     let word = args[arg_idx];
     let (k, _) = word.char_indices().nth(ch_idx).unwrap_or((word.len(), ' '));
@@ -233,16 +241,17 @@ fn complete_file_from(
             let mut r: Vec<_> = ent_iter
                 .filter_map(|maybe_ent| {
                     maybe_ent.ok().and_then(|ent| {
+                        let path = ent.path();
                         let name = ent.file_name().to_string_lossy().to_string();
                         if let Some(stripped) = name.strip_prefix(search_for) {
                             match ent.metadata() {
-                                Ok(meta) => {
+                                Ok(meta) if !filter_exec || is_executable_like(&path, &meta) => {
                                     let mut opt = stripped.to_string();
                                     opt.push(if meta.is_dir() { '/' } else { ' ' });
                                     opt.insert_str(0, wor);
                                     Some(opt)
                                 }
-                                Err(_) => None,
+                                _ => None,
                             }
                         } else {
                             None
