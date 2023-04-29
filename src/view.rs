@@ -78,8 +78,12 @@ impl State {
         node: &Node,
         settings: &ViewSettings,
         out_path: &mut Vec<usize>,
-        out_path_cur: usize,
+        _out_path_cur: usize,
     ) -> State {
+        // TODO/FIXME: lsdkdajfieuars
+        let out_path_cur = 0;
+        if !out_path.is_empty() { out_path.clear(); }
+
         State {
             unfolded: self.unfolded,
             marked: self.marked,
@@ -136,8 +140,8 @@ impl State {
                 }
 
                 children
-            },
-        }
+            }, // children: ..
+        } // State { .. }
     }
 
     pub fn visible_height(&self) -> usize {
@@ -290,7 +294,7 @@ impl View {
 
     pub fn cursor_offset(&self) -> Offset {
         let acc = self
-            .cursor
+            .cursor_path()
             .iter()
             .fold((&self.root, 1), |(state, acc), idx| {
                 let r = 1
