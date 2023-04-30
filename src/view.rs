@@ -77,27 +77,25 @@ impl State {
         pnode: &Node,
         node: &Node,
         settings: &ViewSettings,
-        out_path: &mut Vec<usize>,
-        _out_path_cur: usize,
+        inout_path: &mut Vec<usize>, // path into 'self' related to 'pnode'; to update for new related to 'node'
+        path_cur: usize,
     ) -> State {
-        // TODO/FIXME: lsdkdajfieuars
-        let out_path_cur = 0;
-        if !out_path.is_empty() { out_path.clear(); }
-
         State {
             unfolded: self.unfolded,
             marked: self.marked,
             children: if !self.unfolded {
+                inout_path.truncate(path_cur);
                 Vec::new()
             } else {
                 let Some(plo_chs) = pnode.loaded_children() else { unreachable!() };
                 let Some(lo_chs) = node.loaded_children() else { unreachable!() };
 
                 let mut done = HashSet::<&str>::new();
+                let mut found_onpath = false;
 
                 let previous = &self.children;
                 let mut children = Vec::with_capacity(previous.len());
-                for (pk, st) in previous {
+                for (pidx, (pk, pst)) in previous.iter().enumerate() {
                     // get the name from the previous tree
                     let pch = &plo_chs[*pk];
                     let name = pch.file_name();
@@ -109,7 +107,12 @@ impl State {
                     let may_matching = lo_chs.iter().position(|ch| ch.file_name() == name);
                     if let Some(k) = may_matching {
                         let ch = &lo_chs[k];
-                        let st = st.renew(pch, ch, settings, out_path, out_path_cur + 1);
+                        let st = if path_cur < inout_path.len() && pidx == inout_path[path_cur] {
+                            found_onpath = true; // will need to update inout_path[path_cur] after sort/filter
+                            pst.renew(pch, ch, settings, inout_path, path_cur + 1)
+                        } else {
+                            pst.renew(pch, ch, settings, &mut Vec::new(), path_cur + 1)
+                        };
                         children.push((k, st));
                     }
                 } // for in previous
@@ -125,18 +128,21 @@ impl State {
                 let children = settings.correct_node_state_mapping(lo_chs, children);
 
                 // if the cursor was on a children of self
-                if out_path_cur < out_path.len() {
+                // and it was found when updating
+                if found_onpath {
                     // find where it should land in the new one
-                    let (pk, _) = &self.children[out_path[out_path_cur]];
+                    let (pk, _) = &previous[inout_path[path_cur]];
                     let name = plo_chs[*pk].file_name();
                     let may_matching = children
                         .iter()
                         .position(|(k, _)| lo_chs[*k].file_name() == name);
                     if let Some(idx) = may_matching {
-                        out_path[out_path_cur] = idx;
-                    } else {
-                        out_path.truncate(out_path_cur);
+                        inout_path[path_cur] = idx;
+                    } else { // turns out it got filtered out
+                        inout_path.truncate(path_cur);
                     }
+                } else { // no, did not find it
+                    inout_path.truncate(path_cur);
                 }
 
                 children
@@ -503,6 +509,10 @@ impl View {
     /// while trying to keep the same state (eg.
     /// unfolded, selected, cursor...)
     pub fn fixup(&mut self, ptree: &Tree, tree: &Tree) {
+        // XXX/TODO: could also update past-len idxs;
+        // for that will need an inout_path_len, won't be
+        // able to rely on inout_path.len() anymore
+        self.cursor.truncate(self.cursor_path_len);
         self.root = self
             .root
             .renew(&ptree.root, &tree.root, &self.settings, &mut self.cursor, 0);
