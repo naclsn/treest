@@ -203,6 +203,7 @@ pub fn split_line_args_cursor_indices(
         }
 
         if in_escape {
+            // TODO: '\\' line continuation?
             cur.push(ch);
             in_escape = false;
         } else if in_lookup {
@@ -278,7 +279,7 @@ pub fn split_line_args_cursor_indices(
                         done_with_cursor_stuff = true;
                     }
                 }
-                '#' if cur.is_empty() => break,
+                '#' if cur.is_empty() => break, // TODO: just skip until '\n'
                 _ => cur.push(ch),
             }
         }

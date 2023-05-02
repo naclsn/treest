@@ -380,7 +380,7 @@ impl Default for CommandMap {
                 'g',
                 [('g', {
                     Action::Fn(&StaticCommand {
-                        name: "",
+                        name: "(cursor_to_root)",
                         doc: "",
                         action: |mut app: App, _| {
                             app.focused_mut().cursor_to_root();
@@ -390,6 +390,28 @@ impl Default for CommandMap {
                     })
                 }),]
             ),
+            ('{', {
+                Action::Fn(&StaticCommand {
+                    name: "(cursor_to_first)",
+                    doc: "",
+                    action: |mut app: App, _| {
+                        app.focused_mut().cursor_to_first();
+                        app
+                    },
+                    comp: Completer::None,
+                })
+            }),
+            ('}', {
+                Action::Fn(&StaticCommand {
+                    name: "(cursor_to_last)",
+                    doc: "",
+                    action: |mut app: App, _| {
+                        app.focused_mut().cursor_to_last();
+                        app
+                    },
+                    comp: Completer::None,
+                })
+            }),
             ('y', (scroll_view, "-3")),
             ('e', (scroll_view, "3")),
             ('Y', (shift_view, "-3")),
@@ -1059,6 +1081,29 @@ make_lst! {
         Completer::None,
     );
 
+    rep = (
+        "repeat a command mutliple times",
+        |mut app: App, args: &[&str]| {
+            if args.len() < 2 {
+                app.message(Message::Warning("rep needs a count, a command and optional arguments".to_string()));
+                return app;
+            }
+            let Ok(count): Result<usize, _> = args[0].parse() else {
+                app.message(Message::Warning(format!("'{}' is not a valid count", args[0])));
+                return app;
+            };
+            let Some(act) = COMMAND_MAP.get(args[1]).map(|c| c.action) else {
+                app.message(Message::Warning(format!("unknown command: {}", args[1])));
+                return app;
+            };
+            for _ in 0..count {
+                app = act(app, &args[2..]);
+            }
+            app
+        },
+        Completer::None,
+    );
+
     scroll_view = (
         "scroll the focused view (vertically)",
         |mut app: App, args: &[&str]| {
@@ -1268,7 +1313,7 @@ make_lst! {
                 ))),
                 Ok(content) => {
                     for (k, com0_args) in content
-                        .lines()
+                        .lines() // TODO: '\\' line continuation?
                         .map(|l| split_line_args(l, &|name| vec![format!("{{{name}}}")])) // interpolation in not enabled when sourcing
                         .enumerate()
                         .filter(|(_, v)| !v.is_empty())

@@ -1,9 +1,9 @@
 use crate::commands::StaticCommand;
 use dirs::home_dir;
-use std::{env, fmt, fs::Metadata, path::PathBuf};
+use std::{env, fmt, fs::Metadata, path::Path, path::PathBuf};
 
 #[cfg(unix)]
-fn is_executable_like(path: &PathBuf, meta: &Metadata) -> bool {
+fn is_executable_like(path: &Path, meta: &Metadata) -> bool {
     use std::os::unix::fs::PermissionsExt;
     if meta.is_symlink() {
         if let Ok(meta) = path.metadata() {
@@ -20,7 +20,7 @@ fn is_executable_like(path: &PathBuf, meta: &Metadata) -> bool {
 }
 
 #[cfg(windows)]
-fn is_executable_like(path: &PathBuf, _meta: &Metadata) -> bool {
+fn is_executable_like(path: &Path, _meta: &Metadata) -> bool {
     path.ends_with(".exe") || path.ends_with(".com")
 }
 
@@ -168,7 +168,10 @@ impl Completer {
                                                 if name.starts_with(wor) {
                                                     ent.metadata().ok().and_then(|meta| {
                                                         if !meta.is_dir()
-                                                            && is_executable_like(&ent.path(), &meta)
+                                                            && is_executable_like(
+                                                                &ent.path(),
+                                                                &meta,
+                                                            )
                                                         {
                                                             Some(name + " ")
                                                         } else {
@@ -196,7 +199,9 @@ impl Completer {
                 complete_file_from(args, arg_idx, ch_idx, &lookup("root")[0], false)
             }
 
-            Completer::FileFromCursor => complete_file_from(args, arg_idx, ch_idx, &lookup("")[0], false), // at cursor full path
+            Completer::FileFromCursor => {
+                complete_file_from(args, arg_idx, ch_idx, &lookup("")[0], false)
+            } // at cursor full path
         }
     }
 }

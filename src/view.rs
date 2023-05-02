@@ -138,10 +138,12 @@ impl State {
                         .position(|(k, _)| lo_chs[*k].file_name() == name);
                     if let Some(idx) = may_matching {
                         inout_path[path_cur] = idx;
-                    } else { // turns out it got filtered out
+                    } else {
+                        // turns out it got filtered out
                         inout_path.truncate(path_cur);
                     }
-                } else { // no, did not find it
+                } else {
+                    // no, did not find it
                     inout_path.truncate(path_cur);
                 }
 
@@ -324,6 +326,25 @@ impl View {
         self.cursor_path_len = 0;
     }
 
+    pub fn cursor_to_first(&mut self) {
+        if 0 != self.cursor_path_len {
+            if let Some(idx) = self.cursor.get_mut(self.cursor_path_len - 1) {
+                *idx = 0;
+                self.cursor.truncate(self.cursor_path_len);
+            }
+        }
+    }
+
+    pub fn cursor_to_last(&mut self) {
+        if let Some(par) = self.at_parent() {
+            let len = par.children.len();
+            if let Some(idx) = self.cursor.get_mut(self.cursor_path_len - 1) {
+                *idx = len - 1;
+                self.cursor.truncate(self.cursor_path_len);
+            }
+        }
+    }
+
     pub fn visible_height(&self) -> usize {
         self.root.visible_height()
     }
@@ -445,20 +466,22 @@ impl View {
     pub fn next(&mut self) {
         if let Some(par) = self.at_parent() {
             let len = par.children.len();
-            self.cursor.truncate(self.cursor_path_len);
-            if let Some(idx) = self.cursor.last_mut() {
+            if let Some(idx) = self.cursor.get_mut(self.cursor_path_len - 1) {
                 if *idx + 1 < len {
-                    *idx += 1
+                    *idx += 1;
+                    self.cursor.truncate(self.cursor_path_len);
                 }
             }
         }
     }
 
     pub fn prev(&mut self) {
-        self.cursor.truncate(self.cursor_path_len);
-        if let Some(idx) = self.cursor.last_mut() {
-            if 0 < *idx {
-                *idx -= 1
+        if 0 != self.cursor_path_len {
+            if let Some(idx) = self.cursor.get_mut(self.cursor_path_len - 1) {
+                if 0 < *idx {
+                    *idx -= 1;
+                    self.cursor.truncate(self.cursor_path_len);
+                }
             }
         }
     }
