@@ -16,8 +16,8 @@ impl ViewSettings {
     fn make_node_state_mapping(&self, chs: &[Node]) -> io::Result<Vec<(usize, State)>> {
         let mut r: Vec<_> = chs
             .iter()
-            .filter(|ch| !self.filters.iter().any(|f| f.matches(ch)))
             .enumerate()
+            .filter(|(_, ch)| !self.filters.iter().any(|f| f.matches(ch)))
             .collect();
 
         r.sort_unstable_by(|(_, l), (_, r)| Node::cmp_by(l, r, self.sort));

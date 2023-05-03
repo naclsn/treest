@@ -17,7 +17,7 @@ use crossterm::{
 };
 use dirs::home_dir;
 use std::{
-    env::current_dir,
+    env::{current_dir, set_current_dir},
     error::Error,
     fs, io,
     path::{Component, Path, PathBuf},
@@ -108,6 +108,10 @@ fn run_app(args: Args) -> Result<(), Box<dyn Error>> {
     }
     .canonicalize()?;
     let save_at = get_save_path(&dir);
+
+    if args.changedir {
+        set_current_dir(&dir)?;
+    }
 
     let mut app = {
         if args.clearstate {

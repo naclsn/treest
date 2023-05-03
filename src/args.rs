@@ -7,6 +7,10 @@ pub struct Args {
     /// path to open at, defaults to current directory
     pub path: Option<PathBuf>,
 
+    /// move to the indicated directory first
+    #[arg(short = 'C', default_value_t = false)]
+    pub changedir: bool,
+
     /// do not load any existing state for this path
     #[arg(short = 'x', long, default_value_t = false)]
     pub clearstate: bool,
