@@ -677,7 +677,6 @@ make_lst! {
             match args {
                 [does @ ("add" | "remove" | "toggle"), what, ..] => {
                     let f = match *what {
-                        "git" => Filtering::new_git(),
                         "pattern" => Filtering::new_pattern({
                             if let Some(pat) = args.get(2) {
                                 pat.to_string()
@@ -686,6 +685,17 @@ make_lst! {
                                 return app;
                             }
                         }),
+                        "file" => {
+                            let Some(name) = args.get(2) else {
+                                app.message(Message::Warning("missing name of ignore file".to_string()));
+                                return app;
+                            };
+                            let Some(ye) = Filtering::new_ignore_file(name) else {
+                                app.message(Message::Warning(format!("could not read file '{}'", name)));
+                                return app;
+                            };
+                            ye
+                        },
                         "dotfiles" => Filtering::new_pattern(".*".to_string()),
                         incorrect => {
                             app.message(Message::Warning(format!(
@@ -730,7 +740,7 @@ make_lst! {
         },
         Completer::StaticNth(&[
             Completer::StaticWords(&["add", "remove", "clear", "list"]),
-            Completer::StaticWords(&["git", "pattern", "dotfiles"]),
+            Completer::StaticWords(&["pattern", "file", "dotfiles"]),
             Completer::None,
         ]),
     );

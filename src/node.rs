@@ -5,7 +5,7 @@ use std::{
     cmp::Ordering,
     collections::HashSet,
     fmt,
-    fs::{metadata, read_link, symlink_metadata, Metadata},
+    fs::{metadata, read_link, read_to_string, symlink_metadata, Metadata},
     io,
     path::{Path, PathBuf},
 };
@@ -42,15 +42,15 @@ impl Sorting {
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum Filtering {
-    Git,
-    Pattern(String), // XXX: cannot serialize Pattern
+    Pattern(String),                 // XXX: cannot serialize Pattern
+    IgnoreFile(String, Vec<String>), // same as above (the Vec)
 }
 
 impl PartialEq for Filtering {
     fn eq(&self, other: &Filtering) -> bool {
         match (self, other) {
-            (Filtering::Git, Filtering::Git) => true,
             (Filtering::Pattern(a), Filtering::Pattern(b)) => a == b,
+            (Filtering::IgnoreFile(a, _), Filtering::IgnoreFile(b, _)) => a == b,
             _ => false,
         }
     }
@@ -59,29 +59,50 @@ impl PartialEq for Filtering {
 impl fmt::Display for Filtering {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Filtering::Git => write!(f, "# git ignore"),
             Filtering::Pattern(pat) => write!(f, "{pat}"),
+            Filtering::IgnoreFile(name, pats) => {
+                write!(f, "# {name} ({} patterns)\n{}", pats.len(), pats.join("\n"))
+            }
         }
     }
 }
-
 impl Filtering {
-    pub fn new_git() -> Filtering {
-        Filtering::Git
-    }
     pub fn new_pattern(pat: String) -> Filtering {
         Filtering::Pattern(pat)
     }
 
+    pub fn new_ignore_file(name: &str) -> Option<Filtering> {
+        let Ok(text) = read_to_string(name) else { return None; };
+        Some(Filtering::IgnoreFile(
+            name.to_string(),
+            text.lines()
+                .map(|it| it.trim())
+                .filter(|it| !it.is_empty() && !it.starts_with('#') && !it.starts_with('!')) // YYY: does not handle negative patterns
+                .map(|it| it.replace('\\', ""))
+                .collect(),
+        ))
+    }
+
+    fn _matches_one(pat: &str, node: &Node) -> bool {
+        let pat = if let Some(bla) = pat.strip_suffix('/') {
+            if !node.is_dir() {
+                return false;
+            }
+            bla
+        } else {
+            pat
+        };
+        if let Ok(p) = Pattern::new(pat) {
+            return p.matches(node.file_name());
+        }
+        false
+    }
+
     pub fn matches(&self, node: &Node) -> bool {
         match self {
-            Filtering::Git => todo!(),
-            Filtering::Pattern(pat) => {
-                if let Ok(p) = Pattern::new(pat) {
-                    p.matches(node.file_name())
-                } else {
-                    true
-                }
+            Filtering::Pattern(pat) => Filtering::_matches_one(pat, node),
+            Filtering::IgnoreFile(_, pats) => {
+                pats.iter().any(|pat| Filtering::_matches_one(pat, node))
             }
         }
     }
