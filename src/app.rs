@@ -288,6 +288,7 @@ impl Internal {
                         .into_iter()
                         .map(|(_, node)| node)
                         .collect(),
+                    //"pwd" => current_dir().unwrap(), // TODO
                     _ => unreachable!(),
                 };
 

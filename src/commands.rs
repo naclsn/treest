@@ -16,7 +16,12 @@ use dirs::home_dir;
 use glob::Pattern;
 use lazy_static::lazy_static;
 use std::{
-    collections::HashMap, default::Default, fmt, fs, io, process::Command as SysCommand,
+    collections::HashMap,
+    default::Default,
+    env::{current_dir, set_current_dir},
+    fmt, fs, io,
+    path::PathBuf,
+    process::Command as SysCommand,
     str::FromStr,
 };
 use tui::layout::Direction;
@@ -417,7 +422,7 @@ impl Default for CommandMap {
             ('Y', (shift_view, "-3")),
             ('E', (shift_view, "3")),
             (':', (prompt, ":", "command")),
-            ('!', (prompt, "!", "shell")),
+            ('!', (prompt, "!", "sh")),
             ('<', (prompt, "<", "echo")),
             ('>', (prompt, ">", "read")),
         ])
@@ -580,6 +585,21 @@ make_lst! {
             app
         },
         Completer::None,
+    );
+
+    cd = (
+        "change the current working direcory",
+        |mut app, args| {
+            let Some(rel) = args.first() else {
+                app.message(Message::Warning("cd needs a path".to_string()));
+                return app;
+            };
+            if let Err(err) = set_current_dir(rel) {
+                app.message(Message::Error(format!("could not set working directory to '{rel}': {err}")));
+            }
+            app
+        },
+        Completer::FileFromRoot,
     );
 
     close_other_splits = (
@@ -1059,6 +1079,18 @@ make_lst! {
         ]),
     );
 
+    pwd = (
+        "print the current working directory",
+        |mut app, _| {
+            app.message(match current_dir() {
+                Ok(cwd) => Message::Info(cwd.to_string_lossy().to_string()),
+                Err(err) => Message::Error(format!("could not get working directory: {err}")),
+            });
+            app
+        },
+        Completer::None,
+    );
+
     quit = (
         "save the state and quit with successful exit status",
         |mut app: App, _| {
@@ -1089,6 +1121,33 @@ make_lst! {
             app
         },
         Completer::None,
+    );
+
+    reroot = (
+        "change the root of the tree, by default to the current working directory",
+        |mut app, args| {
+            let cwd = current_dir().unwrap();
+            let niw = if let Some(rel) = args.first() {
+                App::new({
+                    let r = Into::<PathBuf>::into(rel);
+                    if r.is_absolute() {
+                        r
+                    } else {
+                        cwd.join(r)
+                    }
+                })
+            } else {
+                App::new(cwd)
+            };
+            match niw {
+                Ok(app) => app,
+                Err(err) => {
+                    app.message(Message::Error(format!("could not create root: {err}")));
+                    app
+                }
+            }
+        },
+        Completer::FileFromRoot,
     );
 
     rep = (
@@ -1144,7 +1203,7 @@ make_lst! {
         Completer::None,
     );
 
-    shell = (
+    sh = (
         "execute a shell command for its output, passing the rest as arguments",
         |mut app: App, args: &[&str]| {
             match args {
@@ -1165,7 +1224,7 @@ make_lst! {
                     }
                 },
                 _ => app.message(Message::Warning(
-                    "shell needs an executable name and optional arguments".to_string(),
+                    "sh needs an executable name and optional arguments".to_string(),
                 )),
             }
             app
@@ -1173,7 +1232,7 @@ make_lst! {
         Completer::StaticNth(&[Completer::PathLookup, Completer::FileFromRoot]),
     );
 
-    shell_wait = (
+    sh_wait = (
         "execute a shell command and wait for it to finish, passing the rest as arguments",
         |mut app: App, args: &[&str]| {
             match args {
@@ -1201,7 +1260,7 @@ make_lst! {
                     }));
                 }
                 _ => app.message(Message::Warning(
-                    "shell needs an executable name and optional arguments".to_string(),
+                    "sh-wait needs an executable name and optional arguments".to_string(),
                 )),
             }
             app
