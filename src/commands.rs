@@ -189,9 +189,16 @@ impl FromStr for Key {
                 })
             }
 
-            Some('F') => Ok(Key {
-                kch: KeyCode::F(chs.collect::<String>().parse().unwrap()),
-                kmod: KeyModifiers::NONE,
+            Some('F') => Ok({
+                let rest = &s[1..];
+                if rest.is_empty() {
+                    'F'.into()
+                } else {
+                    Key {
+                        kch: KeyCode::F(rest.parse().unwrap()),
+                        kmod: KeyModifiers::NONE,
+                    }
+                }
             }),
 
             Some(ch) => Ok(ch.into()),

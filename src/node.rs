@@ -252,8 +252,8 @@ fn meta_to_string(meta: &Metadata) -> String {
 
 #[cfg(windows)]
 fn meta_to_string(meta: &Metadata) -> String {
-    use std::os::windows::fs::FileTypeExt;
-    use std::os::windows::fs::PermissionsExt;
+    //use std::os::windows::fs::FileTypeExt;
+    //use std::os::windows::fs::PermissionsExt;
 
     let ro = meta.permissions().readonly();
     let ft = meta.file_type();
