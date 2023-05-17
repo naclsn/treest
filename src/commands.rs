@@ -700,6 +700,7 @@ make_lst! {
     filter = (
         "add or remove filters",
         |mut app: App, args: &[&str]| {
+            let is_sourcing = app.get_sourcing().is_none();
             let (view, tree) = app.focused_and_tree_mut();
             match args {
                 [does @ ("add" | "remove" | "toggle"), what, ..] => {
@@ -737,11 +738,15 @@ make_lst! {
                         "toggle" => view.toggle_filtering(f),
                         _ => unreachable!(),
                     }
-                    view.fixup(tree, tree);
+                    if is_sourcing {
+                        view.fixup(tree, tree);
+                    }
                 }
                 ["clear", ..] => {
                     view.clear_filtering();
-                    view.fixup(tree, tree);
+                    if is_sourcing {
+                        view.fixup(tree, tree);
+                    }
                 }
                 ["list", ..] | [] => {
                     let l = view.list_filtering();
@@ -1323,6 +1328,7 @@ make_lst! {
                 }
             };
             let mut skip = 1;
+            let is_sourcing = app.get_sourcing().is_none();
             let (view, tree) = app.focused_and_tree_mut();
             view.set_sorting(
                 Sorting::new(
@@ -1344,7 +1350,9 @@ make_lst! {
                 },
             );
             // (tree not changed, hence same)
-            view.fixup(tree, tree);
+            if is_sourcing {
+                view.fixup(tree, tree);
+            }
             // if let Some(rest) = args.get(skip) {
             //     app.message(Message::Warning(format!(
             //         "unknown extraneous argument '{rest}'"
@@ -1388,6 +1396,7 @@ make_lst! {
                     "could not read file {filename}: {err}"
                 ))),
                 Ok(content) => {
+                    app.set_sourcing(Some(filename.clone()));
                     for (k, com0_args) in content
                         .lines() // TODO: '\\' line continuation?
                         .map(|l| split_line_args(l, &|name| vec![format!("{{{name}}}")])) // interpolation in not enabled when sourcing
@@ -1401,6 +1410,7 @@ make_lst! {
                         };
                         app = act(app, &args.iter().map(String::as_str).collect::<Vec<_>>());
                     }
+                    app.set_sourcing(None);
                     app.message(Message::Info(format!("successfully sourced {filename}")));
                 } // Ok
             } // match
@@ -1496,6 +1506,29 @@ make_lst! {
                 return app;
             }
             app.declare(args[0], &args[1..]);
+            app
+        },
+        Completer::None,
+    );
+
+    var_list = (
+        "list all declared variable names (not including built-ins), a glob of names to list can be provided",
+        |mut app: App, args| {
+            let mut s = "".to_string();
+            if let Some(p) = args.first().and_then(|ps| Pattern::new(ps).ok()) {
+                for it in app.var_list() {
+                    if p.matches(it) {
+                        s+= it;
+                        s+= "\n";
+                    }
+                }
+            } else {
+                for it in app.var_list() {
+                    s+= it;
+                    s+= "\n";
+                }
+            }
+            app.message(Message::Info(s));
             app
         },
         Completer::None,

@@ -327,6 +327,10 @@ impl Internal {
             _ => todo!("taking propery on arbitrary variables"),
         }
     }
+
+    pub fn var_list(&self) -> Vec<&String> {
+        self.variables.keys().collect()
+    }
 }
 
 #[derive(Serialize, Deserialize)]
@@ -343,6 +347,8 @@ pub struct App {
     pause: bool,
     #[serde(skip_serializing, skip_deserializing)]
     in_restored: Option<Box<dyn FnOnce(App) -> App>>,
+    #[serde(skip_serializing, skip_deserializing)]
+    sourcing: Option<String>,
 }
 
 fn draw_r<B: Backend>(
@@ -430,6 +436,7 @@ impl App {
             quit: false,
             pause: false,
             in_restored: None,
+            sourcing: None,
         })
     }
 
@@ -582,6 +589,14 @@ impl App {
         self
     }
 
+    pub fn set_sourcing(&mut self, v: Option<String>) {
+        self.sourcing = v;
+    }
+
+    pub fn get_sourcing(&self) -> Option<&String> {
+        self.sourcing.as_ref()
+    }
+
     pub fn focused(&self) -> &View {
         self.i.focused()
     }
@@ -626,5 +641,9 @@ impl App {
 
     pub fn lookup(&self, name: &str) -> Vec<String> {
         self.i.lookup(name)
+    }
+
+    pub fn var_list(&self) -> Vec<&String> {
+        self.i.var_list()
     }
 }
