@@ -333,6 +333,16 @@ impl Internal {
     }
 }
 
+#[derive(Default)]
+pub enum AppState {
+    #[default]
+    None,
+    Quit,
+    Pause,
+    Pending(Box<dyn FnOnce(App) -> App>),
+    Sourcing(String),
+}
+
 #[derive(Serialize, Deserialize)]
 pub struct App {
     i: Internal,
@@ -341,15 +351,18 @@ pub struct App {
     bindings: CommandMap,
     #[serde(skip_serializing, skip_deserializing)]
     status: Status,
+
     #[serde(skip_serializing, skip_deserializing)]
-    quit: bool,
-    #[serde(skip_serializing, skip_deserializing)]
-    pause: bool,
-    #[serde(skip_serializing, skip_deserializing)]
-    in_restored: Option<Box<dyn FnOnce(App) -> App>>,
-    #[serde(skip_serializing, skip_deserializing)]
-    sourcing: Option<String>,
+    pub state: AppState,
 }
+
+// impl WatchEventHandler for App {
+//     fn handle_event(&mut self, event: notify::Result<notify::Event>) {
+//         if let Ok(event) = event {
+//             println!("Event: {:?}", event);
+//         }
+//     }
+// }
 
 fn draw_r<B: Backend>(
     view_node: &mut ViewTree,
@@ -433,10 +446,7 @@ impl App {
 
             bindings: CommandMap::default(),
             status: Status::default(),
-            quit: false,
-            pause: false,
-            in_restored: None,
-            sourcing: None,
+            state: AppState::None,
         })
     }
 
@@ -462,35 +472,6 @@ impl App {
 
     pub fn get_bindings(&self) -> &CommandMap {
         &self.bindings
-    }
-
-    pub fn finish(&mut self) {
-        self.quit = true;
-    }
-    pub fn done(&self) -> bool {
-        self.quit
-    }
-
-    pub fn pause(&mut self) {
-        self.pause = true;
-    }
-    pub fn resume(&mut self) {
-        self.pause = false;
-    }
-    pub fn stopped(&self) -> bool {
-        self.pause
-    }
-
-    pub fn pending(&self) -> bool {
-        self.in_restored.is_some()
-    }
-    pub fn execute_in_restored(&mut self, f: Box<dyn FnOnce(App) -> App>) {
-        self.in_restored = Some(f);
-    }
-    pub fn do_execute_in_restored(mut self) -> App {
-        let f = self.in_restored.unwrap();
-        self.in_restored = None;
-        f(self)
     }
 
     pub fn draw<B: Backend>(&mut self, f: &mut Frame<'_, B>) {
@@ -544,11 +525,11 @@ impl App {
             if key.modifiers.contains(KeyModifiers::CONTROL) {
                 match key.code {
                     KeyCode::Char('c') => {
-                        self.finish();
+                        self.state = AppState::Quit;
                         return self;
                     }
                     KeyCode::Char('z') => {
-                        self.pause();
+                        self.state = AppState::Pause;
                         return self;
                     }
                     _ => (),
@@ -587,14 +568,6 @@ impl App {
             //     }
         }
         self
-    }
-
-    pub fn set_sourcing(&mut self, v: Option<String>) {
-        self.sourcing = v;
-    }
-
-    pub fn get_sourcing(&self) -> Option<&String> {
-        self.sourcing.as_ref()
     }
 
     pub fn focused(&self) -> &View {

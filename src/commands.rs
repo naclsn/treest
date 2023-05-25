@@ -4,7 +4,7 @@
 /// one after the other. Finally a `StaticCommand` is a rust `fn`
 /// (the actual action) with some meta (such as name/doc/completion).
 use crate::{
-    app::App,
+    app::{App, AppState},
     completions::Completer,
     line::{split_line_args, Message},
     node::{Filtering, Movement, Sorting, SortingProp},
@@ -700,7 +700,7 @@ make_lst! {
     filter = (
         "add or remove filters",
         |mut app: App, args: &[&str]| {
-            let is_sourcing = app.get_sourcing().is_none();
+            let is_sourcing = matches!(app.state, AppState::Sourcing(_));
             let (view, tree) = app.focused_and_tree_mut();
             match args {
                 [does @ ("add" | "remove" | "toggle"), what, ..] => {
@@ -1106,7 +1106,7 @@ make_lst! {
     quit = (
         "save the state and quit with successful exit status",
         |mut app: App, _| {
-            app.finish();
+            app.state = AppState::Quit;
             app
         },
         Completer::None,
@@ -1251,7 +1251,7 @@ make_lst! {
                 [h, t @ ..] => {
                     let h = h.to_string();
                     let t = t.iter().map(|s| s.to_string()).collect::<Vec<_>>();
-                    app.execute_in_restored(Box::new(|mut app| {
+                    app.state = AppState::Pending(Box::new(|mut app| {
                         match SysCommand::new(h).args(t).status() {
                             Ok(res) => {
                                 if res.success() {
@@ -1328,7 +1328,7 @@ make_lst! {
                 }
             };
             let mut skip = 1;
-            let is_sourcing = app.get_sourcing().is_none();
+            let is_sourcing = matches!(app.state, AppState::Sourcing(_));
             let (view, tree) = app.focused_and_tree_mut();
             view.set_sorting(
                 Sorting::new(
@@ -1396,7 +1396,8 @@ make_lst! {
                     "could not read file {filename}: {err}"
                 ))),
                 Ok(content) => {
-                    app.set_sourcing(Some(filename.clone()));
+                    let pstate = app.state;
+                    app.state = AppState::Sourcing(filename.clone());
                     for (k, com0_args) in content
                         .lines() // TODO: '\\' line continuation?
                         .map(|l| split_line_args(l, &|name| vec![format!("{{{name}}}")])) // interpolation in not enabled when sourcing
@@ -1410,7 +1411,7 @@ make_lst! {
                         };
                         app = act(app, &args.iter().map(String::as_str).collect::<Vec<_>>());
                     }
-                    app.set_sourcing(None);
+                    app.state = pstate;
                     app.message(Message::Info(format!("successfully sourced {filename}")));
                 } // Ok
             } // match

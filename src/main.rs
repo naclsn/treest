@@ -8,7 +8,11 @@ mod textblock;
 mod tree;
 mod view;
 
-use crate::{app::App, args::Args, commands::Action};
+use crate::{
+    app::{App, AppState},
+    args::Args,
+    commands::Action,
+};
 use clap::Parser;
 use crossterm::{
     event, //::{self, DisableMouseCapture, EnableMouseCapture},
@@ -134,24 +138,31 @@ fn run_app(args: Args) -> Result<(), Box<dyn Error>> {
 
     let mut terminal = TerminalWrap::new(io::stderr())?;
 
-    while !app.done() {
+    loop {
         terminal.0.draw(|f| app.draw(f))?;
         app = app.do_event(&event::read()?);
 
-        if app.stopped() {
-            #[cfg(not(windows))]
-            {
+        match app.state {
+            AppState::None => (),
+            AppState::Quit => break,
+            AppState::Pause => {
+                #[cfg(not(windows))]
+                {
+                    terminal.release()?;
+                    signal_hook::low_level::raise(signal_hook::consts::signal::SIGTSTP)?;
+                    terminal.regrab()?;
+                    terminal.0.clear()?;
+                }
+                app.state = AppState::None;
+            }
+            AppState::Pending(does) => {
                 terminal.release()?;
-                signal_hook::low_level::raise(signal_hook::consts::signal::SIGTSTP)?;
+                app.state = AppState::None;
+                app = does(app);
                 terminal.regrab()?;
                 terminal.0.clear()?;
             }
-            app.resume();
-        } else if app.pending() {
-            terminal.release()?;
-            app = app.do_execute_in_restored();
-            terminal.regrab()?;
-            terminal.0.clear()?;
+            AppState::Sourcing(_) => unreachable!(),
         }
     }
 
