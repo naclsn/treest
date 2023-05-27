@@ -160,7 +160,7 @@ impl fmt::Display for Node {
             NodeInfo::Link { target } => {
                 write!(f, "{indent}{name}@ -> ")?;
                 match target {
-                    Ok(node) => write!(f, "{node}"),
+                    Ok(node) => write!(f, "{}", node.path.to_string_lossy()),
                     Err(path) => write!(f, "~{}~", path.to_string_lossy()),
                 }
             }
@@ -554,7 +554,7 @@ impl Node {
         match &self.info {
             NodeInfo::Dir { .. } => "/".to_string(),
             NodeInfo::Link { target } => match target {
-                Ok(node) => format!("@ -> {}{}", node.file_name(), node.decoration()),
+                Ok(node) => format!("@ -> {}{}", node.path.to_string_lossy(), node.decoration()),
                 Err(path) => format!("@ ~> {}", path.to_string_lossy()),
             },
             NodeInfo::File { kind } => match kind {
