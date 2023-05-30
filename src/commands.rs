@@ -1237,7 +1237,12 @@ make_lst! {
                             ));
                         } else {
                             app.message(Message::Warning(
-                                String::from_utf8_lossy(&res.stderr).to_string(),
+                                String::from_utf8_lossy(&if res.stderr.is_empty() {
+                                    res.stdout
+                                } else {
+                                    res.stderr
+                                })
+                                .to_string(),
                             ));
                         }
                     }

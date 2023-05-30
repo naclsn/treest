@@ -833,12 +833,27 @@ mod tests {
             (r#"a '\n' d"#, ["a", "\\n", "d"]),
             (r#"a "\n" d"#, ["a", "\\n", "d"]),
             (
-                r#"bind e expand shell-wait 'sh -c "$EDITOR {}"'"#,
-                ["bind", "e", "expand", "shell-wait", "sh -c \"$EDITOR {}\""]
+                r#"bind e expand sh-wait 'sh -c "$EDITOR {}"'"#,
+                ["bind", "e", "expand", "sh-wait", "sh -c \"$EDITOR {}\""]
             ),
             (
-                r#"bind a expand prompt-init '-> {} shell mv {}'"#,
-                ["bind", "a", "expand", "prompt-init", "-> {} shell mv {}"]
+                r#"bind a expand prompt-init '-> {} sh mv {}'"#,
+                ["bind", "a", "expand", "prompt-init", "-> {} sh mv {}"]
+            ),
+            (
+                //r#"bind 'x d' expand sh-wait 'sh -c "xxd -g1 '\''{some}'\'' | hx"'"#,
+                r#"bind 'x d' expand sh-wait 'sh -c "xxd -g1 '\'\{some}\'' | hx"'"#,
+                [
+                    "bind",
+                    "x d",
+                    "expand",
+                    "sh-wait",
+                    r#"sh -c "xxd -g1 '{some}' | hx""#
+                ]
+            ),
+            (
+                r#"sh -c "xxd -g1 '{some}' | hx""#,
+                ["sh", "-c", "xxd -g1 'name:some' | hx"]
             ),
         ];
     }

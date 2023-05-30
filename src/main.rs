@@ -214,6 +214,8 @@ fn run_app(args: Args) -> Result<(), Box<dyn Error>> {
         event = cvar.wait(event).unwrap();
     }
 
+    // TODO: get each views' root paths and save individually there
+    //       so that is plays better with reroot
     if let Some(parent) = save_at.parent() {
         if !parent.exists() {
             fs::create_dir_all(parent)?;
