@@ -130,7 +130,10 @@ impl StatefulWidget for Line<'_> {
                 }),
                 area.width - 2,
             );
-        } else if let Some(m) = &state.message {
+            return;
+        } // if Some state.input
+
+        if let Some(m) = &state.message {
             let (text, style) = match m {
                 Message::Info(text) => (text, Style::default()),
                 Message::Warning(text) => (text, Style::default().fg(Color::Yellow)),
@@ -140,33 +143,31 @@ impl StatefulWidget for Line<'_> {
             let width = area.width as usize;
             state.message_tb = Some(TextBlock::wrapped(text, width, style));
         } else {
-            {
-                let (_, node) = self.focused.at_cursor_pair(self.tree);
-                buf.set_spans(
-                    area.x + 1,
-                    area.y,
-                    &Spans::from(vec![
-                        Span::raw(node.meta_to_string()),
-                        Span::raw(" "),
-                        Span::styled(node.file_name(), node.style()),
-                        Span::raw(node.decoration()),
-                    ]),
-                    area.width - 1,
-                );
-            }
+            let (_, node) = self.focused.at_cursor_pair(self.tree);
+            buf.set_spans(
+                area.x + 1,
+                area.y,
+                &Spans::from(vec![
+                    Span::raw(node.meta_to_string()),
+                    Span::raw(" "),
+                    Span::styled(node.file_name(), node.style()),
+                    Span::raw(node.decoration()),
+                ]),
+                area.width - 1,
+            );
+        }
 
-            if !state.pending.is_empty() {
-                buf.set_string(
-                    area.x + area.width - state.pending.len() as u16 - 1,
-                    area.y,
-                    state
-                        .pending
-                        .iter()
-                        .map(|k| k.to_string())
-                        .collect::<String>(),
-                    Style::default(),
-                );
-            }
+        if !state.pending.is_empty() {
+            buf.set_string(
+                area.x + area.width - state.pending.len() as u16 - 1,
+                area.y,
+                state
+                    .pending
+                    .iter()
+                    .map(|k| k.to_string())
+                    .collect::<String>(),
+                Style::default(),
+            );
         }
     }
 }
