@@ -1140,14 +1140,24 @@ make_lst! {
         |mut app, args| {
             let cwd = current_dir().unwrap();
             let niw = if let Some(rel) = args.first() {
-                App::new({
-                    let r = Into::<PathBuf>::into(rel);
-                    if r.is_absolute() {
-                        r
-                    } else {
-                        cwd.join(r)
+                App::new(
+                    match {
+                        let r = Into::<PathBuf>::into(rel);
+                        if r.is_absolute() {
+                            r
+                        } else {
+                            cwd.join(r)
+                        }
                     }
-                })
+                    .canonicalize()
+                    {
+                        Ok(path) => path,
+                        Err(err) => {
+                            app.message(Message::Error(format!("{err}")));
+                            return app;
+                        }
+                    },
+                )
             } else {
                 App::new(cwd)
             };

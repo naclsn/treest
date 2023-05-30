@@ -431,6 +431,7 @@ fn draw_r<B: Backend>(
 }
 
 impl App {
+    /// rem: the path should be canonical!
     pub fn new(path: PathBuf) -> io::Result<App> {
         let mut tree = Tree::new(path)?;
         let mut view = View::new(&tree.root)?;
