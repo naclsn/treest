@@ -18,3 +18,4 @@ serde_json = "1.0.91"
 signal-hook = "0.3.14"
 tui = { version = "0.19.0", features = ["crossterm", "serde"] }
 lscolors = { version = "0.13.0", default-features = false, features = [] }
+notify = "6.0.0"

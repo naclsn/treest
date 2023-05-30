@@ -15,16 +15,19 @@ use crate::{
 };
 use clap::Parser;
 use crossterm::{
-    event, //::{self, DisableMouseCapture, EnableMouseCapture},
+    event::{self, Event as IOEvent}, //::{self, DisableMouseCapture, EnableMouseCapture},
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
 use dirs::home_dir;
+use notify::{recommended_watcher, Event as FSEvent, RecursiveMode, Watcher};
 use std::{
     env::{current_dir, set_current_dir},
     error::Error,
     fs, io,
     path::{Component, Path, PathBuf},
+    sync::{Arc, Condvar, Mutex},
+    thread,
 };
 use tui::{backend::CrosstermBackend, terminal::Terminal};
 
@@ -99,6 +102,13 @@ fn get_default_userconf_path() -> PathBuf {
     acc
 }
 
+#[derive(Debug)]
+enum ExternalEvent {
+    None,
+    IOEvent(IOEvent),
+    FSEvent(FSEvent),
+}
+
 fn run_app(args: Args) -> Result<(), Box<dyn Error>> {
     let cwd = current_dir()?;
 
@@ -137,10 +147,45 @@ fn run_app(args: Args) -> Result<(), Box<dyn Error>> {
     }
 
     let mut terminal = TerminalWrap::new(io::stderr())?;
+    // draw once as soon as possible
+    terminal.0.draw(|f| app.draw(f))?;
+
+    let ex_event = Arc::new((Mutex::new(ExternalEvent::None), Condvar::new()));
+
+    // setup events: IO (user inputs) and FS (files add/rm)
+    let ex_event_io_clone = Arc::clone(&ex_event); // moved
+    thread::spawn(move || {
+        while let Ok(io_ev) = event::read() {
+            let (lock, cvar) = &*ex_event_io_clone;
+            let mut ev = lock.lock().unwrap();
+            *ev = ExternalEvent::IOEvent(io_ev);
+            cvar.notify_one();
+        }
+    });
+
+    let ex_event_fs_clone = Arc::clone(&ex_event); // moved
+    let mut watcher = recommended_watcher(move |res| {
+        if let Ok(fs_ev) = res {
+            let (lock, cvar) = &*ex_event_fs_clone;
+            let mut ev = lock.lock().unwrap();
+            *ev = ExternalEvent::FSEvent(fs_ev);
+            cvar.notify_one();
+        }
+    })?;
+    // TODO: pass `watcher` to `app` and such, watch unfolded
+    // directory non-recursively (carefull of recursive symlinks!)
+    watcher.watch(Path::new("."), RecursiveMode::NonRecursive)?;
+
+    let (lock, cvar) = &*ex_event;
+    let mut event = lock.lock().unwrap();
 
     loop {
-        terminal.0.draw(|f| app.draw(f))?;
-        app = app.do_event(&event::read()?);
+        app = match &*event {
+            ExternalEvent::None => app,
+            ExternalEvent::IOEvent(io_ev) => app.do_event(io_ev),
+            ExternalEvent::FSEvent(_fs_ev) => Action::Fn(&commands::cmd::reload).apply(app, &[]),
+        };
+        *event = ExternalEvent::None;
 
         match app.state {
             AppState::None => (),
@@ -164,6 +209,9 @@ fn run_app(args: Args) -> Result<(), Box<dyn Error>> {
             }
             AppState::Sourcing(_) => unreachable!(),
         }
+
+        terminal.0.draw(|f| app.draw(f))?;
+        event = cvar.wait(event).unwrap();
     }
 
     if let Some(parent) = save_at.parent() {
