@@ -1,8 +1,12 @@
 [package]
 name = "treest"
-version = "0.2.1"
+version = "0.2.2"
 edition = "2021"
 description = "Visually explore a file tree."
+license = "MIT"
+repository = "https://github.com/naclsn/treest"
+keywords = ["tree", "filesystem", "tui"]
+categories = ["command-line-utilities", "filesystem"]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 

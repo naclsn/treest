@@ -24,3 +24,19 @@ Options:
   -h, --help                 Print help
   -V, --version              Print version
 ```
+
+### Config
+
+When invoked, treest `:source`s the given file (with `-u`) or `$HOME/.config/treest` by default.
+An example might look like:
+```sh
+sort extension dirs-first
+filter add dotfiles
+filter add file .gitignore
+filter add file .ignore
+bind <C-h> seq 'filter toggle dotfiles' 'filter toggle file .gitignore' 'filter toggle file .ignore'
+bind <C-l> reload
+```
+[(see mine here)](https://github.com/naclsn/dotfiles/blob/main/.config/treest)
+
+To see a list of existing commands use `:help`, for help on a specific command use `:help <command-name>`.
