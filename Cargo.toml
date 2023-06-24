@@ -12,7 +12,7 @@ categories = ["command-line-utilities", "filesystem"]
 
 [dependencies]
 clap = { version = "4.1.4", features = ["derive"] }
-dash_conversion = { path = "dash_conversion" }
+dash_conversion = { version = "0.1.0", path = "dash_conversion" }
 crossterm = "0.25.0"
 dirs = "4.0.0"
 glob = "0.3.1"
