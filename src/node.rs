@@ -176,8 +176,8 @@ impl fmt::Display for Node {
 }
 
 #[cfg(unix)]
-impl From<&Metadata> for FileKind {
-    fn from(meta: &Metadata) -> FileKind {
+impl FileKind {
+    fn from(_path: &Path, meta: &Metadata) -> FileKind {
         use std::os::unix::fs::FileTypeExt;
         use std::os::unix::fs::PermissionsExt;
         let ft = meta.file_type();
@@ -198,9 +198,13 @@ impl From<&Metadata> for FileKind {
 }
 
 #[cfg(windows)]
-impl From<&Metadata> for FileKind {
-    fn from(meta: &Metadata) -> FileKind {
-        FileKind::Regular
+impl FileKind {
+    fn from(path: &Path, _meta: &Metadata) -> FileKind {
+        if path.ends_with(".exe") || path.ends_with(".com") {
+            FileKind::Executable
+        } else {
+            FileKind::Regular
+        }
     }
 }
 
@@ -364,7 +368,7 @@ impl Node {
             }
         } else {
             NodeInfo::File {
-                kind: (&meta).into(),
+                kind: FileKind::from(&path, &meta),
             }
         };
 

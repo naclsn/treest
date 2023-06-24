@@ -110,6 +110,21 @@ mod key_names {
     pub const INSERT: &str = "insert";
 }
 
+#[cfg(unix)]
+const fn char_to_key_needs_shift(ch: char) -> bool {
+    return ch.is_ascii_uppercase();
+}
+
+// XXX: no idea if this truly is a Windows-specific jank :-(
+//      also this will only be for a qwerty-us :-(
+#[cfg(windows)]
+const fn char_to_key_needs_shift(ch: char) -> bool {
+    return match ch {
+        '~'|'!'|'@'|'#'|'$'|'%'|'^'|'&'|'*'|'('|')'|'_'|'+'|'{'|'}'|':'|'"'|'|'|'<'|'>'|'?' => true,
+        _ => ch.is_ascii_uppercase(),
+    }
+}
+
 // ZZZ: might be temporary
 impl From<char> for Key {
     fn from(ch: char) -> Key {
@@ -221,7 +236,7 @@ impl fmt::Display for Key {
 
         if self.kmod.contains(KeyModifiers::SHIFT) {
             match self.kch {
-                KeyCode::Char(ch) if ch.is_ascii_uppercase() => (),
+                KeyCode::Char(ch) if char_to_key_needs_shift(ch) => (),
                 _ => {
                     putmod(f)?;
                     write!(f, "S-")?;
@@ -377,7 +392,6 @@ impl Default for CommandMap {
                 ]
             ),
             ('?', help),
-            (':', command),
             ('/', (prompt, "/", "find-in")),
             ('n', find_in_next),
             ('N', find_in_prev),
