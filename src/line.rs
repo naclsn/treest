@@ -191,6 +191,8 @@ pub fn split_line_args_cursor_indices(
     let mut in_escape = false;
     let mut in_lookup = false;
 
+    let mut accept_empty = false; // eg. "" or '' should push an empty str
+
     let mut lookup_name = String::new();
     let mut lookup_cond = false;
 
@@ -245,12 +247,16 @@ pub fn split_line_args_cursor_indices(
         } else if in_simple {
             if '\'' == ch {
                 in_simple = false;
+                accept_empty = true;
             } else {
                 cur.push(ch);
             }
         } else if in_double {
             match ch {
-                '"' => in_double = false,
+                '"' => {
+                    in_double = false;
+                    accept_empty = true;
+                },
                 '{' if !add_phantom_arg_at_cursor_and_skip_lookup => in_lookup = true,
                 _ => cur.push(ch),
             }
@@ -261,7 +267,7 @@ pub fn split_line_args_cursor_indices(
                 '\\' => in_escape = true,
                 '{' if !add_phantom_arg_at_cursor_and_skip_lookup => in_lookup = true,
                 ' ' | '\t' | '\n' | '\r' => {
-                    if !cur.is_empty() {
+                    if !cur.is_empty() || accept_empty {
                         if !done_with_cursor_stuff && k == cursor {
                             arg_idx = r.len();
                             ch_idx = cur.len();
@@ -272,6 +278,7 @@ pub fn split_line_args_cursor_indices(
                             done_with_cursor_stuff = true;
                         }
                         cur = String::new();
+                        accept_empty = false;
                     } else if !done_with_cursor_stuff && passed_cursor {
                         // the case where the cursor is not on a word, eg.:
                         // `somecommand somearg1 | somearg3`
@@ -854,6 +861,10 @@ mod tests {
             (
                 r#"sh -c "xxd -g1 '{some}' | hx""#,
                 ["sh", "-c", "xxd -g1 'name:some' | hx"]
+            ),
+            (
+                r#"message info a "" c"#,
+                ["message", "info", "a", "", "c"]
             ),
         ];
     }
