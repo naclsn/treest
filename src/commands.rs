@@ -112,15 +112,16 @@ mod key_names {
 
 #[cfg(unix)]
 const fn char_to_key_needs_shift(ch: char) -> bool {
-    return ch.is_ascii_uppercase();
+    ch.is_ascii_uppercase()
 }
 
 // XXX: no idea if this truly is a Windows-specific jank :-(
 //      also this will only be for a qwerty-us :-(
 #[cfg(windows)]
 const fn char_to_key_needs_shift(ch: char) -> bool {
-    return match ch {
-        '~'|'!'|'@'|'#'|'$'|'%'|'^'|'&'|'*'|'('|')'|'_'|'+'|'{'|'}'|':'|'"'|'|'|'<'|'>'|'?' => true,
+    match ch {
+        '~' | '!' | '@' | '#' | '$' | '%' | '^' | '&' | '*' | '(' | ')' | '_' | '+' | '{' | '}'
+        | ':' | '"' | '|' | '<' | '>' | '?' => true,
         _ => ch.is_ascii_uppercase(),
     }
 }

@@ -228,14 +228,15 @@ fn complete_file_from(
         }
     };
 
-    let (search_in, search_for) = if partial_path.is_dir() {
+    let (search_in, search_for, add_slash) = if partial_path.is_dir() {
         // names in this directory
-        (partial_path.as_path(), "")
+        (partial_path.as_path(), "", !wor.ends_with('/'))
     } else {
         // names in parent that starts with
         (
             partial_path.parent().unwrap(),
             partial_path.file_name().unwrap().to_str().unwrap(),
+            false,
         )
     };
 
@@ -253,6 +254,9 @@ fn complete_file_from(
                                 Ok(meta) if !filter_exec || is_executable_like(&path, &meta) => {
                                     let mut opt = stripped.to_string();
                                     opt.push(if meta.is_dir() { '/' } else { ' ' });
+                                    if add_slash {
+                                        opt.insert(0, '/');
+                                    }
                                     opt.insert_str(0, wor);
                                     Some(opt)
                                 }

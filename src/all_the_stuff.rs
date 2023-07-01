@@ -1,7 +1,7 @@
 use crate::{
     app::{App, AppState},
     args::Args,
-    commands::{Action, cmd},
+    commands::{cmd, Action},
 };
 use crossterm::{
     event::{self, Event as IOEvent}, //::{self, DisableMouseCapture, EnableMouseCapture},
@@ -118,7 +118,7 @@ impl AllTheStuff {
         let mut app = {
             if args.clearstate {
                 App::new(dir)?
-            } else if let Ok(content) = fs::read_to_string(&Self::get_save_path(&dir)) {
+            } else if let Ok(content) = fs::read_to_string(Self::get_save_path(&dir)) {
                 if let Ok(mut r) = serde_json::from_str::<App>(&content) {
                     r.fixup();
                     r
@@ -170,10 +170,10 @@ impl AllTheStuff {
         watcher.watch(Path::new("."), RecursiveMode::NonRecursive)?;
 
         Ok(Self {
-            app: app,
-            terminal: terminal,
-            watcher: watcher,
-            ex_event: ex_event,
+            app,
+            terminal,
+            watcher,
+            ex_event,
         })
     } // fn new
 

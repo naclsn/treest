@@ -256,7 +256,7 @@ pub fn split_line_args_cursor_indices(
                 '"' => {
                     in_double = false;
                     accept_empty = true;
-                },
+                }
                 '{' if !add_phantom_arg_at_cursor_and_skip_lookup => in_lookup = true,
                 _ => cur.push(ch),
             }
@@ -862,10 +862,7 @@ mod tests {
                 r#"sh -c "xxd -g1 '{some}' | hx""#,
                 ["sh", "-c", "xxd -g1 'name:some' | hx"]
             ),
-            (
-                r#"message info a "" c"#,
-                ["message", "info", "a", "", "c"]
-            ),
+            (r#"message info a "" c"#, ["message", "info", "a", "", "c"]),
         ];
     }
 }
