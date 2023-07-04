@@ -131,7 +131,7 @@ impl From<char> for Key {
     fn from(ch: char) -> Key {
         Key {
             kch: KeyCode::Char(ch),
-            kmod: if ch.is_ascii_uppercase() {
+            kmod: if char_to_key_needs_shift(ch) {
                 KeyModifiers::SHIFT
             } else {
                 KeyModifiers::NONE
