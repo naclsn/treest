@@ -12,6 +12,7 @@ use crate::{
 };
 use crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers};
 use dash_conversion::dash_conversion;
+use dunce;
 use dirs::home_dir;
 use glob::Pattern;
 use lazy_static::lazy_static;
@@ -1154,29 +1155,21 @@ make_lst! {
         "change the root of the tree, by default to the current working directory",
         |mut app, args| {
             let cwd = current_dir().unwrap();
-            let niw = if let Some(rel) = args.first() {
-                App::new(
-                    match {
-                        let r = Into::<PathBuf>::into(rel);
-                        if r.is_absolute() {
-                            r
-                        } else {
-                            cwd.join(r)
-                        }
-                    }
-                    .canonicalize()
-                    {
-                        Ok(path) => path,
-                        Err(err) => {
-                            app.message(Message::Error(format!("{err}")));
-                            return app;
-                        }
-                    },
-                )
-            } else {
-                App::new(cwd)
+            let dir = match dunce::canonicalize({
+                if let Some(rel) = args.first() {
+                    let r: PathBuf = rel.into();
+                    if r.is_absolute() { r } else { cwd.join(r) }
+                } else {
+                    cwd
+                }
+            }) {
+                Ok(path) => path,
+                Err(err) => {
+                    app.message(Message::Error(format!("{err}")));
+                    return app;
+                }
             };
-            match niw {
+            match App::new(dir) {
                 Ok(app) => app,
                 Err(err) => {
                     app.message(Message::Error(format!("could not create root: {err}")));
@@ -1464,6 +1457,15 @@ make_lst! {
             _ => app,
         },
         Completer::StaticWords(&["horizontal", "vertical"]),
+    );
+
+    suspend = (
+        "suspend the program",
+        |mut app: App, _| {
+            app.state = AppState::Pause;
+            app
+        },
+        Completer::None,
     );
 
     toggle_marked = (

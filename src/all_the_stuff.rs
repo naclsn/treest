@@ -9,6 +9,7 @@ use crossterm::{
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
 use dirs::home_dir;
+use dunce;
 use notify::{recommended_watcher, Event as FSEvent, RecommendedWatcher, RecursiveMode, Watcher};
 use std::{
     env::{current_dir, set_current_dir},
@@ -101,15 +102,10 @@ impl AllTheStuff {
     pub fn new(args: Args) -> Result<Self, Box<dyn Error>> {
         let cwd = current_dir()?;
 
-        let dir = {
+        let dir = dunce::canonicalize({
             let r = args.path.unwrap_or(cwd.clone());
-            if r.is_absolute() {
-                r
-            } else {
-                cwd.join(r)
-            }
-        }
-        .canonicalize()?;
+            if r.is_absolute() { r } else { cwd.join(r) }
+        })?;
 
         if args.changedir {
             set_current_dir(&dir)?;

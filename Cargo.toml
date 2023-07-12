@@ -1,6 +1,6 @@
 [package]
 name = "treest"
-version = "0.2.2"
+version = "0.2.3"
 edition = "2021"
 description = "Visually explore a file tree."
 license = "MIT"
@@ -23,3 +23,4 @@ signal-hook = "0.3.14"
 tui = { version = "0.19.0", features = ["crossterm", "serde"] }
 lscolors = { version = "0.13.0", default-features = false, features = [] }
 notify = "6.0.0"
+dunce = "1.0.4"
