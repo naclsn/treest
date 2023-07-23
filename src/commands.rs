@@ -1119,6 +1119,15 @@ make_lst! {
         Completer::None,
     );
 
+    q = (
+        "alias for :quit",
+        |mut app: App, _| {
+            app.state = AppState::Quit;
+            app
+        },
+        Completer::None,
+    );
+
     quit = (
         "save the state and quit with successful exit status",
         |mut app: App, _| {
