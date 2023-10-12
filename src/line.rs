@@ -25,6 +25,26 @@ fn str_char_slice(c: &str, a: usize, b: usize) -> &str {
     }
 }
 
+fn str_line_escape(c: &str) -> String {
+    let mut r = String::new();
+    r.reserve(c.len());
+    let mut last = 'x';
+    for ch in c.chars() {
+        match ch {
+            '\'' | '"' | '\\' | '{' | ' ' | '\t' | '\n' | '\r' | '#' => r.push('\\'),
+            _ => (),
+        }
+        r.push(ch);
+        last = ch;
+    }
+    if ' ' == last {
+        r.pop();
+        r.pop();
+        r.push(' ');
+    }
+    return r;
+}
+
 pub enum Message {
     Info(String),
     Warning(String),
@@ -770,8 +790,8 @@ fn complete(p: &mut Prompt, lookup: &impl Fn(&str) -> Vec<String>) {
             p.hints = None;
         }
         1 => {
-            let rest = str_char_slice(&res[0], ch_idx, res[0].len());
-            p.content.insert_str(p.cursor, rest);
+            let rest = str_line_escape(str_char_slice(&res[0], ch_idx, res[0].len()));
+            p.content.insert_str(p.cursor, rest.as_str());
             p.cursor += rest.len();
             p.hints = None;
         }
@@ -793,8 +813,8 @@ fn complete(p: &mut Prompt, lookup: &impl Fn(&str) -> Vec<String>) {
                 }
             }
             if found {
-                let rest = str_char_slice(common, ch_idx, res[0].len());
-                p.content.insert_str(p.cursor, rest);
+                let rest = str_line_escape(str_char_slice(common, ch_idx, res[0].len()));
+                p.content.insert_str(p.cursor, rest.as_str());
                 p.cursor += rest.len();
             }
             p.hints = Some(res.into_iter().map(|s| s.trim().to_string()).collect());
