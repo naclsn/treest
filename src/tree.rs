@@ -1,21 +1,22 @@
-use std::fmt::Debug;
+use std::fmt::{Debug, Display, Formatter, Result as FmtResult};
+use std::iter;
+use std::ops::Range;
 
 pub trait Provider {
-    type Data: Debug;
     type Fragment: Debug;
 
-    fn provide(path: Vec<&Self::Fragment>) -> Vec<(Self::Data, Self::Fragment)>;
+    fn provide_root(&self) -> Self::Fragment;
+    fn provide(&self, path: Vec<&Self::Fragment>) -> Vec<Self::Fragment>;
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct NodeRef(usize);
 
 #[derive(Debug)]
 pub struct Node<P: Provider> {
-    pub data: P::Data,
     pub fragment: P::Fragment,
-    parent: Option<NodeRef>,
-    children: Vec<NodeRef>,
+    parent: NodeRef,
+    children: Option<Range<usize>>,
     folded: bool,
 }
 
@@ -25,18 +26,38 @@ pub struct Tree<P: Provider> {
     nodes: Vec<Node<P>>,
 }
 
+impl<P: Provider> Node<P> {
+    pub fn first_child(&self) -> Option<NodeRef> {
+        self.children.as_ref().map(|r| NodeRef(r.start))
+    }
+
+    pub fn last_child(&self) -> Option<NodeRef> {
+        self.children.as_ref().and_then(|r| {
+            if r.is_empty() {
+                None
+            } else {
+                Some(NodeRef(r.end - 1))
+            }
+        })
+    }
+}
+
 impl<P: Provider> Tree<P> {
-    pub fn new(provider: P, root: (P::Data, P::Fragment)) -> Self {
+    pub fn new(provider: P) -> Self {
+        let fragment = provider.provide_root();
         Self {
             provider,
             nodes: vec![Node {
-                data: root.0,
-                fragment: root.1,
-                parent: None,
-                children: Vec::new(),
+                fragment,
+                parent: NodeRef(0),
+                children: None,
                 folded: true,
             }],
         }
+    }
+
+    pub fn root(&self) -> NodeRef {
+        NodeRef(0)
     }
 
     pub fn at(&self, at: NodeRef) -> &Node<P> {
@@ -44,17 +65,19 @@ impl<P: Provider> Tree<P> {
     }
 
     pub fn children_at(&self, at: NodeRef) -> Children<P> {
-        todo!()
+        Children { tree: self, at }
     }
 
     pub fn path_at(&self, at: NodeRef) -> Vec<&P::Fragment> {
-        let mut cur = &self.nodes[at.0];
-        let mut r = vec![&cur.fragment];
+        let mut cur = at;
+        let mut r = Vec::new();
 
-        while let Some(p) = &cur.parent {
-            cur = self.at(*p);
-            r.push(&cur.fragment);
+        while NodeRef(0) != cur {
+            let node = &self.nodes[cur.0];
+            r.push(&node.fragment);
+            cur = node.parent;
         }
+        r.push(&self.nodes[cur.0].fragment);
 
         r.reverse();
         r
@@ -65,26 +88,76 @@ impl<P: Provider> Tree<P> {
     }
 
     pub fn unfold_at(&mut self, at: NodeRef) {
-        self.nodes.extend(
-            P::provide(self.path_at(at))
-                .into_iter()
-                .map(|(data, fragment)| Node {
-                    data,
-                    fragment,
-                    parent: Some(at),
-                    children: Vec::new(),
-                    folded: true,
-                }),
-        );
+        let children = self
+            .provider
+            .provide(self.path_at(at))
+            .into_iter()
+            .map(|fragment| Node {
+                fragment,
+                parent: at,
+                children: None,
+                folded: true,
+            });
 
-        self.nodes[at.0].folded = false;
+        let start = self.nodes.len();
+        self.nodes.extend(children);
+        let end = self.nodes.len();
+
+        let node = &mut self.nodes[at.0];
+        node.children = Some(start..end);
+        node.folded = false;
     }
+}
 
-    //pub fn iter(&self) -> impl Iterator<Item = &Tree<P>> {
-    //    self.children.iter().map(|c| app.at(c))
-    //}
+pub struct Children<'a, P: Provider> {
+    tree: &'a Tree<P>,
+    at: NodeRef,
+}
 
-    //pub fn iter_mut<'a>(&'a self, app: &'a mut App<P>) -> impl Iterator<Item = &mut Tree<P>> {
-    //    self.children.iter().map(|c| app.at_mut(c))
-    //}
+impl<P: Provider> Children<'_, P> {
+    pub fn iter(&self) -> impl Iterator<Item = &Node<P>> {
+        self.tree
+            .at(self.at)
+            .children
+            .as_ref()
+            .unwrap()
+            .clone()
+            .map(|at| self.tree.at(NodeRef(at)))
+    }
+}
+
+impl<P: Provider> Display for Node<P>
+where
+    <P as Provider>::Fragment: Display,
+{
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
+        let depth = f.width().unwrap_or(0);
+        let frag = &self.fragment;
+        write!(f, "{:1$}{frag}", "", depth * 4)
+    }
+}
+
+impl<P: Provider> Display for Tree<P>
+where
+    <P as Provider>::Fragment: Display,
+{
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
+        let mut stack = vec![(0, self.root())];
+
+        while let Some((depth, at)) = stack.pop() {
+            let node = self.at(at);
+            writeln!(f, "{node:0$}", depth)?;
+            if !node.folded {
+                // TODO: sort and filter
+                let children = node.children.as_ref().unwrap().clone().map(NodeRef).rev();
+                stack.extend(iter::repeat(depth + 1).zip(children));
+            }
+
+            if 100 < stack.len() {
+                break;
+            }
+        }
+
+        Ok(())
+    }
 }
