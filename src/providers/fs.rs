@@ -4,17 +4,16 @@ use std::path::PathBuf;
 
 use crate::tree::Provider;
 
-#[derive(Debug)]
 pub struct Fs {}
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq)]
 enum FsNodeKind {
     Dir,
     Exec,
     File,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct FsNode {
     kind: FsNodeKind,
     name: String,
@@ -24,11 +23,16 @@ impl Display for FsNode {
     fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
         write!(
             f,
-            "{}{}",
+            "{}{}{}",
+            match self.kind {
+                FsNodeKind::Dir => "\x1b[34m",
+                FsNodeKind::Exec => "\x1b[32m",
+                FsNodeKind::File => "",
+            },
             self.name,
             match self.kind {
-                FsNodeKind::Dir => "/",
-                FsNodeKind::Exec => "*",
+                FsNodeKind::Dir => "\x1b[m/",
+                FsNodeKind::Exec => "\x1b[m*",
                 FsNodeKind::File => "",
             }
         )
@@ -45,7 +49,7 @@ impl Provider for Fs {
         }
     }
 
-    fn provide(&self, path: Vec<&Self::Fragment>) -> Vec<Self::Fragment> {
+    fn provide(&mut self, path: Vec<&Self::Fragment>) -> Vec<Self::Fragment> {
         let Ok(dir) = fs::read_dir(path.into_iter().map(|n| &n.name).collect::<PathBuf>()) else {
             return Vec::new();
         };

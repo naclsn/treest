@@ -1,44 +1,69 @@
-use std::fmt::{Debug, Display, Formatter, Result as FmtResult};
-use std::iter;
-use std::ops::Range;
+use std::fmt::Debug;
+
+use crate::stab_vec;
+use crate::stabvec::StabVec;
+
+pub trait Fragment: Debug + Clone + PartialEq {}
+impl<T: Debug + Clone + PartialEq> Fragment for T {}
 
 pub trait Provider {
-    type Fragment: Debug;
+    type Fragment: Fragment;
 
     fn provide_root(&self) -> Self::Fragment;
-    fn provide(&self, path: Vec<&Self::Fragment>) -> Vec<Self::Fragment>;
+    fn provide(&mut self, path: Vec<&Self::Fragment>) -> Vec<Self::Fragment>;
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct NodeRef(usize);
 
-#[derive(Debug)]
-pub struct Node<P: Provider> {
-    pub fragment: P::Fragment,
+#[derive(Debug, Clone)]
+pub struct Node<F: Fragment> {
+    pub fragment: F,
     parent: NodeRef,
-    children: Option<Range<usize>>,
+    children: Option<Vec<NodeRef>>,
     folded: bool,
+    marked: bool,
 }
 
 #[derive(Debug)]
 pub struct Tree<P: Provider> {
     provider: P,
-    nodes: Vec<Node<P>>,
+    nodes: StabVec<Node<P::Fragment>>,
 }
 
-impl<P: Provider> Node<P> {
+impl<F: Fragment> Node<F> {
+    fn new(fragment: F, parent: NodeRef) -> Self {
+        Self {
+            fragment,
+            parent,
+            children: None,
+            folded: true,
+            marked: false,
+        }
+    }
+
+    pub fn parent(&self) -> NodeRef {
+        self.parent
+    }
+
+    pub fn children(&self) -> Vec<NodeRef> {
+        self.children.clone().unwrap_or_else(Vec::new)
+    }
+
+    pub fn folded(&self) -> bool {
+        self.folded
+    }
+
+    pub fn marked(&self) -> bool {
+        self.marked
+    }
+
     pub fn first_child(&self) -> Option<NodeRef> {
-        self.children.as_ref().map(|r| NodeRef(r.start))
+        self.children.as_ref().and_then(|v| v.first()).copied()
     }
 
     pub fn last_child(&self) -> Option<NodeRef> {
-        self.children.as_ref().and_then(|r| {
-            if r.is_empty() {
-                None
-            } else {
-                Some(NodeRef(r.end - 1))
-            }
-        })
+        self.children.as_ref().and_then(|v| v.last()).copied()
     }
 }
 
@@ -47,12 +72,7 @@ impl<P: Provider> Tree<P> {
         let fragment = provider.provide_root();
         Self {
             provider,
-            nodes: vec![Node {
-                fragment,
-                parent: NodeRef(0),
-                children: None,
-                folded: true,
-            }],
+            nodes: stab_vec![Node::new(fragment, NodeRef(0))],
         }
     }
 
@@ -60,12 +80,18 @@ impl<P: Provider> Tree<P> {
         NodeRef(0)
     }
 
-    pub fn at(&self, at: NodeRef) -> &Node<P> {
+    pub fn marked(&self) -> impl Iterator<Item = NodeRef> + '_ {
+        self.nodes
+            .iter_ref()
+            .filter_map(|(k, n)| if n.marked { Some(NodeRef(k)) } else { None })
+    }
+
+    pub fn at(&self, at: NodeRef) -> &Node<P::Fragment> {
         &self.nodes[at.0]
     }
 
-    pub fn children_at(&self, at: NodeRef) -> Children<P> {
-        Children { tree: self, at }
+    fn at_mut(&mut self, at: NodeRef) -> &mut Node<P::Fragment> {
+        &mut self.nodes[at.0]
     }
 
     pub fn path_at(&self, at: NodeRef) -> Vec<&P::Fragment> {
@@ -73,91 +99,88 @@ impl<P: Provider> Tree<P> {
         let mut r = Vec::new();
 
         while NodeRef(0) != cur {
-            let node = &self.nodes[cur.0];
+            let node = self.at(cur);
             r.push(&node.fragment);
             cur = node.parent;
         }
-        r.push(&self.nodes[cur.0].fragment);
+        r.push(&self.at(cur).fragment);
 
         r.reverse();
         r
     }
 
     pub fn fold_at(&mut self, at: NodeRef) {
-        self.nodes[at.0].folded = true;
+        self.at_mut(at).folded = true;
     }
 
     pub fn unfold_at(&mut self, at: NodeRef) {
-        let children = self
-            .provider
-            .provide(self.path_at(at))
-            .into_iter()
-            .map(|fragment| Node {
-                fragment,
-                parent: at,
-                children: None,
-                folded: true,
-            });
-
-        let start = self.nodes.len();
-        self.nodes.extend(children);
-        let end = self.nodes.len();
-
-        let node = &mut self.nodes[at.0];
-        node.children = Some(start..end);
-        node.folded = false;
-    }
-}
-
-pub struct Children<'a, P: Provider> {
-    tree: &'a Tree<P>,
-    at: NodeRef,
-}
-
-impl<P: Provider> Children<'_, P> {
-    pub fn iter(&self) -> impl Iterator<Item = &Node<P>> {
-        self.tree
-            .at(self.at)
-            .children
-            .as_ref()
-            .unwrap()
-            .clone()
-            .map(|at| self.tree.at(NodeRef(at)))
-    }
-}
-
-impl<P: Provider> Display for Node<P>
-where
-    <P as Provider>::Fragment: Display,
-{
-    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
-        let depth = f.width().unwrap_or(0);
-        let frag = &self.fragment;
-        write!(f, "{:1$}{frag}", "", depth * 4)
-    }
-}
-
-impl<P: Provider> Display for Tree<P>
-where
-    <P as Provider>::Fragment: Display,
-{
-    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
-        let mut stack = vec![(0, self.root())];
-
-        while let Some((depth, at)) = stack.pop() {
-            let node = self.at(at);
-            writeln!(f, "{node:0$}", depth)?;
-            if !node.folded {
-                // TODO: sort and filter
-                let children = node.children.as_ref().unwrap().clone().map(NodeRef).rev();
-                stack.extend(iter::repeat(depth + 1).zip(children));
-            }
-
-            if 100 < stack.len() {
-                break;
-            }
+        let node = self.at_mut(at);
+        if node.children.is_some() {
+            node.folded = false;
+            return;
         }
 
-        Ok(())
+        let children = unsafe { &mut *(&mut self.provider as *mut P) }
+            .provide(self.path_at(at))
+            .into_iter()
+            .map(|fragment| NodeRef(self.nodes.insert(Node::new(fragment, at))))
+            .collect();
+
+        let node = self.at_mut(at);
+        node.children = Some(children);
+        node.folded = false;
+    }
+
+    pub fn remove_at(&mut self, at: NodeRef) -> Option<Node<P::Fragment>> {
+        if NodeRef(0) == at {
+            return None;
+        }
+
+        self.nodes.remove(at.0).inspect(|removed| {
+            if let Some(v) = &removed.children {
+                for child in v {
+                    self.remove_at(*child);
+                }
+            }
+
+            let in_parent = self.at_mut(removed.parent).children.as_mut().unwrap();
+            let me = in_parent.iter_mut().position(|c| at == *c).unwrap();
+            in_parent.remove(me);
+        })
+    }
+
+    pub fn update_at(&mut self, at: NodeRef) {
+        let node = self.at_mut(at);
+        let Some(mut prev_refs) = node.children.take() else {
+            return;
+        };
+        if node.folded {
+            for child in prev_refs {
+                self.remove_at(child);
+            }
+            return;
+        }
+
+        let children = unsafe { &mut *(&mut self.provider as *mut P) }
+            .provide(self.path_at(at))
+            .into_iter()
+            .map(|fragment| {
+                let searched = prev_refs
+                    .iter()
+                    .position(|k| self.at(*k).fragment == fragment)
+                    .map(|k| prev_refs.swap_remove(k));
+                let replace = Node::new(fragment, at);
+
+                if let Some(found) = searched {
+                    self.update_at(found);
+                    self.nodes.replace(found.0, replace);
+                    found
+                } else {
+                    NodeRef(self.nodes.insert(replace))
+                }
+            })
+            .collect();
+
+        self.at_mut(at).children = Some(children);
     }
 }

@@ -1,20 +1,24 @@
 mod providers;
 mod tree;
+mod stabvec;
+mod navigate;
 
 use crate::providers::fs::Fs;
-use crate::tree::Tree;
+use crate::navigate::{Navigate, Direction};
 
 fn main() {
-    let mut app = Tree::new(Fs::new(".".into()));
-    println!("{app}");
+    let mut nav = Navigate::new(Fs::new(".".into()));
+    println!("{nav}");
 
-    app.unfold_at(app.root());
-    println!("{app}");
+    nav.enter();
+    println!("{nav}");
 
-    app.unfold_at(app.at(app.root()).first_child().unwrap());
-    app.unfold_at(app.at(app.root()).last_child().unwrap());
-    println!("{app}");
+    nav.unfold();
+    nav.sibling_wrap(Direction::Previous);
+    nav.unfold();
+    println!("{nav}");
 
-    app.fold_at(app.at(app.root()).first_child().unwrap());
-    println!("{app}");
+    nav.sibling_wrap(Direction::Next);
+    nav.fold();
+    println!("{nav}");
 }
