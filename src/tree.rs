@@ -1,6 +1,6 @@
 use std::fmt::Debug;
 
-use crate::stab_vec;
+use crate::fisovec::{FisoVec, FilterSorter};
 use crate::stabvec::StabVec;
 
 pub trait Fragment: Debug + Clone + PartialEq {}
@@ -11,6 +11,7 @@ pub trait Provider {
 
     fn provide_root(&self) -> Self::Fragment;
     fn provide(&mut self, path: Vec<&Self::Fragment>) -> Vec<Self::Fragment>;
+    fn filter_sorter(&self) -> &impl FilterSorter<Self::Fragment>;
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -20,7 +21,7 @@ pub struct NodeRef(usize);
 pub struct Node<F: Fragment> {
     pub fragment: F,
     parent: NodeRef,
-    children: Option<Vec<NodeRef>>,
+    children: Option<FisoVec<NodeRef>>,
     folded: bool,
     marked: bool,
 }
@@ -46,8 +47,8 @@ impl<F: Fragment> Node<F> {
         self.parent
     }
 
-    pub fn children(&self) -> Vec<NodeRef> {
-        self.children.clone().unwrap_or_default()
+    pub fn children(&self) -> Option<&FisoVec<NodeRef>> {
+        self.children.as_ref()
     }
 
     pub fn folded(&self) -> bool {
@@ -58,6 +59,7 @@ impl<F: Fragment> Node<F> {
         self.marked
     }
 
+    /*
     pub fn first_child(&self) -> Option<NodeRef> {
         self.children.as_ref().and_then(|v| v.first()).copied()
     }
@@ -65,6 +67,7 @@ impl<F: Fragment> Node<F> {
     pub fn last_child(&self) -> Option<NodeRef> {
         self.children.as_ref().and_then(|v| v.last()).copied()
     }
+    */
 }
 
 impl<P: Provider> Tree<P> {
@@ -72,7 +75,7 @@ impl<P: Provider> Tree<P> {
         let fragment = provider.provide_root();
         Self {
             provider,
-            nodes: stab_vec![Node::new(fragment, NodeRef(0))],
+            nodes: FromIterator::from_iter(vec![Node::new(fragment, NodeRef(0))]),
         }
     }
 
@@ -120,38 +123,43 @@ impl<P: Provider> Tree<P> {
             return;
         }
 
-        let children = unsafe { &mut *(&mut self.provider as *mut P) }
+        let mut children: FisoVec<_> = unsafe { &mut *(&mut self.provider as *mut P) }
             .provide(self.path_at(at))
             .into_iter()
             .map(|fragment| NodeRef(self.nodes.insert(Node::new(fragment, at))))
             .collect();
+        children.filter_sort(self.provider.filter_sorter());
 
         let node = self.at_mut(at);
         node.children = Some(children);
         node.folded = false;
     }
 
-    pub fn remove_at(&mut self, at: NodeRef) -> Option<Node<P::Fragment>> {
+    pub fn remove_at(&mut self, at: NodeRef) {
         if NodeRef(0) == at {
-            return None;
+            return;
         }
 
-        self.nodes.remove(at.0).inspect(|removed| {
-            if let Some(v) = &removed.children {
-                for child in v {
-                    self.remove_at(*child);
+        if let Some(mut removed) = self.nodes.remove(at.0) {
+            if let Some(v) = removed.children.take() {
+                for child in v.into_inner() {
+                    self.remove_at(child);
                 }
             }
 
             let in_parent = self.at_mut(removed.parent).children.as_mut().unwrap();
-            let me = in_parent.iter_mut().position(|c| at == *c).unwrap();
-            in_parent.remove(me);
-        })
+            let me = in_parent
+                .as_mut()
+                .iter_mut()
+                .position(|c| at == *c)
+                .unwrap();
+            in_parent.inner_remove(me);
+        }
     }
 
     pub fn update_at(&mut self, at: NodeRef) {
         let node = self.at_mut(at);
-        let Some(mut prev_refs) = node.children.take() else {
+        let Some(mut prev_refs) = node.children.take().map(FisoVec::into_inner) else {
             return;
         };
         if node.folded {
@@ -161,7 +169,7 @@ impl<P: Provider> Tree<P> {
             return;
         }
 
-        let children = unsafe { &mut *(&mut self.provider as *mut P) }
+        let mut children: FisoVec<_> = unsafe { &mut *(&mut self.provider as *mut P) }
             .provide(self.path_at(at))
             .into_iter()
             .map(|fragment| {
@@ -180,6 +188,7 @@ impl<P: Provider> Tree<P> {
                 }
             })
             .collect();
+        children.filter_sort(self.provider.filter_sorter());
 
         self.at_mut(at).children = Some(children);
     }

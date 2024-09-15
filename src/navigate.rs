@@ -90,21 +90,34 @@ impl<P: Provider> Navigate<P> {
     }
 
     pub fn sibling_sat(&mut self, dir: Direction) {
-        let siblings = self.tree.at(self.tree.at(self.cursor).parent()).children();
+        let siblings = self
+            .tree
+            .at(self.tree.at(self.cursor).parent())
+            .children()
+            .unwrap();
         let me = siblings.iter().position(|c| self.cursor == *c).unwrap();
         self.cursor = siblings[dir.go_sat(me, siblings.len())];
     }
 
     pub fn sibling_wrap(&mut self, dir: Direction) {
-        let siblings = self.tree.at(self.tree.at(self.cursor).parent()).children();
+        let siblings = self
+            .tree
+            .at(self.tree.at(self.cursor).parent())
+            .children()
+            .unwrap();
         let me = siblings.iter().position(|c| self.cursor == *c).unwrap();
         self.cursor = siblings[dir.go_wrap(me, siblings.len())];
     }
 
     pub fn enter(&mut self) {
         self.unfold();
-        if let Some(child) = self.tree.at(self.cursor).first_child() {
-            self.cursor = child;
+        if let Some(child) = self
+            .tree
+            .at(self.cursor)
+            .children()
+            .and_then(|cs| cs.iter().next())
+        {
+            self.cursor = *child;
         }
     }
 
@@ -144,16 +157,14 @@ where
             write!(f, "{frag}\x1b[m")?;
 
             if !node.folded() {
-                // TODO: sort and filter (not here)
-                let mut children = node.children();
+                let children = node.children().unwrap();
 
                 if 1 == children.len() {
                     single = true;
                     stack.push((depth, children[0]));
                 } else {
                     write!(f, "\n\r")?;
-                    children.reverse();
-                    stack.extend(iter::repeat(depth + 1).zip(children));
+                    stack.extend(iter::repeat(depth + 1).zip(children.iter().copied().rev()));
                 }
             } else {
                 write!(f, "\n\r")?;

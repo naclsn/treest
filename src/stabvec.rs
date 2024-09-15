@@ -1,37 +1,16 @@
-use std::iter::FilterMap;
+//use std::iter::FilterMap;
 use std::ops::{Index, IndexMut};
 
-#[derive(Debug, Default, Clone, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Default, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct StabVec<T> {
     slots: Vec<Option<T>>,
     free_slots: usize,
 }
 
-#[macro_export]
-macro_rules! stab_vec {
-    ($($t:tt)*) => {
-        $crate::stabvec::StabVec::from_elems([$($t)*])
-    }
-}
-
 impl<T> StabVec<T> {
-    pub fn new() -> Self {
-        Self {
-            slots: Vec::new(),
-            free_slots: 0,
-        }
-    }
-
     pub fn with_capacity(cap: usize) -> Self {
         Self {
             slots: Vec::with_capacity(cap),
-            free_slots: 0,
-        }
-    }
-
-    pub fn from_elems(elems: impl IntoIterator<Item = T>) -> Self {
-        Self {
-            slots: elems.into_iter().map(Some).collect(),
             free_slots: 0,
         }
     }
@@ -86,6 +65,15 @@ impl<T> StabVec<T> {
             .iter()
             .enumerate()
             .filter_map(|p| Some(p.0).zip(p.1.as_ref()))
+    }
+}
+
+impl<T> FromIterator<T> for StabVec<T> {
+    fn from_iter<I: IntoIterator<Item = T>>(value: I) -> Self {
+        Self {
+            slots: value.into_iter().map(Some).collect(),
+            free_slots: 0,
+        }
     }
 }
 
