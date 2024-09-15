@@ -64,6 +64,7 @@ impl<T> StabVec<T> {
         self.slots[k].replace(it)
     }
 
+    /*
     pub fn iter(
         &self,
     ) -> FilterMap<<&Vec<Option<T>> as IntoIterator>::IntoIter, fn(&Option<T>) -> Option<&T>> {
@@ -78,8 +79,9 @@ impl<T> StabVec<T> {
     > {
         self.slots.iter_mut().filter_map(Option::as_mut)
     }
+    */
 
-    pub fn iter_ref(&self) -> impl Iterator<Item = (usize, &T)> + DoubleEndedIterator {
+    pub fn iter_ref(&self) -> impl DoubleEndedIterator<Item = (usize, &T)> {
         self.slots
             .iter()
             .enumerate()
@@ -101,6 +103,7 @@ impl<T> IndexMut<usize> for StabVec<T> {
     }
 }
 
+/*
 impl<'a, T> IntoIterator for &'a StabVec<T> {
     type Item = &'a T;
     type IntoIter =
@@ -122,3 +125,4 @@ impl<'a, T> IntoIterator for &'a mut StabVec<T> {
         self.iter_mut()
     }
 }
+*/

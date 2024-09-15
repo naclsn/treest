@@ -1,24 +1,27 @@
-mod providers;
-mod tree;
-mod stabvec;
-mod navigate;
+use std::io::{self, Read};
 
+mod navigate;
+mod providers;
+mod stabvec;
+mod terminal;
+mod tree;
+
+use crate::navigate::{Navigate, State};
 use crate::providers::fs::Fs;
-use crate::navigate::{Navigate, Direction};
 
 fn main() {
     let mut nav = Navigate::new(Fs::new(".".into()));
-    println!("{nav}");
 
-    nav.enter();
-    println!("{nav}");
+    let term = terminal::raw().unwrap();
+    print!("\x1b[?25l\x1b[?1049h{nav}\r\n");
 
-    nav.unfold();
-    nav.sibling_wrap(Direction::Previous);
-    nav.unfold();
-    println!("{nav}");
+    for key in io::stdin().bytes().map_while(Result::ok) {
+        match nav.feed(key) {
+            State::Continue => print!("{nav}\r\n"),
+            State::Quit => break,
+        }
+    }
 
-    nav.sibling_wrap(Direction::Next);
-    nav.fold();
-    println!("{nav}");
+    print!("\x1b[?25h\x1b[?1049l");
+    term.restore();
 }

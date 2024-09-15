@@ -47,7 +47,7 @@ impl<F: Fragment> Node<F> {
     }
 
     pub fn children(&self) -> Vec<NodeRef> {
-        self.children.clone().unwrap_or_else(Vec::new)
+        self.children.clone().unwrap_or_default()
     }
 
     pub fn folded(&self) -> bool {

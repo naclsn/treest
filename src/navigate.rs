@@ -6,25 +6,31 @@ use crate::tree::{NodeRef, Provider, Tree};
 pub struct Navigate<P: Provider> {
     tree: Tree<P>,
     cursor: NodeRef,
+    state: State,
+}
+
+pub enum State {
+    Continue,
+    Quit,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Direction {
-    Previous,
+    Prev,
     Next,
 }
 
 impl Direction {
     pub fn go(&self, k: usize) -> usize {
         match self {
-            Direction::Previous => k - 1,
+            Direction::Prev => k - 1,
             Direction::Next => k + 1,
         }
     }
 
     pub fn go_sat(&self, k: usize, m: usize) -> usize {
         match self {
-            Direction::Previous if 0 != k => k - 1,
+            Direction::Prev if 0 != k => k - 1,
             Direction::Next if k < m - 1 => k + 1,
             _ => k,
         }
@@ -32,7 +38,7 @@ impl Direction {
 
     pub fn go_wrap(&self, k: usize, m: usize) -> usize {
         match self {
-            Direction::Previous if 0 == k => m - 1,
+            Direction::Prev if 0 == k => m - 1,
             Direction::Next if k == m - 1 => 0,
             _ => self.go(k),
         }
@@ -41,9 +47,34 @@ impl Direction {
 
 impl<P: Provider> Navigate<P> {
     pub fn new(provider: P) -> Self {
-        let tree = Tree::new(provider);
+        let mut tree = Tree::new(provider);
         let cursor = tree.root();
-        Self { tree, cursor }
+        tree.unfold_at(cursor);
+        Self {
+            tree,
+            cursor,
+            state: State::Continue,
+        }
+    }
+
+    pub fn feed(&mut self, key: u8) -> &State {
+        match self.state {
+            State::Continue => match key {
+                b'0' => self.root(),
+                b'H' => self.fold(),
+                b'L' => self.unfold(),
+                b'h' => self.leave(),
+                b'j' => self.sibling_sat(Direction::Next),
+                b'k' => self.sibling_sat(Direction::Prev),
+                0x09 => self.sibling_wrap(Direction::Prev),
+                0x0a => self.sibling_wrap(Direction::Next),
+                b'l' => self.enter(),
+                b'q' => self.state = State::Quit,
+                _ => (),
+            },
+            State::Quit => panic!("should have quitted, but was called again!"),
+        }
+        &self.state
     }
 
     pub fn root(&mut self) {
@@ -82,40 +113,53 @@ impl<P: Provider> Navigate<P> {
     }
 }
 
+// TODO: pretty
+//const INDENT: &str = "\u{2502}  "; //                    "|  "
+//const BRANCH: &str = "\u{251c}\u{2500}\u{2500}"; //      "|--"
+//const BRANCH_LAST: &str = "\u{2514}\u{2500}\u{2500}"; // "`--"
+//const INDENT_WIDTH: u16 = 4;
+
 impl<P: Provider> Display for Navigate<P>
 where
     <P as Provider>::Fragment: Display,
 {
     fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
+        write!(f, "\x1b[H\x1b[J")?;
+
         let mut stack = vec![(0, self.tree.root())];
+        let mut single = true;
 
         while let Some((depth, at)) = stack.pop() {
+            if single {
+                single = false
+            } else {
+                write!(f, "{:1$}", "", depth * 4)?;
+            }
+            if self.cursor == at {
+                write!(f, "\x1b[7m")?;
+            }
+
             let node = self.tree.at(at);
             let frag = &node.fragment;
-            write!(
-                f,
-                "{:1$}{2}{frag}\x1b[m",
-                "",
-                depth * 4,
-                if self.cursor == at { "\x1b[7m" } else { "" }
-            )?;
+            write!(f, "{frag}\x1b[m")?;
 
             if !node.folded() {
-                // TODO: sort and filter
+                // TODO: sort and filter (not here)
                 let mut children = node.children();
 
                 if 1 == children.len() {
+                    single = true;
                     stack.push((depth, children[0]));
                 } else {
-                    writeln!(f)?;
+                    write!(f, "\n\r")?;
                     children.reverse();
                     stack.extend(iter::repeat(depth + 1).zip(children));
                 }
             } else {
-                writeln!(f)?;
+                write!(f, "\n\r")?;
             }
 
-            if 999 < stack.len() {
+            if 100 < stack.len() {
                 break;
             }
         }
