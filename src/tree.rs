@@ -1,6 +1,7 @@
+use std::cmp::Ordering;
 use std::fmt::Debug;
 
-use crate::fisovec::{FisoVec, FilterSorter};
+use crate::fisovec::{FilterSorter, FisoVec};
 use crate::stabvec::StabVec;
 
 pub trait Fragment: Debug + Clone + PartialEq {}
@@ -112,6 +113,13 @@ impl<P: Provider> Tree<P> {
         r
     }
 
+    pub fn filter_sort_at(&mut self, at: NodeRef) {
+        let meme = unsafe { &mut *(self as *mut Self) };
+        if let Some(ch) = &mut self.at_mut(at).children {
+            ch.filter_sort(meme);
+        }
+    }
+
     pub fn fold_at(&mut self, at: NodeRef) {
         self.at_mut(at).folded = true;
     }
@@ -128,7 +136,7 @@ impl<P: Provider> Tree<P> {
             .into_iter()
             .map(|fragment| NodeRef(self.nodes.insert(Node::new(fragment, at))))
             .collect();
-        children.filter_sort(self.provider.filter_sorter());
+        children.filter_sort(self);
 
         let node = self.at_mut(at);
         node.children = Some(children);
@@ -188,8 +196,25 @@ impl<P: Provider> Tree<P> {
                 }
             })
             .collect();
-        children.filter_sort(self.provider.filter_sorter());
+        children.filter_sort(self);
 
         self.at_mut(at).children = Some(children);
+    }
+
+    pub fn toggle_mark_at(&mut self, at: NodeRef) {
+        let node = self.at_mut(at);
+        node.marked = !node.marked;
+    }
+}
+
+impl<P: Provider> FilterSorter<NodeRef> for Tree<P> {
+    fn compare(&self, a: &NodeRef, b: &NodeRef) -> Ordering {
+        self.provider
+            .filter_sorter()
+            .compare(&self.at(*a).fragment, &self.at(*b).fragment)
+    }
+
+    fn keep(&self, a: &NodeRef) -> bool {
+        self.provider.filter_sorter().keep(&self.at(*a).fragment)
     }
 }

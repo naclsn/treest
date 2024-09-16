@@ -28,7 +28,7 @@ impl<T> FisoVec<T> {
         self.indices.len()
     }
 
-    pub fn iter(&self) -> impl Iterator<Item = &T> + DoubleEndedIterator + ExactSizeIterator {
+    pub fn iter(&self) -> impl DoubleEndedIterator<Item = &T> + ExactSizeIterator {
         self.indices.iter().map(|k| &self.inner[*k])
     }
 

@@ -70,6 +70,7 @@ impl<P: Provider> Navigate<P> {
                 0x0a => self.sibling_wrap(Direction::Next),
                 b'l' => self.enter(),
                 b'q' => self.state = State::Quit,
+                b' ' => self.toggle_mark(),
                 _ => (),
             },
             State::Quit => panic!("should have quitted, but was called again!"),
@@ -95,8 +96,9 @@ impl<P: Provider> Navigate<P> {
             .at(self.tree.at(self.cursor).parent())
             .children()
             .unwrap();
-        let me = siblings.iter().position(|c| self.cursor == *c).unwrap();
-        self.cursor = siblings[dir.go_sat(me, siblings.len())];
+        if let Some(me) = siblings.iter().position(|c| self.cursor == *c) {
+            self.cursor = siblings[dir.go_sat(me, siblings.len())];
+        }
     }
 
     pub fn sibling_wrap(&mut self, dir: Direction) {
@@ -105,8 +107,9 @@ impl<P: Provider> Navigate<P> {
             .at(self.tree.at(self.cursor).parent())
             .children()
             .unwrap();
-        let me = siblings.iter().position(|c| self.cursor == *c).unwrap();
-        self.cursor = siblings[dir.go_wrap(me, siblings.len())];
+        if let Some(me) = siblings.iter().position(|c| self.cursor == *c) {
+            self.cursor = siblings[dir.go_wrap(me, siblings.len())];
+        }
     }
 
     pub fn enter(&mut self) {
@@ -123,6 +126,10 @@ impl<P: Provider> Navigate<P> {
 
     pub fn leave(&mut self) {
         self.cursor = self.tree.at(self.cursor).parent();
+    }
+
+    pub fn toggle_mark(&mut self) {
+        self.tree.toggle_mark_at(self.cursor);
     }
 }
 
@@ -144,7 +151,7 @@ where
 
         while let Some((depth, at)) = stack.pop() {
             if single {
-                single = false
+                single = false;
             } else {
                 write!(f, "{:1$}", "", depth * 4)?;
             }
@@ -153,6 +160,10 @@ where
             }
 
             let node = self.tree.at(at);
+            if node.marked() {
+                write!(f, " \x1b[4m")?;
+            }
+
             let frag = &node.fragment;
             write!(f, "{frag}\x1b[m")?;
 

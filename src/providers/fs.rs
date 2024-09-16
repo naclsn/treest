@@ -1,7 +1,9 @@
+use std::cmp::Ordering;
 use std::fmt::{Display, Formatter, Result as FmtResult};
 use std::fs;
 use std::path::PathBuf;
 
+use crate::fisovec::FilterSorter;
 use crate::tree::Provider;
 
 pub struct Fs {}
@@ -74,6 +76,20 @@ impl Provider for Fs {
             })
         })
         .collect()
+    }
+
+    fn filter_sorter(&self) -> &impl FilterSorter<Self::Fragment> {
+        self
+    }
+}
+
+impl FilterSorter<FsNode> for Fs {
+    fn compare(&self, a: &FsNode, b: &FsNode) -> Ordering {
+        Ord::cmp(&a.name, &b.name)
+    }
+
+    fn keep(&self, a: &FsNode) -> bool {
+        !a.name.starts_with('.')
     }
 }
 

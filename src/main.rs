@@ -1,11 +1,11 @@
 use std::io::{self, Read};
 
+mod fisovec;
 mod navigate;
 mod providers;
 mod stabvec;
 mod terminal;
 mod tree;
-mod fisovec;
 
 use crate::navigate::{Navigate, State};
 use crate::providers::fs::Fs;
