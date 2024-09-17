@@ -24,6 +24,25 @@ impl<T> FisoVec<T> {
             .sort_unstable_by(|a, b| with.compare(&self.inner[*a], &self.inner[*b]));
     }
 
+    // FIXME: I don't get it, why is ctx necessary?
+    pub fn map_filter_sort<S, C>(
+        &mut self,
+        ctx: &C,
+        mut map: impl for<'a> FnMut(&'a C, &'a T) -> &'a S,
+        with: &impl FilterSorter<S>,
+    ) {
+        self.indices = self
+            .inner
+            .iter()
+            .map(|it| map(ctx, it))
+            .enumerate()
+            .filter_map(|v| if with.keep(v.1) { Some(v.0) } else { None })
+            .collect();
+        self.indices.sort_unstable_by(|a, b| {
+            with.compare(map(ctx, &self.inner[*a]), map(ctx, &self.inner[*b]))
+        });
+    }
+
     pub fn len(&self) -> usize {
         self.indices.len()
     }

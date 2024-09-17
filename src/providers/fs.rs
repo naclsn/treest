@@ -8,14 +8,14 @@ use crate::tree::Provider;
 
 pub struct Fs {}
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(PartialEq)]
 enum FsNodeKind {
     Dir,
     Exec,
     File,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(PartialEq)]
 pub struct FsNode {
     kind: FsNodeKind,
     name: String,
@@ -76,10 +76,6 @@ impl Provider for Fs {
             })
         })
         .collect()
-    }
-
-    fn filter_sorter(&self) -> &impl FilterSorter<Self::Fragment> {
-        self
     }
 }
 
