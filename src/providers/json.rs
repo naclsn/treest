@@ -3,6 +3,7 @@ use std::fmt::{Display, Formatter, Result as FmtResult};
 
 use crate::fisovec::FilterSorter;
 use crate::tree::Provider;
+use super::Error;
 
 pub struct Json {}
 
@@ -38,8 +39,7 @@ impl FilterSorter<JsonNode> for Json {
 }
 
 impl Json {
-    pub fn new(name: String) -> Self {
-        _ = name;
-        Self {}
+    pub fn new(arg: String) -> Result<Self, Error> {
+        Ok(Self {})
     }
 }

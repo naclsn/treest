@@ -1,7 +1,14 @@
 use std::fmt::{Display, Formatter, Result as FmtResult};
+use std::path::PathBuf;
 
 use crate::fisovec::FilterSorter;
 use crate::tree::Provider;
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum Error {
+    NotProvider(String),
+    NotDirectory(PathBuf),
+}
 
 macro_rules! providers {
     ($($nm:ident: $ty:ident,)+) => {
@@ -67,10 +74,10 @@ macro_rules! providers {
             }
         }
 
-        pub fn select(name: &str, arg: &str) -> Option<DynProvider> {
+        pub fn select(name: &str, arg: &str) -> Result<DynProvider, Error> {
             match name {
-                $(stringify!($nm) => Some(DynProvider::$ty($nm::$ty::new(arg.into()))),)+
-                _ => None,
+                $(stringify!($nm) => Ok(DynProvider::$ty($nm::$ty::new(arg.into())?)),)+
+                _ => Err(Error::NotProvider(name.into())),
             }
         }
     };

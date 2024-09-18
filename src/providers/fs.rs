@@ -3,10 +3,13 @@ use std::fmt::{Display, Formatter, Result as FmtResult};
 use std::fs;
 use std::path::PathBuf;
 
+use super::Error;
 use crate::fisovec::FilterSorter;
 use crate::tree::Provider;
 
-pub struct Fs {}
+pub struct Fs {
+    root: PathBuf,
+}
 
 #[derive(PartialEq)]
 enum FsNodeKind {
@@ -47,7 +50,7 @@ impl Provider for Fs {
     fn provide_root(&self) -> Self::Fragment {
         FsNode {
             kind: FsNodeKind::Dir,
-            name: ".".into(),
+            name: self.root.to_string_lossy().into(),
         }
     }
 
@@ -90,8 +93,16 @@ impl FilterSorter<FsNode> for Fs {
 }
 
 impl Fs {
-    pub fn new(name: String) -> Self {
-        _ = name;
-        Self {}
+    pub fn new(mut root: PathBuf) -> Result<Self, Error> {
+        if root.components().next().is_none() {
+            root.push(".");
+        }
+        if !root.is_dir() {
+            Err(Error::NotDirectory(root))
+        } else {
+            Ok(Self {
+                root: root.components().collect(),
+            })
+        }
     }
 }
