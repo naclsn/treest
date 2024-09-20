@@ -1,7 +1,7 @@
 use std::cmp::Ordering;
 use std::fmt::{Display, Formatter, Result as FmtResult};
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use super::Error;
 use crate::fisovec::FilterSorter;
@@ -25,7 +25,7 @@ pub struct FsNode {
 }
 
 impl Display for FsNode {
-    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
+    fn fmt(&self, f: &mut Formatter) -> FmtResult {
         write!(
             f,
             "{}{}{}",
@@ -93,7 +93,8 @@ impl FilterSorter<FsNode> for Fs {
 }
 
 impl Fs {
-    pub fn new(mut root: PathBuf) -> Result<Self, Error> {
+    pub fn new(root: impl AsRef<Path>) -> Result<Self, Error> {
+        let mut root = PathBuf::from(root.as_ref());
         if root.components().next().is_none() {
             root.push(".");
         }

@@ -8,13 +8,6 @@ pub struct StabVec<T> {
 }
 
 impl<T> StabVec<T> {
-    pub fn with_capacity(cap: usize) -> Self {
-        Self {
-            slots: Vec::with_capacity(cap),
-            free_slots: 0,
-        }
-    }
-
     pub fn insert(&mut self, it: T) -> usize {
         if let Some((k, o)) = match self.free_slots {
             0 => None,

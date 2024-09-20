@@ -1,13 +1,16 @@
 use std::fmt::{Display, Formatter, Result as FmtResult};
+use std::io::Error as IoError;
 use std::path::PathBuf;
 
 use crate::fisovec::FilterSorter;
 use crate::tree::Provider;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug)]
 pub enum Error {
     NotProvider(String),
     NotDirectory(PathBuf),
+    IoErr(IoError),
+    ParseErr(usize),
 }
 
 macro_rules! providers {
@@ -24,7 +27,7 @@ macro_rules! providers {
         }
 
         impl Display for DynFragment {
-            fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
+            fn fmt(&self, f: &mut Formatter) -> FmtResult {
                 match self {
                     $(DynFragment::$ty(it) => it.fmt(f),)+
                 }
@@ -76,7 +79,7 @@ macro_rules! providers {
 
         pub fn select(name: &str, arg: &str) -> Result<DynProvider, Error> {
             match name {
-                $(stringify!($nm) => Ok(DynProvider::$ty($nm::$ty::new(arg.into())?)),)+
+                $(stringify!($nm) => Ok(DynProvider::$ty($nm::$ty::new(arg)?)),)+
                 _ => Err(Error::NotProvider(name.into())),
             }
         }

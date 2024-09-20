@@ -1,5 +1,4 @@
 use std::fmt::{Display, Formatter, Result as FmtResult};
-use std::iter;
 
 use crate::tree::{NodeRef, Provider, Tree};
 
@@ -133,59 +132,58 @@ impl<P: Provider> Navigate<P> {
     }
 }
 
-// TODO: pretty
-//const INDENT: &str = "\u{2502}  "; //                    "|  "
-//const BRANCH: &str = "\u{251c}\u{2500}\u{2500}"; //      "|--"
-//const BRANCH_LAST: &str = "\u{2514}\u{2500}\u{2500}"; // "`--"
-//const INDENT_WIDTH: u16 = 4;
+const BRANCH: &str = "\u{251c}\u{2500}\u{2500} "; //      "|-- "
+const INDENT: &str = "\u{2502}   "; //                    "|   "
+const BRANCH_LAST: &str = "\u{2514}\u{2500}\u{2500} "; // "`-- "
+const INDENT_LAST: &str = "    "; //                      "    "
 
 impl<P: Provider> Display for Navigate<P>
 where
     <P as Provider>::Fragment: Display,
 {
-    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
+    fn fmt(&self, f: &mut Formatter) -> FmtResult {
         write!(f, "\x1b[H\x1b[J")?;
+        self.fmt_at(f, self.tree.root(), "".into())
+    }
+}
 
-        let mut stack = vec![(0, self.tree.root())];
-        let mut single = true;
-
-        while let Some((depth, at)) = stack.pop() {
-            if single {
-                single = false;
-            } else {
-                write!(f, "{:1$}", "", depth * 4)?;
-            }
-            if self.cursor == at {
-                write!(f, "\x1b[7m")?;
-            }
-
-            let node = self.tree.at(at);
-            if node.marked() {
-                write!(f, " \x1b[4m")?;
-            }
-
-            let frag = &node.fragment;
-            write!(f, "{frag}\x1b[m")?;
-
-            if !node.folded() {
-                let children = node.children().unwrap();
-
-                if 1 == children.len() {
-                    single = true;
-                    stack.push((depth, children[0]));
-                } else {
-                    write!(f, "\n\r")?;
-                    stack.extend(iter::repeat(depth + 1).zip(children.iter().copied().rev()));
-                }
-            } else {
-                write!(f, "\n\r")?;
-            }
-
-            if 100 < stack.len() {
-                break;
-            }
+impl<P: Provider> Navigate<P>
+where
+    <P as Provider>::Fragment: Display,
+{
+    fn fmt_at(&self, f: &mut Formatter, at: NodeRef, indent: String) -> FmtResult {
+        if self.cursor == at {
+            write!(f, "\x1b[7m")?;
+        }
+        let node = self.tree.at(at);
+        if node.marked() {
+            write!(f, " \x1b[4m")?;
         }
 
-        Ok(())
+        let frag = &node.fragment;
+        write!(f, "{frag}\x1b[m")?;
+
+        if node.folded() {
+            return write!(f, "\r\n");
+        }
+        let children = node.children().unwrap();
+        if 0 == children.len() {
+            return write!(f, "\r\n");
+        }
+
+        if 1 == children.len() {
+            self.fmt_at(f, children[0], indent)
+        } else {
+            write!(f, "\r\n")?;
+            let mut iter = children.iter();
+
+            for it in iter.by_ref().take(children.len() - 1) {
+                write!(f, "{indent}{BRANCH}")?;
+                self.fmt_at(f, *it, format!("{indent}{INDENT}"))?;
+            }
+
+            write!(f, "{indent}{BRANCH_LAST}")?;
+            self.fmt_at(f, *iter.next().unwrap(), format!("{indent}{INDENT_LAST}"))
+        }
     }
 }
