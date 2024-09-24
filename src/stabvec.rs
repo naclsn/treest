@@ -1,4 +1,3 @@
-//use std::iter::FilterMap;
 use std::ops::{Index, IndexMut};
 
 #[derive(Debug, Default, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -7,6 +6,7 @@ pub struct StabVec<T> {
     free_slots: usize,
 }
 
+#[allow(dead_code)]
 impl<T> StabVec<T> {
     pub fn insert(&mut self, it: T) -> usize {
         if let Some((k, o)) = match self.free_slots {
@@ -36,22 +36,13 @@ impl<T> StabVec<T> {
         self.slots[k].replace(it)
     }
 
-    /*
-    pub fn iter(
-        &self,
-    ) -> FilterMap<<&Vec<Option<T>> as IntoIterator>::IntoIter, fn(&Option<T>) -> Option<&T>> {
+    pub fn iter(&self) -> impl Iterator<Item = &T> {
         self.slots.iter().filter_map(Option::as_ref)
     }
 
-    pub fn iter_mut(
-        &mut self,
-    ) -> FilterMap<
-        <&mut Vec<Option<T>> as IntoIterator>::IntoIter,
-        fn(&mut Option<T>) -> Option<&mut T>,
-    > {
+    pub fn iter_mut(&mut self) -> impl Iterator<Item = &mut T> {
         self.slots.iter_mut().filter_map(Option::as_mut)
     }
-    */
 
     pub fn iter_ref(&self) -> impl DoubleEndedIterator<Item = (usize, &T)> {
         self.slots
@@ -83,27 +74,3 @@ impl<T> IndexMut<usize> for StabVec<T> {
         self.slots[index].as_mut().unwrap()
     }
 }
-
-/*
-impl<'a, T> IntoIterator for &'a StabVec<T> {
-    type Item = &'a T;
-    type IntoIter =
-        FilterMap<<&'a Vec<Option<T>> as IntoIterator>::IntoIter, fn(&Option<T>) -> Option<&T>>;
-
-    fn into_iter(self) -> Self::IntoIter {
-        self.iter()
-    }
-}
-
-impl<'a, T> IntoIterator for &'a mut StabVec<T> {
-    type Item = &'a mut T;
-    type IntoIter = FilterMap<
-        <&'a mut Vec<Option<T>> as IntoIterator>::IntoIter,
-        fn(&mut Option<T>) -> Option<&mut T>,
-    >;
-
-    fn into_iter(self) -> Self::IntoIter {
-        self.iter_mut()
-    }
-}
-*/

@@ -5,6 +5,7 @@ use std::path::PathBuf;
 use crate::fisovec::FilterSorter;
 use crate::tree::Provider;
 
+#[allow(dead_code)]
 #[derive(Debug)]
 pub enum Error {
     NotProvider(String),

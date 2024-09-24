@@ -12,6 +12,7 @@ pub struct FisoVec<T> {
     indices: Vec<usize>,
 }
 
+#[allow(dead_code)]
 impl<T> FisoVec<T> {
     pub fn filter_sort(&mut self, with: &impl FilterSorter<T>) {
         self.indices = self

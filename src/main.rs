@@ -53,7 +53,10 @@ fn main() {
     eprint!("{nav}\r\n");
     for key in io::stdin().bytes().map_while(Result::ok) {
         match nav.feed(key) {
-            State::Continue => eprint!("{nav}\r\n"),
+            State::Continue => {
+                let buf = nav.to_string();
+                eprint!("{buf}\r\n");
+            }
             State::Quit => break,
         }
     }

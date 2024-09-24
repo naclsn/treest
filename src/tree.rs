@@ -55,18 +55,9 @@ impl<F: Fragment> Node<F> {
     pub fn marked(&self) -> bool {
         self.marked
     }
-
-    /*
-    pub fn first_child(&self) -> Option<NodeRef> {
-        self.children.as_ref().and_then(|v| v.first()).copied()
-    }
-
-    pub fn last_child(&self) -> Option<NodeRef> {
-        self.children.as_ref().and_then(|v| v.last()).copied()
-    }
-    */
 }
 
+#[allow(dead_code)]
 impl<P: Provider> Tree<P> {
     pub fn new(provider: P) -> Self {
         let fragment = provider.provide_root();
