@@ -10,6 +10,7 @@ use crate::tree::Provider;
 pub enum Error {
     NotProvider(String),
     NotDirectory(PathBuf),
+    StringErr(String),
     IoErr(IoError),
     ParseErr(usize),
 }
@@ -90,4 +91,5 @@ macro_rules! providers {
 providers! {
     fs: Fs,
     json: Json,
+    sqlite: Sqlite,
 }
