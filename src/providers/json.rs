@@ -1,4 +1,4 @@
-use std::cmp::Ordering;
+use std::cmp::{self, Ordering};
 use std::fmt::{Display, Formatter, Result as FmtResult};
 use std::fs::File;
 use std::io::Read;
@@ -62,7 +62,7 @@ impl Display for JsonNode {
             Null => write!(f, "\x1b[35mnull\x1b[m"),
             Boolean(b) => write!(f, "\x1b[35m{b}\x1b[m"),
             Number(n) => write!(f, "\x1b[33m{n}\x1b[m"),
-            String(s) => write!(f, "\x1b[32m\"{}\"\x1b[m", &s[..std::cmp::min(s.len(), 42)]),
+            String(s) => write!(f, "\x1b[32m\"{}\"\x1b[m", &s[..cmp::min(s.len(), 42)]),
             Array => write!(f, "[] "),
             Object => write!(f, "{{}} "),
         }
