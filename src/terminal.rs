@@ -106,8 +106,8 @@ pub mod plat {
                 Err(IoError::last_os_error())
             } else {
                 Ok((
-                    (info.srWindow.Right - info.srWindow.Left + 1) as u16,
                     (info.srWindow.Bottom - info.srWindow.Top + 1) as u16,
+                    (info.srWindow.Right - info.srWindow.Left + 1) as u16,
                 ))
             }
         }

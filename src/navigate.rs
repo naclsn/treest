@@ -1,16 +1,73 @@
+use std::cell::RefCell;
 use std::fmt::{Display, Formatter, Result as FmtResult};
+use std::ops::Range;
 
+use crate::terminal;
 use crate::tree::{NodeRef, Provider, Tree};
 
 pub struct Navigate<P: Provider> {
     tree: Tree<P>,
     cursor: NodeRef,
     state: State,
+    view: View,
 }
 
 pub enum State {
     Continue,
+    Pending(Vec<u8>),
     Quit,
+}
+
+struct View {
+    scroll: usize,
+    total: RefCell<Range<usize>>,
+}
+enum ViewJumpBy {
+    Line,
+    Mouse,
+    HalfWin,
+    Win,
+}
+
+impl View {
+    fn visible(&self) -> Range<usize> {
+        let row = terminal::size().unwrap_or((24, 80)).0 as usize;
+        self.scroll..self.scroll + row - 1
+    }
+
+    fn jump_by(&self, by: ViewJumpBy) -> usize {
+        use ViewJumpBy::*;
+        match by {
+            Line => return 1,
+            Mouse => return 3,
+            _ => (),
+        }
+        let row = terminal::size().unwrap_or((24, 80)).0 as usize;
+        match by {
+            HalfWin => row / 2,
+            Win => row - 1,
+            _ => unreachable!(),
+        }
+    }
+
+    fn down(&mut self, by: ViewJumpBy) {
+        let by = self.jump_by(by);
+        let end = self.total.borrow().end;
+        if self.scroll < end - by {
+            self.scroll += by;
+        } else {
+            self.scroll = end - 1;
+        }
+    }
+
+    fn up(&mut self, by: ViewJumpBy) {
+        let by = self.jump_by(by);
+        if by < self.scroll {
+            self.scroll -= by;
+        } else {
+            self.scroll = 0;
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -53,25 +110,43 @@ impl<P: Provider> Navigate<P> {
             tree,
             cursor,
             state: State::Continue,
+            view: View {
+                scroll: 0,
+                total: (0..0).into(),
+            },
         }
     }
 
     pub fn feed(&mut self, key: u8) -> &State {
         match self.state {
             State::Continue => match key {
+                /* ^B */ 0x02 => self.view.up(ViewJumpBy::Win),
+                /* ^D */ 0x04 => self.view.down(ViewJumpBy::HalfWin),
+                /* ^E */ 0x05 => self.view.down(ViewJumpBy::Line),
+                /* ^F */ 0x06 => self.view.down(ViewJumpBy::Win),
+                /* ^J */ 0x0a => self.sibling_wrap(Direction::Next),
+                /* ^K */ 0x0b => self.sibling_wrap(Direction::Prev),
+                /* ^U */ 0x15 => self.view.up(ViewJumpBy::HalfWin),
+                /* ^Y */ 0x19 => self.view.up(ViewJumpBy::Line),
+                /* ^[ */ 0x1b => self.state = State::Pending(vec![key]),
                 b'0' => self.root(),
                 b'H' => self.fold(),
                 b'L' => self.unfold(),
                 b'h' => self.leave(),
                 b'j' => self.sibling_sat(Direction::Next),
                 b'k' => self.sibling_sat(Direction::Prev),
-                0x09 => self.sibling_wrap(Direction::Prev),
-                0x0a => self.sibling_wrap(Direction::Next),
                 b'l' => self.enter(),
                 b'q' => self.state = State::Quit,
                 b' ' => self.toggle_mark(),
                 _ => (),
             },
+            State::Pending(ref mut v) => {
+                if 0x07 /* ^G */ == key {
+                    self.state = State::Continue;
+                } else {
+                    v.push(key);
+                }
+            }
             State::Quit => panic!("should have quitted, but was called again!"),
         }
         &self.state
@@ -143,7 +218,23 @@ where
 {
     fn fmt(&self, f: &mut Formatter) -> FmtResult {
         write!(f, "\x1b[H\x1b[J")?;
-        self.fmt_at(f, self.tree.root(), "".into())
+
+        let mut c = 0;
+        self.fmt_at(f, self.tree.root(), "".into(), &mut c, &self.view.visible())?;
+        self.view.total.try_borrow_mut().unwrap().end = c;
+
+        write!(f, "\r\n")?;
+        if let State::Pending(v) = &self.state {
+            for k in v {
+                if k.is_ascii_graphic() {
+                    write!(f, "{}", *k as char)
+                } else {
+                    write!(f, "<{k}>")
+                }?;
+            }
+        }
+
+        Ok(())
     }
 }
 
@@ -151,39 +242,70 @@ impl<P: Provider> Navigate<P>
 where
     <P as Provider>::Fragment: Display,
 {
-    fn fmt_at(&self, f: &mut Formatter, at: NodeRef, indent: String) -> FmtResult {
-        if self.cursor == at {
+    fn fmt_at(
+        &self,
+        f: &mut Formatter,
+        at: NodeRef,
+        indent: String,
+        current: &mut usize,
+        visible: &Range<usize>,
+    ) -> FmtResult {
+        if visible.contains(current) && self.cursor == at {
             write!(f, "\x1b[7m")?;
         }
         let node = self.tree.at(at);
-        if node.marked() {
+        if visible.contains(current) && node.marked() {
             write!(f, " \x1b[4m")?;
         }
 
         let frag = &node.fragment;
-        write!(f, "{frag}\x1b[m")?;
+        if visible.contains(current) {
+            write!(f, "{frag}\x1b[m")?;
+        }
 
         if node.folded() {
-            return write!(f, "\r\n");
+            *current += 1;
+            if visible.contains(current) {
+                write!(f, "\r\n")?;
+            }
+            return Ok(());
         }
         let children = node.children().unwrap();
         if 0 == children.len() {
-            return write!(f, "\r\n");
+            *current += 1;
+            if visible.contains(current) {
+                write!(f, "\r\n")?;
+            }
+            return Ok(());
         }
 
         if 1 == children.len() {
-            self.fmt_at(f, children[0], indent)
+            self.fmt_at(f, children[0], indent, current, visible)
         } else {
-            write!(f, "\r\n")?;
+            *current += 1;
+            if visible.contains(current) {
+                write!(f, "\r\n")?;
+            }
+
             let mut iter = children.iter();
 
             for it in iter.by_ref().take(children.len() - 1) {
-                write!(f, "{indent}{BRANCH}")?;
-                self.fmt_at(f, *it, format!("{indent}{INDENT}"))?;
+                if visible.contains(current) {
+                    write!(f, "{indent}{BRANCH}")?;
+                }
+                self.fmt_at(f, *it, format!("{indent}{INDENT}"), current, visible)?;
             }
 
-            write!(f, "{indent}{BRANCH_LAST}")?;
-            self.fmt_at(f, *iter.next().unwrap(), format!("{indent}{INDENT_LAST}"))
+            if visible.contains(current) {
+                write!(f, "{indent}{BRANCH_LAST}")?;
+            }
+            self.fmt_at(
+                f,
+                *iter.next().unwrap(),
+                format!("{indent}{INDENT_LAST}"),
+                current,
+                visible,
+            )
         }
     }
 }

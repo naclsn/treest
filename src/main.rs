@@ -20,11 +20,11 @@ fn set_term() {
             RESTORE = Some(terminal::raw().unwrap());
         }
     }
-    eprint!("\x1b[?25l\x1b[?1049h");
+    eprint!("\x1b[?9h\x1b[?25l\x1b[?1049h");
 }
 
 fn rst_term() {
-    eprint!("\x1b[?25h\x1b[?1049l");
+    eprint!("\x1b[?9l\x1b[?25h\x1b[?1049l");
     unsafe {
         if let Some(term) = RESTORE.take() {
             term.restore();
@@ -50,12 +50,12 @@ fn main() {
 
     set_term();
 
-    eprint!("{nav}\r\n");
+    eprint!("{nav}");
     for key in io::stdin().bytes().map_while(Result::ok) {
         match nav.feed(key) {
-            State::Continue => {
+            State::Continue | State::Pending(_) => {
                 let buf = nav.to_string();
-                eprint!("{buf}\r\n");
+                eprint!("{buf}");
             }
             State::Quit => break,
         }
