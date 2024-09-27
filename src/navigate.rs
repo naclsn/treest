@@ -3,7 +3,7 @@ use std::fmt::{Display, Formatter, Result as FmtResult};
 use std::ops::Range;
 
 use crate::terminal;
-use crate::tree::{NodeRef, Provider, Tree};
+use crate::tree::{NodeRef, Provider, ProviderExt, Tree};
 
 pub struct Navigate<P: Provider> {
     tree: Tree<P>,
@@ -32,7 +32,7 @@ enum ViewJumpBy {
 impl View {
     fn visible(&self) -> Range<usize> {
         let row = terminal::size().unwrap_or((24, 80)).0 as usize;
-        self.scroll..self.scroll + row - 1
+        self.scroll..self.scroll + row - 2
     }
 
     fn jump_by(&self, by: ViewJumpBy) -> usize {
@@ -212,7 +212,7 @@ const INDENT: &str = "\u{2502}   "; //                    "|   "
 const BRANCH_LAST: &str = "\u{2514}\u{2500}\u{2500} "; // "`-- "
 const INDENT_LAST: &str = "    "; //                      "    "
 
-impl<P: Provider> Display for Navigate<P>
+impl<P: Provider + ProviderExt> Display for Navigate<P>
 where
     <P as Provider>::Fragment: Display,
 {
@@ -220,10 +220,18 @@ where
         write!(f, "\x1b[H\x1b[J")?;
 
         let mut c = 0;
-        self.fmt_at(f, self.tree.root(), "".into(), &mut c, &self.view.visible())?;
+        let visible = self.view.visible();
+        self.fmt_at(f, self.tree.root(), "".into(), &mut c, &visible)?;
         self.view.total.try_borrow_mut().unwrap().end = c;
+        if c < visible.end {
+            write!(f, "{}", "\n".repeat(visible.end - c))?;
+        }
 
+        self.tree
+            .provider()
+            .fmt_frag_path(f, self.tree.path_at(self.cursor))?;
         write!(f, "\r\n")?;
+
         if let State::Pending(v) = &self.state {
             for k in v {
                 if k.is_ascii_graphic() {
@@ -264,28 +272,28 @@ where
         }
 
         if node.folded() {
-            *current += 1;
             if visible.contains(current) {
                 write!(f, "\r\n")?;
             }
+            *current += 1;
             return Ok(());
         }
         let children = node.children().unwrap();
         if 0 == children.len() {
-            *current += 1;
             if visible.contains(current) {
                 write!(f, "\r\n")?;
             }
+            *current += 1;
             return Ok(());
         }
 
         if 1 == children.len() {
             self.fmt_at(f, children[0], indent, current, visible)
         } else {
-            *current += 1;
             if visible.contains(current) {
                 write!(f, "\r\n")?;
             }
+            *current += 1;
 
             let mut iter = children.iter();
 

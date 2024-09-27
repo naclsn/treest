@@ -4,7 +4,7 @@ use std::path::Path;
 
 use super::Error;
 use crate::fisovec::FilterSorter;
-use crate::tree::Provider;
+use crate::tree::{Provider, ProviderExt};
 
 pub struct Template;
 
@@ -28,6 +28,8 @@ impl Provider for Template {
         todo!()
     }
 }
+
+impl ProviderExt for Template {}
 
 impl FilterSorter<<Self as Provider>::Fragment> for Template {
     fn compare(

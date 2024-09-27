@@ -7,7 +7,7 @@ use std::path::Path;
 
 use super::Error;
 use crate::fisovec::FilterSorter;
-use crate::tree::Provider;
+use crate::tree::{Provider, ProviderExt};
 
 pub struct Json {
     json: JsonValue,
@@ -109,6 +109,8 @@ impl Provider for Json {
         }
     }
 }
+
+impl ProviderExt for Json {}
 
 impl FilterSorter<JsonNode> for Json {
     fn compare(&self, a: &JsonNode, b: &JsonNode) -> Ordering {

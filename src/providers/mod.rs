@@ -3,7 +3,7 @@ use std::io::Error as IoError;
 use std::path::PathBuf;
 
 use crate::fisovec::FilterSorter;
-use crate::tree::Provider;
+use crate::tree::{Provider, ProviderExt};
 
 #[allow(dead_code)]
 #[derive(Debug)]
@@ -61,6 +61,17 @@ macro_rules! providers {
                         .into_iter()
                         .map(DynFragment::$ty)
                         .collect(),)+
+                }
+            }
+        }
+
+        impl ProviderExt for DynProvider {
+            fn fmt_frag_path(&self, f: &mut Formatter, path: Vec<&Self::Fragment>) -> FmtResult {
+                match self {
+                    $(DynProvider::$ty(it) => it.fmt_frag_path(f, path
+                        .into_iter()
+                        .map(DynFragment::$nm)
+                        .collect(),),)+
                 }
             }
         }

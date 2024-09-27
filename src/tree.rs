@@ -1,3 +1,5 @@
+use std::fmt::{Display, Formatter, Result as FmtResult};
+
 use crate::fisovec::{FilterSorter, FisoVec};
 use crate::stabvec::StabVec;
 
@@ -9,6 +11,15 @@ pub trait Provider: FilterSorter<Self::Fragment> {
 
     fn provide_root(&self) -> Self::Fragment;
     fn provide(&mut self, path: Vec<&Self::Fragment>) -> Vec<Self::Fragment>;
+}
+
+pub trait ProviderExt: Provider
+where
+    Self::Fragment: Display,
+{
+    fn fmt_frag_path(&self, f: &mut Formatter, path: Vec<&Self::Fragment>) -> FmtResult {
+        path.iter().try_for_each(|it| write!(f, "{it}"))
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -65,6 +76,10 @@ impl<P: Provider> Tree<P> {
             provider,
             nodes: FromIterator::from_iter(vec![Node::new(fragment, NodeRef(0))]),
         }
+    }
+
+    pub(crate) fn provider(&self) -> &P {
+        &self.provider
     }
 
     pub fn root(&self) -> NodeRef {

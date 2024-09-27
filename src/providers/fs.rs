@@ -8,7 +8,7 @@ use lscolors::{LsColors, Style};
 
 use super::Error;
 use crate::fisovec::FilterSorter;
-use crate::tree::Provider;
+use crate::tree::{Provider, ProviderExt};
 
 pub struct Fs {
     root: PathBuf,
@@ -89,6 +89,72 @@ impl From<(PathBuf, &Option<Metadata>)> for FsNodeKind {
     }
 }
 
+#[inline(always)]
+fn write_perm(f: &mut Formatter, perm: u32) -> FmtResult {
+    write!(
+        f,
+        "{}{}{}",
+        if perm >> 2 & 0b1 == 1 { 'r' } else { '-' },
+        if perm >> 1 & 0b1 == 1 { 'w' } else { '-' },
+        if perm & 0b1 == 1 { 'x' } else { '-' },
+    )
+}
+
+#[cfg(unix)]
+fn write_meta(f: &mut Formatter, node: &FsNode) -> FmtResult {
+    use std::os::unix::fs::PermissionsExt;
+    let mode = node
+        .meta
+        .as_ref()
+        .map(|m| m.permissions().mode())
+        .unwrap_or(0);
+
+    write!(
+        f,
+        "{}",
+        match node.kind {
+            Directory => 'd',
+            SymLink(_) => 'l',
+            NamedPipe => 'p',
+            CharDevice => 'c',
+            BlockDevice => 'b',
+            Socket => 's',
+            Regular | Executable => '-',
+        }
+    )?;
+    // owner
+    write_perm(f, mode >> 6 & 0b111)?;
+    // group
+    write_perm(f, mode >> 3 & 0b111)?;
+    // world
+    write_perm(f, mode & 0b111)
+}
+
+#[cfg(windows)]
+fn write_meta(f: &mut Formatter, node: &FsNode) -> FmtResult {
+    let ro = node
+        .meta
+        .as_ref()
+        .map(|m| m.permissions().readonly())
+        .unwrap_or(true);
+
+    write!(
+        f,
+        "{}",
+        match node.kind {
+            Directory => 'd',
+            SymLink(_) => 'l',
+            _ => '-',
+        }
+    )?;
+    // owner
+    write_perm(f, 0b101 | if ro { 0b000 } else { 0b010 })?;
+    // group
+    write_perm(f, 0b101 | if ro { 0b000 } else { 0b010 })?;
+    // world
+    write_perm(f, 0b101 | if ro { 0b000 } else { 0b010 })
+}
+
 static LS_COLORS: OnceLock<LsColors> = OnceLock::new();
 
 impl Display for FsNode {
@@ -146,6 +212,41 @@ impl Provider for Fs {
             })
         })
         .collect()
+    }
+}
+
+impl ProviderExt for Fs {
+    fn fmt_frag_path(&self, f: &mut Formatter, path: Vec<&Self::Fragment>) -> FmtResult {
+        let node = path.last().unwrap();
+        write_meta(f, node)?;
+
+        match &node.meta {
+            Some(meta) => {
+                write!(f, " {:8} ", meta.len())?;
+                match meta
+                    .modified()
+                    .ok()
+                    .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                {
+                    Some(duration) => {
+                        let s = duration.as_secs();
+                        write!(
+                            f,
+                            "{:02}:{:02}:{:02} ",
+                            // TODO(+2): get tz properly, likely stealing from
+                            // https://github.com/chronotope/chrono/tree/main/src/offset/local/tz_info
+                            (s / 60 / 60) % 24 + 2,
+                            (s / 60) % 60,
+                            s % 60,
+                        )
+                    }
+                    None => write!(f, "??:??:?? "),
+                }
+            }
+            None => write!(f, "        ? ??:??:?? "),
+        }?;
+
+        path.iter().try_for_each(|it| write!(f, "{it}"))
     }
 }
 

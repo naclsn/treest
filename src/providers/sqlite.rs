@@ -7,7 +7,7 @@ use sqlite::{Connection, OpenFlags, Value};
 
 use super::Error;
 use crate::fisovec::FilterSorter;
-use crate::tree::Provider;
+use crate::tree::{Provider, ProviderExt};
 
 pub struct Sqlite {
     connection: Connection,
@@ -255,6 +255,8 @@ impl Provider for Sqlite {
         }
     }
 }
+
+impl ProviderExt for Sqlite {}
 
 impl FilterSorter<<Self as Provider>::Fragment> for Sqlite {
     fn compare(
