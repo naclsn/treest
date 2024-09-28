@@ -107,5 +107,4 @@ providers! {
     json: Json,
     sqlite: Sqlite,
     yaml: Yaml,
-    json2: Json2,
 }

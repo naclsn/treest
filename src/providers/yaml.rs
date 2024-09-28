@@ -96,7 +96,7 @@ impl Yaml {
         } else {
             serde_yml::from_reader(File::open(path).map_err(Error::IoErr)?)
         }
-        .map(|value| Yaml(Box::pin((value, PhantomPinned))))
+        .map(|value| Self(Box::pin((value, PhantomPinned))))
         .map_err(|_| todo!())
     }
 }

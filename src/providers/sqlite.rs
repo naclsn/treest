@@ -161,12 +161,12 @@ impl Provider for Sqlite {
                             Column {
                                 name,
                                 tipe: str::to_string(row.read("type")),
-                                nullable: 0i64 == row.read("notnull"),
+                                nullable: 0i64 == row.read::<i64, _>("notnull"),
                                 default: match row.take("dflt_value") {
                                     Value::Null => None,
                                     value => Some(value),
                                 },
-                                iskey: 0i64 != row.read("pk"),
+                                iskey: 0i64 != row.read::<i64, _>("pk"),
                             },
                         )
                     })

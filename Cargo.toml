@@ -11,5 +11,6 @@ winapi = "0.3.9"
 
 [dependencies]
 lscolors = { version = "0.19.0", default-features = false, features = ["ansi_term"] }
+serde_json = "1.0.128"
 serde_yml = "0.0.12"
 sqlite = "0.36.1"
