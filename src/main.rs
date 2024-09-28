@@ -34,16 +34,29 @@ fn rst_term() {
 }
 
 fn main() {
-    let mut args = env::args().skip(1);
-    let name = match args.next() {
-        Some(list) if "list" == list => {
+    let mut args = env::args();
+    let prog = args.next().unwrap();
+    let arg = match args.next().unwrap_or(".".into()) {
+        list if "--list" == list => {
             for name in providers::NAMES {
                 println!("{name}");
             }
             return;
         }
-        Some(name) => name,
-        None => "fs".into(),
+        help if "--help" == help => {
+            eprintln!(
+                r#"Usage: {prog} [arg [name]]
+
+    Navigate a tree-like space dynamically.
+
+    `arg` is passed to the provider `name`; if `name` is not given
+    it's guessed from `arg`. See '--list' for a list of providers.
+    Note: if `arg` is not given, it defaults to ".", so "fs" name.
+"#
+            );
+            return;
+        }
+        arg => arg,
     };
 
     let input = match File::open("/dev/tty") {
@@ -59,8 +72,7 @@ fn main() {
         phook(info)
     }));
 
-    let arg = args.next().unwrap_or("".into());
-    let mut nav = Navigate::new(providers::select(&name, &arg).unwrap());
+    let mut nav = Navigate::new(providers::select(&arg, args.next().as_deref()).unwrap());
 
     set_term();
 

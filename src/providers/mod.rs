@@ -1,25 +1,18 @@
-use std::cmp::Ordering;
-use std::fmt::{Display, Formatter, Result as FmtResult};
-use std::io::Error as IoError;
-use std::path::PathBuf;
-
-use crate::fisovec::FilterSorter;
-use crate::tree::{Provider, ProviderExt};
-
-mod generic;
-
+// TODO: cleaner, maybe simply dynamic
 #[allow(dead_code)]
 #[derive(Debug)]
 pub enum Error {
+    ProviderNeeded,
     NotProvider(String),
-    NotDirectory(PathBuf),
+    NotDirectory(std::path::PathBuf),
     StringErr(String),
-    IoErr(IoError),
+    IoErr(std::io::Error),
     ParseErr(usize),
 }
 
 macro_rules! providers {
-    ($($nm:ident: $ty:ident,)+) => {
+    ($($nm:ident: $ty:ident if $ft:expr,)+) => {
+        mod generic;
         $(pub mod $nm;)+
 
         pub const NAMES: &'static [&'static str] = &[$(stringify!($nm),)+];
@@ -30,11 +23,11 @@ macro_rules! providers {
 
         #[derive(PartialEq)]
         pub enum DynFragment {
-            $($ty(<$nm::$ty as Provider>::Fragment),)+
+            $($ty(<$nm::$ty as $crate::tree::Provider>::Fragment),)+
         }
 
-        impl Display for DynFragment {
-            fn fmt(&self, f: &mut Formatter) -> FmtResult {
+        impl std::fmt::Display for DynFragment {
+            fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
                 match self {
                     $(DynFragment::$ty(it) => it.fmt(f),)+
                 }
@@ -42,7 +35,7 @@ macro_rules! providers {
         }
 
         impl DynFragment {
-            $(fn $nm(&self) -> &<$nm::$ty as Provider>::Fragment {
+            $(fn $nm(&self) -> &<$nm::$ty as $crate::tree::Provider>::Fragment {
                 match self {
                     DynFragment::$ty(it) => it,
                     _ => unreachable!(),
@@ -50,7 +43,7 @@ macro_rules! providers {
             })+
         }
 
-        impl Provider for DynProvider {
+        impl $crate::tree::Provider for DynProvider {
             type Fragment = DynFragment;
 
             fn provide_root(&self) -> Self::Fragment {
@@ -70,8 +63,8 @@ macro_rules! providers {
             }
         }
 
-        impl ProviderExt for DynProvider {
-            fn fmt_frag_path(&self, f: &mut Formatter, path: Vec<&Self::Fragment>) -> FmtResult {
+        impl $crate::tree::ProviderExt for DynProvider {
+            fn fmt_frag_path(&self, f: &mut std::fmt::Formatter, path: Vec<&Self::Fragment>) -> std::fmt::Result {
                 match self {
                     $(DynProvider::$ty(it) => it.fmt_frag_path(f, path
                         .into_iter()
@@ -81,8 +74,8 @@ macro_rules! providers {
             }
         }
 
-        impl FilterSorter<DynFragment> for DynProvider {
-            fn compare(&self, a: &DynFragment, b: &DynFragment) -> Option<Ordering> {
+        impl $crate::fisovec::FilterSorter<DynFragment> for DynProvider {
+            fn compare(&self, a: &DynFragment, b: &DynFragment) -> Option<std::cmp::Ordering> {
                 match self {
                     $(DynProvider::$ty(it) => it.compare(a.$nm(), b.$nm()),)+
                 }
@@ -95,7 +88,15 @@ macro_rules! providers {
             }
         }
 
-        pub fn select(name: &str, arg: &str) -> Result<DynProvider, Error> {
+        pub fn guess(arg: &str) -> Option<&'static str> {
+            $(if $ft(arg) {
+                return Some(stringify!($nm));
+            })+
+            None
+        }
+
+        pub fn select(arg: &str, name: Option<&str>) -> Result<DynProvider, Error> {
+            let name = name.or_else(|| guess(arg)).ok_or(Error::ProviderNeeded)?;
             match name {
                 $(stringify!($nm) => Ok(DynProvider::$ty($nm::$ty::new(arg)?)),)+
                 _ => Err(Error::NotProvider(name.into())),
@@ -105,9 +106,9 @@ macro_rules! providers {
 }
 
 providers! {
-    fs: Fs,
-    json: Json,
-    sqlite: Sqlite,
-    toml: Toml,
-    yaml: Yaml,
+    fs: Fs         if |path| std::path::Path::new(path).is_dir(),
+    json: Json     if |ext: &str| ext.ends_with(".json"),
+    sqlite: Sqlite if |ext: &str| [".sqlite", ".sqlite3", ".db"].iter().any(|&s| ext.ends_with(s)),
+    toml: Toml     if |ext: &str| ext.ends_with(".toml"),
+    yaml: Yaml     if |ext: &str| [".yaml", ".yml"].iter().any(|&s| ext.ends_with(s)),
 }

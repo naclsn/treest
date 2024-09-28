@@ -17,7 +17,7 @@ pub struct Yaml(Pin<Box<(Value, PhantomPinned)>>);
 pub enum Index {
     #[default]
     Root,
-    Index(usize),
+    Num(usize),
     KeyBool(bool),
     KeyNumber(f64),
     KeyString(String),
@@ -25,13 +25,15 @@ pub enum Index {
 
 impl Display for Index {
     fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
+        use Index::*;
+
         match self {
-            Index::Root => write!(f, " "),
-            Index::Index(i) => write!(f, "[{i}]"),
-            Index::KeyBool(b) => write!(f, ".{b}"),
-            Index::KeyNumber(n) => write!(f, "[{n}]"),
-            Index::KeyString(s) if s.chars().any(|c| ' ' == c || '.' == c) => write!(f, ".'{s}'"),
-            Index::KeyString(s) => write!(f, ".{s}"),
+            Root => write!(f, " "),
+            Num(i) => write!(f, "[{i}]"),
+            KeyBool(b) => write!(f, ".{b}"),
+            KeyNumber(n) => write!(f, "[{n}]"),
+            KeyString(s) if s.chars().any(|c| ' ' == c || '.' == c) => write!(f, ".'{s}'"),
+            KeyString(s) => write!(f, ".{s}"),
         }
     }
 }
@@ -47,7 +49,7 @@ impl GenericValue for Value {
             Sequence(v) => v
                 .iter()
                 .enumerate()
-                .map(|(k, v)| (Index::Index(k), v))
+                .map(|(k, v)| (Index::Num(k), v))
                 .collect(),
             Mapping(m) => m
                 .iter()
@@ -69,6 +71,7 @@ impl GenericValue for Value {
 
     fn fmt_leaf(&self, f: &mut Formatter<'_>) -> FmtResult {
         use Value::*;
+
         match self {
             Null => write!(f, "\x1b[35mnull"),
             Bool(b) => write!(f, "\x1b[35m{b}"),

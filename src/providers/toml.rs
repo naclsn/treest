@@ -17,16 +17,18 @@ pub struct Toml(Pin<Box<(Value, PhantomPinned)>>);
 pub enum Index {
     #[default]
     Root,
-    Index(usize),
+    Num(usize),
     Key(String),
 }
 
 impl Display for Index {
     fn fmt(&self, f: &mut Formatter) -> FmtResult {
+        use Index::*;
+
         match self {
-            Index::Root => write!(f, "[]"),
-            Index::Index(index) => write!(f, "{index}"),
-            Index::Key(key) => write!(f, "{key}"),
+            Root => write!(f, "[]"),
+            Num(index) => write!(f, "{index}"),
+            Key(key) => write!(f, "{key}"),
         }
     }
 }
@@ -43,7 +45,7 @@ impl GenericValue for Value {
             Array(array) => array
                 .iter()
                 .enumerate()
-                .map(|(k, v)| (Index::Index(k), v))
+                .map(|(k, v)| (Index::Num(k), v))
                 .collect(),
             Table(table) => table
                 .iter()
@@ -54,6 +56,7 @@ impl GenericValue for Value {
 
     fn fmt_leaf(&self, f: &mut Formatter) -> FmtResult {
         use Value::*;
+
         match self {
             String(s) => write!(f, "\x1b[32m\"{}\"", &s[..std::cmp::min(s.len(), 42)]),
             Integer(n) => write!(f, "\x1b[33m{n}"),

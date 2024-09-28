@@ -17,23 +17,25 @@ pub struct Json(Pin<Box<(Value, PhantomPinned)>>);
 pub enum Index {
     #[default]
     Root,
-    Index(usize),
+    Num(usize),
     Key(String),
 }
 
 impl Display for Index {
     fn fmt(&self, f: &mut Formatter) -> FmtResult {
+        use Index::*;
+
         match self {
-            Index::Root => write!(f, "$"),
-            Index::Index(index) => write!(f, "[{index}]"),
+            Root => write!(f, "$"),
+            Num(index) => write!(f, "[{index}]"),
             // TODO: provider-specific setting to show all keys as in JSON (ie. `"key"`)
-            Index::Key(key)
+            Key(key)
                 if (key.as_bytes()[0].is_ascii_alphabetic() || b'_' == key.as_bytes()[0])
                     && key.chars().all(|c| c.is_ascii_alphanumeric() || '_' == c) =>
             {
                 write!(f, ".{key}")
             }
-            Index::Key(key) => write!(f, "['{key}']"),
+            Key(key) => write!(f, "['{key}']"),
         }
     }
 }
@@ -50,7 +52,7 @@ impl GenericValue for Value {
             Array(array) => array
                 .iter()
                 .enumerate()
-                .map(|(k, v)| (Index::Index(k), v))
+                .map(|(k, v)| (Index::Num(k), v))
                 .collect(),
             Object(object) => object
                 .iter()
@@ -61,6 +63,7 @@ impl GenericValue for Value {
 
     fn fmt_leaf(&self, f: &mut Formatter) -> FmtResult {
         use Value::*;
+
         match self {
             Null => write!(f, "\x1b[35mnull"),
             Bool(b) => write!(f, "\x1b[35m{b}"),
