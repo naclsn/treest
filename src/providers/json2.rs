@@ -1,133 +1,95 @@
-use std::cmp::{self, Ordering};
 use std::fmt::{Display, Formatter, Result as FmtResult};
 use std::fs::File;
 use std::io::Read;
 use std::iter::{self, Peekable};
+use std::marker::PhantomPinned;
 use std::path::Path;
+use std::pin::Pin;
 
-use super::Error;
-use crate::fisovec::FilterSorter;
-use crate::tree::{Provider, ProviderExt};
+use super::{
+    generic::{Generic, GenericValue},
+    Error,
+};
 
-pub struct Json {
-    json: JsonValue,
-}
+pub struct Json2(Pin<Box<(Value, PhantomPinned)>>);
 
-enum JsonValue {
+pub enum Value {
     Null,
     Boolean(bool),
     Number(String),
     String(String),
-    Array(Vec<JsonValue>),
-    Object(Vec<(String, JsonValue)>),
+    Array(Vec<Value>),
+    Object(Vec<(String, Value)>),
 }
 
-#[derive(PartialEq)]
-pub enum JsonPathFragment {
+#[derive(Default, PartialEq, PartialOrd)]
+pub enum Index {
+    #[default]
     Root,
     Index(usize),
     Key(String),
 }
 
-#[derive(PartialEq)]
-pub enum JsonPathTo {
-    Null,
-    Boolean(bool),
-    Number(String),
-    String(String),
-    Array,
-    Object,
-}
-
-#[derive(PartialEq)]
-pub struct JsonNode {
-    fragment: JsonPathFragment,
-    to: JsonPathTo,
-}
-
-impl Display for JsonNode {
+impl Display for Index {
     fn fmt(&self, f: &mut Formatter) -> FmtResult {
-        use JsonPathFragment::*;
-        use JsonPathTo::*;
-
-        match &self.fragment {
-            Root => write!(f, "\x1b[34m."),
-            Index(index) => write!(f, "\x1b[34m{index}"),
-            Key(key) => write!(f, "\x1b[34m\"{key}\""),
-        }?;
-
-        write!(f, "\x1b[m: ")?;
-
-        match &self.to {
-            Null => write!(f, "\x1b[35mnull\x1b[m"),
-            Boolean(b) => write!(f, "\x1b[35m{b}\x1b[m"),
-            Number(n) => write!(f, "\x1b[33m{n}\x1b[m"),
-            String(s) => write!(f, "\x1b[32m\"{}\"\x1b[m", &s[..cmp::min(s.len(), 42)]),
-            Array => write!(f, "[] "),
-            Object => write!(f, "{{}} "),
+        match self {
+            Index::Root => write!(f, "$"),
+            Index::Index(index) => write!(f, "[{index}]"),
+            // TODO: provider-specific setting to show all keys as in JSON (ie. `"key"`)
+            Index::Key(key)
+                if (key.as_bytes()[0].is_ascii_alphabetic() || b'_' == key.as_bytes()[0])
+                    && key.chars().all(|c| c.is_ascii_alphanumeric() || '_' == c) =>
+            {
+                write!(f, ".{key}")
+            }
+            Index::Key(key) => write!(f, "['{key}']"),
         }
     }
 }
 
-impl Provider for Json {
-    type Fragment = JsonNode;
+impl GenericValue for Value {
+    type Index = Index;
 
-    fn provide_root(&self) -> Self::Fragment {
-        JsonNode {
-            fragment: JsonPathFragment::Root,
-            to: self.json.as_to(),
-        }
-    }
+    fn children(&self) -> Vec<(Self::Index, &Self)> {
+        use Value::*;
 
-    fn provide(&mut self, path: Vec<&Self::Fragment>) -> Vec<Self::Fragment> {
-        let Some(node) = self.json.resolve(path) else {
-            return Vec::new();
-        };
-
-        use JsonPathFragment::*;
-        use JsonValue::*;
-
-        match node {
+        match self {
             Null | Boolean(_) | Number(_) | String(_) => Vec::new(),
 
             Array(array) => array
                 .iter()
                 .enumerate()
-                .map(|(k, v)| JsonNode {
-                    fragment: Index(k),
-                    to: v.as_to(),
-                })
+                .map(|(k, v)| (Index::Index(k), v))
                 .collect(),
-
             Object(object) => object
                 .iter()
-                .map(|(k, v)| JsonNode {
-                    fragment: Key(k.clone()),
-                    to: v.as_to(),
-                })
+                .map(|(k, v)| (Index::Key(k.clone()), v))
                 .collect(),
+        }
+    }
+
+    fn fmt_leaf(&self, f: &mut Formatter) -> FmtResult {
+        use Value::*;
+        match self {
+            Null => write!(f, "\x1b[35mnull"),
+            Boolean(b) => write!(f, "\x1b[35m{b}"),
+            Number(n) => write!(f, "\x1b[33m{n}"),
+            String(s) => write!(f, "\x1b[32m\"{}\"", &s[..std::cmp::min(s.len(), 42)]),
+            Array(a) => write!(f, "[{}] ", a.len()),
+            Object(o) => write!(f, "{{{}}} ", o.len()),
         }
     }
 }
 
-impl ProviderExt for Json {}
+impl Generic for Json2 {
+    type Value = Value;
 
-impl FilterSorter<JsonNode> for Json {
-    fn compare(&self, a: &JsonNode, b: &JsonNode) -> Option<Ordering> {
-        use JsonPathFragment::*;
-        Some(match (&a.fragment, &b.fragment) {
-            (Index(a), Index(b)) => Ord::cmp(a, b),
-            (Key(a), Key(b)) => Ord::cmp(a, b),
-            _ => Ordering::Equal,
-        })
-    }
-
-    fn keep(&self, a: &JsonNode) -> bool {
-        _ = a;
-        true
+    fn root(&self) -> &Pin<Box<(Self::Value, PhantomPinned)>> {
+        &self.0
     }
 }
 
+// parsing {{{
 #[derive(Debug)]
 enum Token {
     Comma,
@@ -144,7 +106,7 @@ enum Token {
     Unknown,
 }
 
-impl Json {
+impl Json2 {
     pub fn new(path: impl AsRef<Path>) -> Result<Self, Error> {
         let mut bytes = File::open(path)
             .map_err(Error::IoErr)?
@@ -226,33 +188,34 @@ impl Json {
             ))
         });
 
-        Ok(Self {
-            json: Json::parse(&mut lex.peekable()).map_err(Error::ParseErr)?,
-        })
+        Ok(Self(Box::pin((
+            Json2::parse(&mut lex.peekable()).map_err(Error::ParseErr)?,
+            PhantomPinned,
+        ))))
     }
 
-    fn parse(lex: &mut Peekable<impl Iterator<Item = (usize, Token)>>) -> Result<JsonValue, usize> {
+    fn parse(lex: &mut Peekable<impl Iterator<Item = (usize, Token)>>) -> Result<Value, usize> {
         use Token::*;
         let (pos, tok) = lex.next().ok_or(usize::MAX)?;
         match tok {
-            OpenBracket => Json::parse_array(lex),
-            OpenBrace => Json::parse_object(lex),
-            Null => Ok(JsonValue::Null),
-            True => Ok(JsonValue::Boolean(true)),
-            False => Ok(JsonValue::Boolean(false)),
-            Number(n) => Ok(JsonValue::Number(n)),
-            String(s) => Ok(JsonValue::String(s)),
+            OpenBracket => Json2::parse_array(lex),
+            OpenBrace => Json2::parse_object(lex),
+            Null => Ok(Value::Null),
+            True => Ok(Value::Boolean(true)),
+            False => Ok(Value::Boolean(false)),
+            Number(n) => Ok(Value::Number(n)),
+            String(s) => Ok(Value::String(s)),
             Comma | Colon | CloseBracket | CloseBrace | Unknown => Err(pos),
         }
     }
 
     fn parse_array(
         lex: &mut Peekable<impl Iterator<Item = (usize, Token)>>,
-    ) -> Result<JsonValue, usize> {
+    ) -> Result<Value, usize> {
         let mut array = Vec::new();
         if !matches!(lex.peek(), Some((_, Token::CloseBracket))) {
             loop {
-                array.push(Json::parse(lex)?);
+                array.push(Json2::parse(lex)?);
                 match lex.next().ok_or(usize::MAX)? {
                     (_, Token::Comma) => continue,
                     (_, Token::CloseBracket) => break,
@@ -262,12 +225,12 @@ impl Json {
         } else {
             lex.next();
         }
-        Ok(JsonValue::Array(array))
+        Ok(Value::Array(array))
     }
 
     fn parse_object(
         lex: &mut Peekable<impl Iterator<Item = (usize, Token)>>,
-    ) -> Result<JsonValue, usize> {
+    ) -> Result<Value, usize> {
         let mut object = Vec::new();
         if !matches!(lex.peek(), Some((_, Token::CloseBrace))) {
             loop {
@@ -277,7 +240,7 @@ impl Json {
                         (pos, _) => return Err(pos),
                     },
                     match lex.next().ok_or(usize::MAX)? {
-                        (_, Token::Colon) => Json::parse(lex)?,
+                        (_, Token::Colon) => Json2::parse(lex)?,
                         (pos, _) => return Err(pos),
                     },
                 ));
@@ -290,37 +253,7 @@ impl Json {
         } else {
             lex.next();
         }
-        Ok(JsonValue::Object(object))
+        Ok(Value::Object(object))
     }
 }
-
-impl JsonValue {
-    fn resolve<'a>(&'a self, path: impl IntoIterator<Item = &'a JsonNode>) -> Option<&'a Self> {
-        path.into_iter().try_fold(self, |m, f| m.resolve_one(f))
-    }
-
-    fn resolve_one(&self, path: &JsonNode) -> Option<&Self> {
-        use JsonPathFragment::*;
-        use JsonValue::*;
-
-        match (self, &path.fragment) {
-            (any, Root) => Some(any),
-            (Array(array), Index(index)) => array.get(*index),
-            (Object(object), Key(key)) => object.iter().find(|p| key == &p.0).map(|p| &p.1),
-            _ => None,
-        }
-    }
-
-    fn as_to(&self) -> JsonPathTo {
-        use JsonValue::*;
-
-        match self {
-            Null => JsonPathTo::Null,
-            Boolean(b) => JsonPathTo::Boolean(*b),
-            Number(n) => JsonPathTo::Number(n.clone()),
-            String(s) => JsonPathTo::String(s.clone()),
-            Array(_) => JsonPathTo::Array,
-            Object(_) => JsonPathTo::Object,
-        }
-    }
-}
+// }}}

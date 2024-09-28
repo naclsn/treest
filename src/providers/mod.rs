@@ -1,9 +1,12 @@
+use std::cmp::Ordering;
 use std::fmt::{Display, Formatter, Result as FmtResult};
 use std::io::Error as IoError;
 use std::path::PathBuf;
 
 use crate::fisovec::FilterSorter;
 use crate::tree::{Provider, ProviderExt};
+
+mod generic;
 
 #[allow(dead_code)]
 #[derive(Debug)]
@@ -77,7 +80,7 @@ macro_rules! providers {
         }
 
         impl FilterSorter<DynFragment> for DynProvider {
-            fn compare(&self, a: &DynFragment, b: &DynFragment) -> std::cmp::Ordering {
+            fn compare(&self, a: &DynFragment, b: &DynFragment) -> Option<Ordering> {
                 match self {
                     $(DynProvider::$ty(it) => it.compare(a.$nm(), b.$nm()),)+
                 }
@@ -103,4 +106,6 @@ providers! {
     fs: Fs,
     json: Json,
     sqlite: Sqlite,
+    yaml: Yaml,
+    json2: Json2,
 }

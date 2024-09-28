@@ -251,8 +251,8 @@ impl ProviderExt for Fs {
 }
 
 impl FilterSorter<FsNode> for Fs {
-    fn compare(&self, a: &FsNode, b: &FsNode) -> Ordering {
-        Ord::cmp(&a.name, &b.name)
+    fn compare(&self, a: &FsNode, b: &FsNode) -> Option<Ordering> {
+        Some(Ord::cmp(&a.name, &b.name))
     }
 
     fn keep(&self, a: &FsNode) -> bool {

@@ -263,8 +263,8 @@ impl FilterSorter<<Self as Provider>::Fragment> for Sqlite {
         &self,
         a: &<Self as Provider>::Fragment,
         b: &<Self as Provider>::Fragment,
-    ) -> Ordering {
-        match (a, b) {
+    ) -> Option<Ordering> {
+        Some(match (a, b) {
             (Table { name: a }, Table { name: b }) => Ord::cmp(a, b),
 
             (Column { name: a, .. }, Column { name: b, .. }) => Ord::cmp(a, b),
@@ -295,7 +295,7 @@ impl FilterSorter<<Self as Provider>::Fragment> for Sqlite {
                 });
                 unreachable!("compare {} and {}", it.next().unwrap(), it.next().unwrap());
             }
-        }
+        })
     }
 
     fn keep(&self, a: &<Self as Provider>::Fragment) -> bool {

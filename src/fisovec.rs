@@ -2,7 +2,7 @@ use std::cmp::Ordering;
 use std::ops::{Index, IndexMut};
 
 pub trait FilterSorter<T> {
-    fn compare(&self, a: &T, b: &T) -> Ordering;
+    fn compare(&self, a: &T, b: &T) -> Option<Ordering>;
     fn keep(&self, a: &T) -> bool;
 }
 
@@ -21,8 +21,10 @@ impl<T> FisoVec<T> {
             .enumerate()
             .filter_map(|v| if with.keep(v.1) { Some(v.0) } else { None })
             .collect();
-        self.indices
-            .sort_unstable_by(|a, b| with.compare(&self.inner[*a], &self.inner[*b]));
+        self.indices.sort_unstable_by(|a, b| {
+            with.compare(&self.inner[*a], &self.inner[*b])
+                .unwrap_or(Ordering::Equal)
+        });
     }
 
     // FIXME: I don't get it, why is ctx necessary?
@@ -41,6 +43,7 @@ impl<T> FisoVec<T> {
             .collect();
         self.indices.sort_unstable_by(|a, b| {
             with.compare(map(ctx, &self.inner[*a]), map(ctx, &self.inner[*b]))
+                .unwrap_or(Ordering::Equal)
         });
     }
 

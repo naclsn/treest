@@ -258,16 +258,16 @@ where
         current: &mut usize,
         visible: &Range<usize>,
     ) -> FmtResult {
-        if visible.contains(current) && self.cursor == at {
-            write!(f, "\x1b[7m")?;
-        }
         let node = self.tree.at(at);
-        if visible.contains(current) && node.marked() {
-            write!(f, " \x1b[4m")?;
-        }
-
         let frag = &node.fragment;
+
         if visible.contains(current) {
+            if node.marked() {
+                write!(f, " \x1b[4m")?;
+            }
+            if self.cursor == at {
+                write!(f, "\x1b[7m")?;
+            }
             write!(f, "{frag}\x1b[m")?;
         }
 
