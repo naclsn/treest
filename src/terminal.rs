@@ -10,12 +10,12 @@ pub mod plat {
     pub fn raw() -> Result<Restore, IoError> {
         unsafe {
             let mut attr: Termios = std::mem::MaybeUninit::zeroed().assume_init();
-            if libc::tcgetattr(libc::STDOUT_FILENO, &mut attr) < 0 {
+            if libc::tcgetattr(libc::STDERR_FILENO, &mut attr) < 0 {
                 Err(IoError::last_os_error())
             } else {
                 let r = Restore(attr);
                 libc::cfmakeraw(&mut attr);
-                libc::tcsetattr(libc::STDOUT_FILENO, libc::TCSANOW, &attr);
+                libc::tcsetattr(libc::STDERR_FILENO, libc::TCSANOW, &attr);
                 Ok(r)
             }
         }
@@ -24,7 +24,7 @@ pub mod plat {
     impl Restore {
         pub fn restore(self) {
             unsafe {
-                libc::tcsetattr(libc::STDOUT_FILENO, libc::TCSANOW, &self.0);
+                libc::tcsetattr(libc::STDERR_FILENO, libc::TCSANOW, &self.0);
             }
         }
     }
@@ -33,7 +33,7 @@ pub mod plat {
         unsafe {
             let mut winsz: Winsize = std::mem::MaybeUninit::zeroed().assume_init();
             if libc::ioctl(
-                libc::STDOUT_FILENO,
+                libc::STDERR_FILENO,
                 libc::TIOCGWINSZ,
                 &mut winsz as *mut Winsize,
             ) < 0

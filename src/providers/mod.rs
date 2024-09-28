@@ -22,6 +22,8 @@ macro_rules! providers {
     ($($nm:ident: $ty:ident,)+) => {
         $(pub mod $nm;)+
 
+        pub const NAMES: &'static [&'static str] = &[$(stringify!($nm),)+];
+
         pub enum DynProvider {
             $($ty($nm::$ty),)+
         }
@@ -106,5 +108,6 @@ providers! {
     fs: Fs,
     json: Json,
     sqlite: Sqlite,
+    toml: Toml,
     yaml: Yaml,
 }

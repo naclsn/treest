@@ -1,4 +1,5 @@
 use std::env;
+use std::fs::File;
 use std::io::{self, Read};
 use std::panic;
 
@@ -33,25 +34,38 @@ fn rst_term() {
 }
 
 fn main() {
+    let mut args = env::args().skip(1);
+    let name = match args.next() {
+        Some(list) if "list" == list => {
+            for name in providers::NAMES {
+                println!("{name}");
+            }
+            return;
+        }
+        Some(name) => name,
+        None => "fs".into(),
+    };
+
+    let input = match File::open("/dev/tty") {
+        Ok(f) => Box::new(f) as Box<dyn Read>,
+        Err(_) => Box::new(io::stdin()),
+    }
+    .bytes()
+    .map_while(Result::ok);
+
     let phook = panic::take_hook();
     panic::set_hook(Box::new(move |info| {
         rst_term();
         phook(info)
     }));
 
-    let mut args = env::args().skip(1);
-    let mut nav = Navigate::new(
-        providers::select(
-            &args.next().unwrap_or("fs".into()),
-            &args.next().unwrap_or("".into()),
-        )
-        .unwrap(),
-    );
+    let arg = args.next().unwrap_or("".into());
+    let mut nav = Navigate::new(providers::select(&name, &arg).unwrap());
 
     set_term();
 
     eprint!("{nav}");
-    for key in io::stdin().bytes().map_while(Result::ok) {
+    for key in input {
         match nav.feed(key) {
             State::Continue | State::Pending(_) => {
                 let buf = nav.to_string();
