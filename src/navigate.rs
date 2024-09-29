@@ -1,21 +1,29 @@
 use std::cell::RefCell;
 use std::fmt::{Display, Formatter, Result as FmtResult};
+use std::mem;
 use std::ops::Range;
 
+use crate::reqres::ReqRes;
 use crate::terminal;
 use crate::tree::{NodeRef, Provider, ProviderExt, Tree};
 
 pub struct Navigate<P: Provider> {
     tree: Tree<P>,
     cursor: NodeRef,
-    state: State,
+    pub state: State,
+    pending: Vec<u8>,
     view: View,
 }
 
 pub enum State {
-    Continue,
-    Pending(Vec<u8>),
-    Quit,
+    Continue(ReqRes<(), u8>),
+    Line(ReqRes<String, Option<String>>),
+}
+
+impl Default for State {
+    fn default() -> Self {
+        Self::Continue(ReqRes::new(()))
+    }
 }
 
 struct View {
@@ -109,7 +117,8 @@ impl<P: Provider> Navigate<P> {
         Self {
             tree,
             cursor,
-            state: State::Continue,
+            state: State::default(),
+            pending: Vec::new(),
             view: View {
                 scroll: 0,
                 total: (0..0).into(),
@@ -117,39 +126,42 @@ impl<P: Provider> Navigate<P> {
         }
     }
 
-    pub fn feed(&mut self, key: u8) -> &State {
-        match self.state {
-            State::Continue => match key {
-                /* ^B */ 0x02 => self.view.up(ViewJumpBy::Win),
-                /* ^D */ 0x04 => self.view.down(ViewJumpBy::HalfWin),
-                /* ^E */ 0x05 => self.view.down(ViewJumpBy::Line),
-                /* ^F */ 0x06 => self.view.down(ViewJumpBy::Win),
-                /* ^J */ 0x0a => self.sibling_wrap(Direction::Next),
-                /* ^K */ 0x0b => self.sibling_wrap(Direction::Prev),
-                /* ^U */ 0x15 => self.view.up(ViewJumpBy::HalfWin),
-                /* ^Y */ 0x19 => self.view.up(ViewJumpBy::Line),
-                /* ^[ */ 0x1b => self.state = State::Pending(vec![key]),
-                b'0' => self.root(),
-                b'H' => self.fold(),
-                b'L' => self.unfold(),
-                b'h' => self.leave(),
-                b'j' => self.sibling_sat(Direction::Next),
-                b'k' => self.sibling_sat(Direction::Prev),
-                b'l' => self.enter(),
-                b'q' => self.state = State::Quit,
-                b' ' => self.toggle_mark(),
-                _ => (),
-            },
-            State::Pending(ref mut v) => {
-                if 0x07 /* ^G */ == key {
-                    self.state = State::Continue;
-                } else {
-                    v.push(key);
+    pub fn is_continue(&mut self) -> bool {
+        match mem::take(&mut self.state) {
+            State::Continue(r) => {
+                self.pending.push(r.unwrap());
+                match &self.pending[..] {
+                    /* ^B */ [0x02] => self.view.up(ViewJumpBy::Win),
+                    /* ^C */ [.., 0x03] => (),
+                    /* ^D */ [0x04] => self.view.down(ViewJumpBy::HalfWin),
+                    /* ^E */ [0x05] => self.view.down(ViewJumpBy::Line),
+                    /* ^F */ [0x06] => self.view.down(ViewJumpBy::Win),
+                    /* ^G */ [.., 0x07] => (),
+                    /* ^J */ [0x0a] => self.sibling_wrap(Direction::Next),
+                    /* ^K */ [0x0b] => self.sibling_wrap(Direction::Prev),
+                    /* ^U */ [0x15] => self.view.up(ViewJumpBy::HalfWin),
+                    /* ^Y */ [0x19] => self.view.up(ViewJumpBy::Line),
+                    //* ^[ */ [0x1b, ..] => todo!("wip"),
+                    b"0" => self.root(),
+                    b"H" => self.fold(),
+                    b"L" => self.unfold(),
+                    b"h" => self.leave(),
+                    b"j" => self.sibling_sat(Direction::Next),
+                    b"k" => self.sibling_sat(Direction::Prev),
+                    b"l" => self.enter(),
+                    b"q" => return false,
+                    b" " => self.toggle_mark(),
+                    b":" => self.state = State::Line(ReqRes::new(":".into())),
+                    _ => return true, // XXX(wip): for now skip `pending.clear()`
                 }
             }
-            State::Quit => panic!("should have quitted, but was called again!"),
+            //State::Break => panic!("should have quitted, but was called again"),
+            State::Line(r) => todo!("{:?}", r.unwrap()),
         }
-        &self.state
+
+        // if no early return: most common behavior
+        self.pending.clear();
+        true
     }
 
     pub fn root(&mut self) {
@@ -232,14 +244,12 @@ where
             .fmt_frag_path(f, self.tree.path_at(self.cursor))?;
         write!(f, "\r\n")?;
 
-        if let State::Pending(v) = &self.state {
-            for k in v {
-                if k.is_ascii_graphic() {
-                    write!(f, "{}", *k as char)
-                } else {
-                    write!(f, "<{k}>")
-                }?;
-            }
+        for k in &self.pending {
+            if k.is_ascii_graphic() {
+                write!(f, "{}", *k as char)
+            } else {
+                write!(f, "<{k}>")
+            }?;
         }
 
         Ok(())

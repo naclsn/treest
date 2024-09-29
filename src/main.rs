@@ -6,6 +6,7 @@ use std::panic;
 mod fisovec;
 mod navigate;
 mod providers;
+mod reqres;
 mod stabvec;
 mod terminal;
 mod tree;
@@ -21,11 +22,11 @@ fn set_term() {
             RESTORE = Some(terminal::raw().unwrap());
         }
     }
-    eprint!("\x1b[?9h\x1b[?25l\x1b[?1049h");
+    eprint!("\x1b[?25l\x1b[?1000h\x1b[?1049h");
 }
 
 fn rst_term() {
-    eprint!("\x1b[?9l\x1b[?25h\x1b[?1049l");
+    eprint!("\x1b[?25h\x1b[?1000l\x1b[?1049l");
     unsafe {
         if let Some(term) = RESTORE.take() {
             term.restore();
@@ -59,12 +60,14 @@ fn main() {
         arg => arg,
     };
 
-    let input = match File::open("/dev/tty") {
+    let mut input = match File::open("/dev/tty") {
         Ok(f) => Box::new(f) as Box<dyn Read>,
         Err(_) => Box::new(io::stdin()),
     }
     .bytes()
     .map_while(Result::ok);
+
+    let mut nav = Navigate::new(providers::select(&arg, args.next().as_deref()).unwrap());
 
     let phook = panic::take_hook();
     panic::set_hook(Box::new(move |info| {
@@ -72,19 +75,19 @@ fn main() {
         phook(info)
     }));
 
-    let mut nav = Navigate::new(providers::select(&arg, args.next().as_deref()).unwrap());
-
     set_term();
 
     eprint!("{nav}");
-    for key in input {
-        match nav.feed(key) {
-            State::Continue | State::Pending(_) => {
-                let buf = nav.to_string();
-                eprint!("{buf}");
-            }
-            State::Quit => break,
+    while (match &mut nav.state {
+        State::Continue(r) => input.next().map(|key| r.process(|()| key)).is_some(),
+        State::Line(r) => {
+            r.process(|r| panic!("{r:?}"));
+            true
         }
+    }) && nav.is_continue()
+    {
+        let buf = nav.to_string();
+        eprint!("{buf}");
     }
 
     rst_term();
