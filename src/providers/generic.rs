@@ -68,7 +68,7 @@ where
 {
     fn fmt_frag_path(&self, f: &mut Formatter, path: Vec<&Self::Fragment>) -> FmtResult {
         path.iter()
-            .try_for_each(|GenericFragment(i, _)| write!(f, "{i}"))
+            .try_for_each(|GenericFragment(i, _)| write!(f, " {i}"))
     }
 }
 

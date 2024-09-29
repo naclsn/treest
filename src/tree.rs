@@ -22,6 +22,22 @@ where
     }
 }
 
+// TODO(wip)
+pub trait ProviderMut: Provider {
+    fn ed(&mut self, path: Vec<&Self::Fragment>) {
+        panic!("operation not implemented for this provider");
+    }
+    fn mv(&mut self, path: Vec<&Self::Fragment>, dest: Vec<&Self::Fragment>) {
+        panic!("operation not implemented for this provider");
+    }
+    fn rm(&mut self, path: Vec<&Self::Fragment>) {
+        panic!("operation not implemented for this provider");
+    }
+    fn mk(&mut self, path: Vec<&Self::Fragment>) {
+        panic!("operation not implemented for this provider");
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct NodeRef(usize);
 

@@ -17,7 +17,7 @@ pub struct Fs {
 #[derive(PartialEq)]
 enum FsNodeKind {
     Directory,
-    SymLink(Option<PathBuf>),
+    SymLink(Option<PathBuf>), // FIXME: broken
     NamedPipe,
     CharDevice,
     BlockDevice,
