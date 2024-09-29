@@ -12,7 +12,7 @@ pub struct Navigate<P: Provider> {
     cursor: NodeRef,
     pub state: State,
     pending: Vec<u8>,
-    view: View,
+    view: RefCell<View>, // is mutated during rendering to stay up to date
 }
 
 pub enum State {
@@ -28,7 +28,8 @@ impl Default for State {
 
 struct View {
     scroll: usize,
-    total: RefCell<Range<usize>>,
+    total: Range<usize>,
+    line_mapping: Vec<NodeRef>,
 }
 enum ViewJumpBy {
     Line,
@@ -60,7 +61,7 @@ impl View {
 
     fn down(&mut self, by: ViewJumpBy) {
         let by = self.jump_by(by);
-        let end = self.total.borrow().end;
+        let end = self.total.end;
         if self.scroll < end - by {
             self.scroll += by;
         } else {
@@ -119,10 +120,11 @@ impl<P: Provider> Navigate<P> {
             cursor,
             state: State::default(),
             pending: Vec::new(),
-            view: View {
+            view: RefCell::new(View {
                 scroll: 0,
-                total: (0..0).into(),
-            },
+                total: 0..0,
+                line_mapping: Vec::new(),
+            }),
         }
     }
 
@@ -131,16 +133,51 @@ impl<P: Provider> Navigate<P> {
             State::Continue(r) => {
                 self.pending.push(r.unwrap());
                 match &self.pending[..] {
-                    /* ^B */ [0x02] => self.view.up(ViewJumpBy::Win),
+                    /* mouse */
+                    [0x1b, b'[', b'M', button, _col, row] => match button {
+                        /* left down */
+                        32 => {
+                            let which = &self.view.borrow().line_mapping;
+                            let row = (*row - b'!') as usize;
+                            if row < which.len() {
+                                self.cursor = which[row];
+                            }
+                        }
+                        /* right down */
+                        34 => {
+                            if {
+                                let which = &self.view.borrow().line_mapping;
+                                let row = (*row - b'!') as usize;
+                                if row < which.len() {
+                                    self.cursor = which[row];
+                                    true
+                                } else {
+                                    false
+                                }
+                            } {
+                                if self.tree.at(self.cursor).folded() {
+                                    self.unfold();
+                                } else {
+                                    self.fold();
+                                }
+                            }
+                        }
+                        /* up */ 35 => (),
+                        /* wheel down */ 96 => self.view.borrow_mut().up(ViewJumpBy::Mouse),
+                        /* wheel down */ 97 => self.view.borrow_mut().down(ViewJumpBy::Mouse),
+                        _ => (),
+                    },
+
+                    /* ^B */ [0x02] => self.view.borrow_mut().up(ViewJumpBy::Win),
                     /* ^C */ [.., 0x03] => (),
-                    /* ^D */ [0x04] => self.view.down(ViewJumpBy::HalfWin),
-                    /* ^E */ [0x05] => self.view.down(ViewJumpBy::Line),
-                    /* ^F */ [0x06] => self.view.down(ViewJumpBy::Win),
+                    /* ^D */ [0x04] => self.view.borrow_mut().down(ViewJumpBy::HalfWin),
+                    /* ^E */ [0x05] => self.view.borrow_mut().down(ViewJumpBy::Line),
+                    /* ^F */ [0x06] => self.view.borrow_mut().down(ViewJumpBy::Win),
                     /* ^G */ [.., 0x07] => (),
                     /* ^J */ [0x0a] => self.sibling_wrap(Direction::Next),
                     /* ^K */ [0x0b] => self.sibling_wrap(Direction::Prev),
-                    /* ^U */ [0x15] => self.view.up(ViewJumpBy::HalfWin),
-                    /* ^Y */ [0x19] => self.view.up(ViewJumpBy::Line),
+                    /* ^U */ [0x15] => self.view.borrow_mut().up(ViewJumpBy::HalfWin),
+                    /* ^Y */ [0x19] => self.view.borrow_mut().up(ViewJumpBy::Line),
                     //* ^[ */ [0x1b, ..] => todo!("wip"),
                     b"0" => self.root(),
                     b"H" => self.fold(),
@@ -231,12 +268,24 @@ where
     fn fmt(&self, f: &mut Formatter) -> FmtResult {
         write!(f, "\x1b[H\x1b[J")?;
 
-        let mut c = 0;
-        let visible = self.view.visible();
-        self.fmt_at(f, self.tree.root(), "".into(), &mut c, &visible)?;
-        self.view.total.try_borrow_mut().unwrap().end = c;
-        if c < visible.end {
-            write!(f, "{}", "\n".repeat(visible.end - c))?;
+        let mut view = self.view.borrow_mut();
+
+        let visible = view.visible();
+        view.line_mapping.resize(visible.len(), self.tree.root());
+
+        let mut current = 0;
+        self.fmt_at(
+            f,
+            self.tree.root(),
+            "".into(),
+            &mut current,
+            &visible,
+            &mut view.line_mapping,
+        )?;
+        view.total.end = current;
+
+        if current < visible.end {
+            write!(f, "{}", "\n".repeat(visible.end - current))?;
         }
 
         self.tree
@@ -267,6 +316,7 @@ where
         indent: String,
         current: &mut usize,
         visible: &Range<usize>,
+        which: &mut [NodeRef],
     ) -> FmtResult {
         let node = self.tree.at(at);
         let frag = &node.fragment;
@@ -279,6 +329,7 @@ where
                 write!(f, "\x1b[7m")?;
             }
             write!(f, "{frag}\x1b[m")?;
+            which[*current - visible.start] = at;
         }
 
         if node.folded() {
@@ -298,7 +349,7 @@ where
         }
 
         if 1 == children.len() {
-            self.fmt_at(f, children[0], indent, current, visible)
+            self.fmt_at(f, children[0], indent, current, visible, which)
         } else {
             if visible.contains(current) {
                 write!(f, "\r\n")?;
@@ -311,7 +362,7 @@ where
                 if visible.contains(current) {
                     write!(f, "{indent}{BRANCH}")?;
                 }
-                self.fmt_at(f, *it, format!("{indent}{INDENT}"), current, visible)?;
+                self.fmt_at(f, *it, format!("{indent}{INDENT}"), current, visible, which)?;
             }
 
             if visible.contains(current) {
@@ -323,6 +374,7 @@ where
                 format!("{indent}{INDENT_LAST}"),
                 current,
                 visible,
+                which,
             )
         }
     }
