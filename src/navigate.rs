@@ -17,7 +17,7 @@ pub struct Navigate<P: Provider> {
 
 pub enum State {
     Continue(ReqRes<(), u8>),
-    Line(ReqRes<String, Option<String>>),
+    Prompt(ReqRes<String, Option<String>>),
 }
 
 impl Default for State {
@@ -145,7 +145,7 @@ impl<P: Provider> Navigate<P> {
                         }
                         /* right down */
                         34 => {
-                            if {
+                            let hit = {
                                 let which = &self.view.borrow().line_mapping;
                                 let row = (*row - b'!') as usize;
                                 if row < which.len() {
@@ -154,7 +154,8 @@ impl<P: Provider> Navigate<P> {
                                 } else {
                                     false
                                 }
-                            } {
+                            };
+                            if hit {
                                 if self.tree.at(self.cursor).folded() {
                                     self.unfold();
                                 } else {
@@ -188,12 +189,12 @@ impl<P: Provider> Navigate<P> {
                     b"l" => self.enter(),
                     b"q" => return false,
                     b" " => self.toggle_mark(),
-                    b":" => self.state = State::Line(ReqRes::new(":".into())),
+                    b":" => self.state = State::Prompt(ReqRes::new(":".into())),
                     _ => return true, // XXX(wip): for now skip `pending.clear()`
                 }
             }
             //State::Break => panic!("should have quitted, but was called again"),
-            State::Line(r) => todo!("{:?}", r.unwrap()),
+            State::Prompt(r) => todo!("{:?}", r.unwrap()),
         }
 
         // if no early return: most common behavior

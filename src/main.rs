@@ -5,6 +5,7 @@ use std::panic;
 
 mod fisovec;
 mod navigate;
+mod prompt;
 mod providers;
 mod reqres;
 mod stabvec;
@@ -80,8 +81,10 @@ fn main() {
     eprint!("{nav}");
     while (match &mut nav.state {
         State::Continue(r) => input.next().map(|key| r.process(|()| key)).is_some(),
-        State::Line(r) => {
-            r.process(|r| panic!("{r:?}"));
+        State::Prompt(r) => {
+            eprint!("\x1b[?25h\x1b[?1000l");
+            r.process(|r| prompt::prompt(&r, input.by_ref(), io::stderr()));
+            eprint!("\x1b[?25l\x1b[?1000h");
             true
         }
     }) && nav.is_continue()

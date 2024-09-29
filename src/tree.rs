@@ -23,17 +23,18 @@ where
 }
 
 // TODO(wip)
+#[allow(dead_code)]
 pub trait ProviderMut: Provider {
-    fn ed(&mut self, path: Vec<&Self::Fragment>) {
+    fn ed(&mut self, _path: Vec<&Self::Fragment>) {
         panic!("operation not implemented for this provider");
     }
-    fn mv(&mut self, path: Vec<&Self::Fragment>, dest: Vec<&Self::Fragment>) {
+    fn mv(&mut self, _path: Vec<&Self::Fragment>, _dest: Vec<&Self::Fragment>) {
         panic!("operation not implemented for this provider");
     }
-    fn rm(&mut self, path: Vec<&Self::Fragment>) {
+    fn rm(&mut self, _path: Vec<&Self::Fragment>) {
         panic!("operation not implemented for this provider");
     }
-    fn mk(&mut self, path: Vec<&Self::Fragment>) {
+    fn mk(&mut self, _path: Vec<&Self::Fragment>) {
         panic!("operation not implemented for this provider");
     }
 }
