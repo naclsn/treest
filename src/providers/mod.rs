@@ -1,14 +1,23 @@
-// TODO: cleaner, maybe simply dynamic
-#[allow(dead_code)]
+use std::error::Error;
+use std::fmt::{Display, Formatter, Result as FmtResult};
+
+use anyhow::Result;
+
 #[derive(Debug)]
-pub enum Error {
+pub enum DynProviderError {
     ProviderNeeded,
     NotProvider(String),
-    NotDirectory(std::path::PathBuf),
-    StringErr(String),
-    IoErr(std::io::Error),
-    ParseErr(usize),
 }
+impl Display for DynProviderError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
+        use DynProviderError::*;
+        match self {
+            ProviderNeeded => write!(f, "the provider to use could not be guessed from argument"),
+            NotProvider(name) => write!(f, "'{name}' does not name an existing provider"),
+        }
+    }
+}
+impl Error for DynProviderError {}
 
 macro_rules! providers {
     ($($nm:ident: $ty:ident if $ft:expr,)+) => {
@@ -95,11 +104,11 @@ macro_rules! providers {
             None
         }
 
-        pub fn select(arg: &str, name: Option<&str>) -> Result<DynProvider, Error> {
-            let name = name.or_else(|| guess(arg)).ok_or(Error::ProviderNeeded)?;
+        pub fn select(arg: &str, name: Option<&str>) -> Result<DynProvider> {
+            let name = name.or_else(|| guess(arg)).ok_or(DynProviderError::ProviderNeeded)?;
             match name {
                 $(stringify!($nm) => Ok(DynProvider::$ty($nm::$ty::new(arg)?)),)+
-                _ => Err(Error::NotProvider(name.into())),
+                _ => Err(DynProviderError::NotProvider(name.into()).into()),
             }
         }
     };

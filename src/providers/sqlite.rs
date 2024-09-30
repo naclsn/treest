@@ -3,9 +3,9 @@ use std::fmt::{Display, Formatter, Result as FmtResult};
 use std::iter;
 use std::path::Path;
 
+use anyhow::Result;
 use sqlite::{Connection, OpenFlags, Value};
 
-use super::Error;
 use crate::fisovec::FilterSorter;
 use crate::tree::{Provider, ProviderExt};
 
@@ -305,10 +305,8 @@ impl FilterSorter<<Self as Provider>::Fragment> for Sqlite {
 }
 
 impl Sqlite {
-    pub fn new(path: impl AsRef<Path>) -> Result<Self, Error> {
-        Ok(Self {
-            connection: Connection::open_with_flags(path, OpenFlags::new().with_read_only())
-                .map_err(|e| Error::StringErr(e.message.unwrap_or_default()))?,
-        })
+    pub fn new(path: impl AsRef<Path>) -> Result<Self> {
+        let connection = Connection::open_with_flags(path, OpenFlags::new().with_read_only())?;
+        Ok(Self { connection })
     }
 }

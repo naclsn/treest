@@ -1,18 +1,32 @@
 use std::cmp::Ordering;
+use std::error::Error;
 use std::fmt::{Display, Formatter, Result as FmtResult};
 use std::fs::{self, Metadata};
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 
+use anyhow::Result;
 use lscolors::{LsColors, Style};
 
-use super::Error;
 use crate::fisovec::FilterSorter;
 use crate::tree::{Provider, ProviderExt};
 
 pub struct Fs {
     root: PathBuf,
 }
+
+#[derive(Debug)]
+pub enum FsProviderError {
+    NotADirectory,
+}
+impl Display for FsProviderError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
+        match self {
+            FsProviderError::NotADirectory => write!(f, "path is not a directory"),
+        }
+    }
+}
+impl Error for FsProviderError {}
 
 #[derive(PartialEq)]
 enum FsNodeKind {
@@ -261,13 +275,13 @@ impl FilterSorter<FsNode> for Fs {
 }
 
 impl Fs {
-    pub fn new(root: impl AsRef<Path>) -> Result<Self, Error> {
+    pub fn new(root: impl AsRef<Path>) -> Result<Self> {
         let mut root = PathBuf::from(root.as_ref());
         if root.components().next().is_none() {
             root.push(".");
         }
         if !root.is_dir() {
-            Err(Error::NotDirectory(root))
+            Err(FsProviderError::NotADirectory.into())
         } else {
             Ok(Self {
                 root: root.components().collect(),

@@ -4,12 +4,10 @@ use std::io;
 use std::marker::PhantomPinned;
 use std::pin::Pin;
 
+use anyhow::Result;
 use serde_yml::{self, Value};
 
-use super::{
-    generic::{Generic, GenericValue},
-    Error,
-};
+use super::generic::{Generic, GenericValue};
 
 pub struct Yaml(Pin<Box<(Value, PhantomPinned)>>);
 
@@ -93,13 +91,12 @@ impl Generic for Yaml {
 }
 
 impl Yaml {
-    pub fn new(path: &str) -> Result<Self, Error> {
-        if path.is_empty() {
+    pub fn new(path: &str) -> Result<Self> {
+        Ok(if path.is_empty() {
             serde_yml::from_reader(io::stdin())
         } else {
-            serde_yml::from_reader(File::open(path).map_err(Error::IoErr)?)
+            serde_yml::from_reader(File::open(path)?)
         }
-        .map(|value| Self(Box::pin((value, PhantomPinned))))
-        .map_err(|_| todo!())
+        .map(|value| Self(Box::pin((value, PhantomPinned))))?)
     }
 }

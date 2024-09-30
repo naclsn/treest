@@ -1,9 +1,14 @@
 use std::io::Write;
 
+fn split(line: &str) -> Vec<&str> {
+    line.split(' ').collect()
+}
+
 pub fn prompt(
     ps: &str,
     input: impl IntoIterator<Item = u8>,
     mut output: impl Write,
+    complete: impl Fn(Vec<&str>) -> Vec<String>,
 ) -> Option<String> {
     write!(output, "{ps}").ok()?;
 
@@ -59,7 +64,10 @@ pub fn prompt(
                     write!(output, "\x08\x1b[P").ok()?;
                 }
             }
-            //[0x09] => ..
+            [0x09] => {
+                let hints = complete(split(&String::from_utf8_lossy(&s)));
+                todo!("completion hints: {hints:?}");
+            }
             [0x0a | 0x0d] => return Some(unsafe { String::from_utf8_unchecked(s) }),
             [0x0b] => {
                 write!(output, "\x1b[{}P", s.len() - at).ok()?;

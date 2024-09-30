@@ -4,12 +4,10 @@ use std::io;
 use std::marker::PhantomPinned;
 use std::pin::Pin;
 
+use anyhow::Result;
 use serde_json::{self, Value};
 
-use super::{
-    generic::{Generic, GenericValue},
-    Error,
-};
+use super::generic::{Generic, GenericValue};
 
 pub struct Json(Pin<Box<(Value, PhantomPinned)>>);
 
@@ -84,13 +82,12 @@ impl Generic for Json {
 }
 
 impl Json {
-    pub fn new(path: &str) -> Result<Self, Error> {
-        if path.is_empty() {
+    pub fn new(path: &str) -> Result<Self> {
+        Ok(if path.is_empty() {
             serde_json::from_reader(io::stdin())
         } else {
-            serde_json::from_reader(File::open(path).map_err(Error::IoErr)?)
+            serde_json::from_reader(File::open(path)?)
         }
-        .map(|value| Self(Box::pin((value, PhantomPinned))))
-        .map_err(|_| todo!())
+        .map(|value| Self(Box::pin((value, PhantomPinned))))?)
     }
 }

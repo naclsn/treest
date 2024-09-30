@@ -4,12 +4,10 @@ use std::io::{self, Read};
 use std::marker::PhantomPinned;
 use std::pin::Pin;
 
+use anyhow::Result;
 use toml::{self, Value};
 
-use super::{
-    generic::{Generic, GenericValue},
-    Error,
-};
+use super::generic::{Generic, GenericValue};
 
 pub struct Toml(Pin<Box<(Value, PhantomPinned)>>);
 
@@ -78,16 +76,13 @@ impl Generic for Toml {
 }
 
 impl Toml {
-    pub fn new(path: &str) -> Result<Self, Error> {
+    pub fn new(path: &str) -> Result<Self> {
         let mut doc = String::new();
         if path.is_empty() {
             io::stdin().read_to_string(&mut doc)
         } else {
             File::open(path).and_then(|mut f| f.read_to_string(&mut doc))
-        }
-        .map_err(Error::IoErr)?;
-        toml::from_str(&doc)
-            .map(|value| Self(Box::pin((value, PhantomPinned))))
-            .map_err(|_| todo!())
+        }?;
+        Ok(toml::from_str(&doc).map(|value| Self(Box::pin((value, PhantomPinned))))?)
     }
 }

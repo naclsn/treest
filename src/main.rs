@@ -68,7 +68,19 @@ fn main() {
     .bytes()
     .map_while(Result::ok);
 
-    let mut nav = Navigate::new(providers::select(&arg, args.next().as_deref()).unwrap());
+    let mut nav = Navigate::new(match providers::select(&arg, args.next().as_deref()) {
+        Ok(prov) => prov,
+        Err(err) => {
+            eprintln!("Error: {err}.");
+            if let Some(err) = err.source() {
+                eprintln!("Because {err}.");
+                if err.source().is_some() {
+                    eprintln!("Because ...");
+                }
+            }
+            return;
+        }
+    });
 
     let phook = panic::take_hook();
     panic::set_hook(Box::new(move |info| {
@@ -83,7 +95,7 @@ fn main() {
         State::Continue(r) => input.next().map(|key| r.process(|()| key)).is_some(),
         State::Prompt(r) => {
             eprint!("\x1b[?25h\x1b[?1000l");
-            r.process(|r| prompt::prompt(&r, input.by_ref(), io::stderr()));
+            r.process(|r| prompt::prompt(&r, input.by_ref(), io::stderr(), |_| Vec::new()));
             eprint!("\x1b[?25l\x1b[?1000h");
             true
         }
