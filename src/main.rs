@@ -95,7 +95,7 @@ fn main() {
         State::Continue(r) => input.next().map(|key| r.process(|()| key)).is_some(),
         State::Prompt(r) => {
             eprint!("\x1b[?25h\x1b[?1000l");
-            r.process(|r| prompt::prompt(&r, input.by_ref(), io::stderr(), |_| Vec::new()));
+            r.process(|r| prompt::prompt(&r, input.by_ref(), io::stderr(), |_, _| Vec::new()));
             eprint!("\x1b[?25l\x1b[?1000h");
             true
         }

@@ -1,18 +1,73 @@
 use std::io::Write;
+use std::mem;
 
-fn split(line: &[char], complete: impl Fn(Vec<&str>) -> Vec<String>) -> Vec<String> {
-    let args: Vec<_> = line
-        .split(|c| *c == ' ')
-        .map(|s| s.iter().collect())
-        .collect();
-    complete(args.iter().map(String::as_str).collect())
+fn split<T>(line: &[char], point: usize, complete: impl Fn(Vec<&str>, usize) -> T) -> T {
+    let mut args = Vec::new();
+    let mut curr = String::new();
+    let mut in_arg = 0;
+
+    enum State {
+        Word,
+        Blank,
+        SingleQuote,
+        DoubleQuote,
+    }
+    use State::*;
+
+    let word = line.is_empty() || !line[0].is_whitespace();
+    let mut state = if word { Word } else { Blank };
+
+    let mut chars = line.iter().copied().enumerate();
+    while let Some((k, c)) = chars.next() {
+        match state {
+            Word | Blank if '\'' == c => state = SingleQuote,
+            Word | Blank if '\"' == c => state = DoubleQuote,
+
+            Word if '\\' == c => match chars.next() {
+                Some((_, c)) => curr.push(c),
+                None => break,
+            },
+            Word if c.is_whitespace() => {
+                if 0 == in_arg && point < k {
+                    in_arg = args.len();
+                }
+                args.push(mem::take(&mut curr));
+                state = Blank;
+            }
+            Word => curr.push(c),
+
+            Blank if !c.is_whitespace() => {
+                curr.push(c);
+                state = Word;
+            }
+            Blank => (),
+
+            SingleQuote if '\'' == c => state = Word,
+            SingleQuote => curr.push(c),
+
+            DoubleQuote if '\"' == c => state = Word,
+            DoubleQuote if '\\' == c => match chars.next() {
+                Some((_, 't')) => curr.push('\t'),
+                Some((_, 'n')) => curr.push('\n'),
+                Some((_, 'e')) => curr.push('\x1b'),
+                Some((_, c)) => curr.push(c),
+                None => break,
+            },
+            DoubleQuote => curr.push(c),
+        }
+    }
+    if !matches!(state, Blank) {
+        args.push(curr);
+    }
+
+    complete(args.iter().map(String::as_str).collect(), in_arg)
 }
 
 pub fn prompt(
     ps: &str,
     input: impl IntoIterator<Item = u8>,
     mut output: impl Write,
-    complete: impl Fn(Vec<&str>) -> Vec<String>,
+    complete: impl Fn(Vec<&str>, usize) -> Vec<String>,
 ) -> Option<String> {
     write!(output, "{ps}").ok()?;
 
@@ -24,11 +79,11 @@ pub fn prompt(
     while let Some(key) = input.next() {
         pend.push(key);
         match &pend[..] {
-            //b"\x1bb" => ..
-            //b"\x1bd" => ..
-            //b"\x1bf" => ..
+            b"\x1bb" => todo!(),
+            b"\x1bd" => todo!(),
+            b"\x1bf" => todo!(),
             b"\x1b\x1b" => return None,
-            //b"\x1b\x7f" => ..
+            b"\x1b\x7f" => todo!(),
 
             [0x01] | b"\x1b[H" => {
                 if 0 < at {
@@ -62,7 +117,7 @@ pub fn prompt(
                 }
             }
             [.., 0x07] => pend.clear(),
-            [0x08] => {
+            [0x08 | 127] => {
                 if 0 < at {
                     at -= 1;
                     s.remove(at);
@@ -70,7 +125,7 @@ pub fn prompt(
                 }
             }
             [0x09] => {
-                let hints = split(&s, complete);
+                let hints = split(&s, at, complete);
                 todo!("completion hints: {hints:?}");
             }
             [0x0a | 0x0d] => return Some(s.into_iter().collect()),
@@ -86,14 +141,6 @@ pub fn prompt(
             [0x15] => {
                 write!(output, "\x1b[{at}D\x1b[{at}P").ok()?;
                 s.drain(..at);
-            }
-
-            [127] => {
-                if 0 < at {
-                    at -= 1;
-                    s.remove(at);
-                    write!(output, "\x08\x1b[P").ok()?;
-                }
             }
 
             b"\x1b" | b"\x1b[" | [0x1b, b'[', b'0'..=b'9'] => continue,
@@ -131,4 +178,25 @@ pub fn prompt(
     }
 
     None
+}
+
+#[cfg(test)]
+macro_rules! assert_args {
+    ($line:literal, $args:expr) => {
+        let chars: Box<_> = $line.chars().collect();
+        split(&chars, 0, |args, _| assert_eq!(args, $args, $line));
+    };
+}
+
+#[cfg(test)]
+#[test]
+fn test_split() {
+    assert_args!("", [""]);
+    assert_args!("coucou ", ["coucou"]);
+    assert_args!(" this\tis\ntest    text", ["this", "is", "test", "text"]);
+    assert_args!(
+        r#" 'quo'ted and dis"joi'\n"'\t"' ye"\""y   "#,
+        ["quoted", "and", "disjoi'\n\\t\"", "ye\"y"]
+    );
+    assert_args!("it's fine", ["its fine"]);
 }
