@@ -1,7 +1,11 @@
 use std::io::Write;
 
-fn split(line: &str) -> Vec<&str> {
-    line.split(' ').collect()
+fn split(line: &[char], complete: impl Fn(Vec<&str>) -> Vec<String>) -> Vec<String> {
+    let args: Vec<_> = line
+        .split(|c| *c == ' ')
+        .map(|s| s.iter().collect())
+        .collect();
+    complete(args.iter().map(String::as_str).collect())
 }
 
 pub fn prompt(
@@ -12,11 +16,12 @@ pub fn prompt(
 ) -> Option<String> {
     write!(output, "{ps}").ok()?;
 
-    let mut at = 0usize;
+    let mut at = 0;
     let mut s = Vec::new();
 
     let mut pend = Vec::new();
-    for key in input {
+    let mut input = input.into_iter();
+    while let Some(key) = input.next() {
         pend.push(key);
         match &pend[..] {
             //b"\x1bb" => ..
@@ -52,7 +57,7 @@ pub fn prompt(
             }
             [0x06] | b"\x1b[C" => {
                 if at < s.len() {
-                    write!(output, "{}", s[at] as char).ok()?;
+                    write!(output, "{}", s[at]).ok()?;
                     at += 1;
                 }
             }
@@ -65,28 +70,24 @@ pub fn prompt(
                 }
             }
             [0x09] => {
-                let hints = complete(split(&String::from_utf8_lossy(&s)));
+                let hints = split(&s, complete);
                 todo!("completion hints: {hints:?}");
             }
-            [0x0a | 0x0d] => return Some(unsafe { String::from_utf8_unchecked(s) }),
+            [0x0a | 0x0d] => return Some(s.into_iter().collect()),
             [0x0b] => {
                 write!(output, "\x1b[{}P", s.len() - at).ok()?;
                 s.truncate(at);
             }
             [0x0c] => {
-                let l = String::from_utf8_lossy(&s);
-                write!(output, "\x1b[G\x1b[K{ps}{l}\x1b[{}D", s.len() - at).ok()?;
+                write!(output, "\x1b[G\x1b[K{ps}").ok()?;
+                s.iter().try_for_each(|c| write!(output, "{c}")).ok()?;
+                write!(output, "\x1b[{}D", s.len() - at).ok()?;
             }
             [0x15] => {
                 write!(output, "\x1b[{at}D\x1b[{at}P").ok()?;
                 s.drain(..at);
             }
 
-            [b' '..=b'~'] => {
-                write!(output, "\x1b[@{}", key as char).ok()?;
-                s.insert(at, key);
-                at += 1;
-            }
             [127] => {
                 if 0 < at {
                     at -= 1;
@@ -96,7 +97,33 @@ pub fn prompt(
             }
 
             b"\x1b" | b"\x1b[" | [0x1b, b'[', b'0'..=b'9'] => continue,
-            [0x1b, ..] => pend.clear(),
+            [0x1b, ..] => (),
+
+            [b' '..=255] => {
+                let u = key as u32;
+                let c = char::from_u32(match key {
+                    0b11000000..=0b11011111 => {
+                        let x = input.next()? as u32;
+                        (u & 31) << 6 | (x & 63)
+                    }
+                    0b11100000..=0b11101111 => {
+                        let (x, y) = (input.next()? as u32, input.next()? as u32);
+                        (u & 15) << 12 | (x & 63) << 6 | (y & 63)
+                    }
+                    0b11110000..=0b11110111 => {
+                        let (x, y, z) = (
+                            input.next()? as u32,
+                            input.next()? as u32,
+                            input.next()? as u32,
+                        );
+                        (u & 7) << 18 | (x & 63) << 12 | (y & 63) << 6 | (z & 63)
+                    }
+                    _ => u,
+                })?;
+                write!(output, "\x1b[@{c}").ok()?;
+                s.insert(at, c);
+                at += 1;
+            }
 
             _ => (),
         }
