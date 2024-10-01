@@ -10,14 +10,15 @@ use crate::tree::{NodeRef, Provider, ProviderExt, Tree};
 pub struct Navigate<P: Provider> {
     tree: Tree<P>,
     cursor: NodeRef,
-    pub state: State,
+    pub state: State, // is updated by the driver loop (in main)
     pending: Vec<u8>,
+    message: Option<String>,
     view: RefCell<View>, // is mutated during rendering to stay up to date
 }
 
 pub enum State {
     Continue(ReqRes<(), u8>),
-    Prompt(ReqRes<String, Option<String>>),
+    Prompt(ReqRes<String, Option<Vec<String>>>),
 }
 
 impl Default for State {
@@ -120,6 +121,7 @@ impl<P: Provider> Navigate<P> {
             cursor,
             state: State::default(),
             pending: Vec::new(),
+            message: None,
             view: RefCell::new(View {
                 scroll: 0,
                 total: 0..0,
@@ -189,12 +191,29 @@ impl<P: Provider> Navigate<P> {
                     b"l" => self.enter(),
                     b"q" => return false,
                     b" " => self.toggle_mark(),
-                    b":" => self.state = State::Prompt(ReqRes::new(":".into())),
+                    b":" => {
+                        self.state = State::Prompt(ReqRes::new(":".into()));
+                        self.message = None;
+                    }
                     _ => return true, // XXX(wip): for now skip `pending.clear()`
                 }
             }
-            //State::Break => panic!("should have quitted, but was called again"),
-            State::Prompt(r) => todo!("{:?}", r.unwrap()),
+
+            State::Prompt(r) => {
+                if let Some(r) = r.unwrap().take_if(|r| !r.is_empty()) {
+                    match r[0].as_str() {
+                        "se" | "set" => {
+                            let mut msg = "NIY:".to_string();
+                            for opt in &r[1..] {
+                                msg.push_str("  :set ");
+                                msg.push_str(opt);
+                            }
+                            self.message = Some(msg)
+                        }
+                        n => self.message = Some(format!("not a command: {n}")),
+                    }
+                }
+            }
         }
 
         // if no early return: most common behavior
@@ -293,6 +312,11 @@ where
             .provider()
             .fmt_frag_path(f, self.tree.path_at(self.cursor))?;
         write!(f, "\r\n")?;
+
+        if let Some(message) = &self.message {
+            write!(f, "{message}    ")?;
+            message.chars().count();
+        }
 
         for k in &self.pending {
             if k.is_ascii_graphic() {

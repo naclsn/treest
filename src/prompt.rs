@@ -1,7 +1,7 @@
 use std::io::Write;
 use std::mem;
 
-fn split<T>(line: &[char], point: usize, complete: impl Fn(Vec<&str>, usize) -> T) -> T {
+fn split(line: &[char], point: usize) -> (Vec<String>, usize) {
     let mut args = Vec::new();
     let mut curr = String::new();
     let mut in_arg = 0;
@@ -60,7 +60,7 @@ fn split<T>(line: &[char], point: usize, complete: impl Fn(Vec<&str>, usize) -> 
         args.push(curr);
     }
 
-    complete(args.iter().map(String::as_str).collect(), in_arg)
+    (args, in_arg)
 }
 
 pub fn prompt(
@@ -68,7 +68,7 @@ pub fn prompt(
     input: impl IntoIterator<Item = u8>,
     mut output: impl Write,
     complete: impl Fn(Vec<&str>, usize) -> Vec<String>,
-) -> Option<String> {
+) -> Option<Vec<String>> {
     write!(output, "{ps}").ok()?;
 
     let mut at = 0;
@@ -79,11 +79,54 @@ pub fn prompt(
     while let Some(key) = input.next() {
         pend.push(key);
         match &pend[..] {
-            b"\x1bb" => todo!(),
-            b"\x1bd" => todo!(),
-            b"\x1bf" => todo!(),
+            b"\x1bb" => {
+                if 0 < at {
+                    let by = s[..at]
+                        .windows(2)
+                        .rev()
+                        .position(|p: &[char]| !p[0].is_alphanumeric() && p[1].is_alphanumeric())
+                        .map(|k| k + 1)
+                        .unwrap_or(at);
+                    write!(output, "\x1b[{by}D").ok()?;
+                    at -= by;
+                }
+            }
+            b"\x1bd" => {
+                if at < s.len() {
+                    let by = s[at..]
+                        .windows(2)
+                        .position(|p| p[0].is_alphanumeric() && !p[1].is_alphanumeric())
+                        .map(|k| k + 1)
+                        .unwrap_or(s.len() - at);
+                    write!(output, "\x1b[{by}P").ok()?;
+                    s.drain(at..at + by);
+                }
+            }
+            b"\x1bf" => {
+                if at < s.len() {
+                    let by = s[at..]
+                        .windows(2)
+                        .position(|p| p[0].is_alphanumeric() && !p[1].is_alphanumeric())
+                        .map(|k| k + 1)
+                        .unwrap_or(s.len() - at);
+                    write!(output, "\x1b[{by}C").ok()?;
+                    at += by;
+                }
+            }
             b"\x1b\x1b" => return None,
-            b"\x1b\x7f" => todo!(),
+            b"\x1b\x7f" => {
+                if 0 < at {
+                    let by = s[..at]
+                        .windows(2)
+                        .rev()
+                        .position(|p: &[char]| !p[0].is_alphanumeric() && p[1].is_alphanumeric())
+                        .map(|k| k + 1)
+                        .unwrap_or(at);
+                    write!(output, "\x1b[{by}D\x1b[{by}P").ok()?;
+                    s.drain(at - by..at);
+                    at -= by;
+                }
+            }
 
             [0x01] | b"\x1b[H" => {
                 if 0 < at {
@@ -125,10 +168,11 @@ pub fn prompt(
                 }
             }
             [0x09] => {
-                let hints = split(&s, at, complete);
+                let (args, in_arg) = split(&s, at);
+                let hints = complete(args.iter().map(String::as_str).collect(), in_arg);
                 todo!("completion hints: {hints:?}");
             }
-            [0x0a | 0x0d] => return Some(s.into_iter().collect()),
+            [0x0a | 0x0d] => return Some(split(&s, 0).0),
             [0x0b] => {
                 write!(output, "\x1b[{}P", s.len() - at).ok()?;
                 s.truncate(at);
@@ -183,8 +227,8 @@ pub fn prompt(
 #[cfg(test)]
 macro_rules! assert_args {
     ($line:literal, $args:expr) => {
-        let chars: Box<_> = $line.chars().collect();
-        split(&chars, 0, |args, _| assert_eq!(args, $args, $line));
+        let (args, _) = split(&$line.chars().collect::<Box<_>>(), 0);
+        assert_eq!(args, $args, $line);
     };
 }
 

@@ -58,6 +58,7 @@ fn main() {
             );
             return;
         }
+        dash if "-" == dash => String::new(),
         arg => arg,
     };
 
