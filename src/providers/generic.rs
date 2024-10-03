@@ -43,7 +43,7 @@ impl<T: Generic> Provider for T {
         )
     }
 
-    fn provide(&mut self, path: Vec<&Self::Fragment>) -> Vec<Self::Fragment> {
+    fn provide(&mut self, path: &[&Self::Fragment]) -> Vec<Self::Fragment> {
         unsafe { path.last().unwrap().1.as_ref() }
             .children()
             .into_iter()
@@ -66,7 +66,7 @@ impl<T: Generic> ProviderExt for T
 where
     <T::Value as GenericValue>::Index: Display,
 {
-    fn fmt_frag_path(&self, f: &mut Formatter, path: Vec<&Self::Fragment>) -> FmtResult {
+    fn fmt_frag_path(&self, f: &mut Formatter, path: &[&Self::Fragment]) -> FmtResult {
         path.iter()
             .try_for_each(|GenericFragment(i, _)| write!(f, " {i}"))
     }

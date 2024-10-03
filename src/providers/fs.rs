@@ -9,7 +9,7 @@ use anyhow::Result;
 use lscolors::{LsColors, Style};
 
 use crate::fisovec::FilterSorter;
-use crate::tree::{Provider, ProviderExt};
+use crate::tree::{CmdError, Provider, ProviderExt};
 
 pub struct Fs {
     root: PathBuf,
@@ -54,6 +54,7 @@ impl PartialEq for FsNode {
     }
 }
 
+// platform-dep {{{
 #[cfg(unix)]
 impl From<(PathBuf, &Option<Metadata>)> for FsNodeKind {
     fn from(value: (PathBuf, &Option<Metadata>)) -> Self {
@@ -168,6 +169,7 @@ fn write_meta(f: &mut Formatter, node: &FsNode) -> FmtResult {
     // world
     write_perm(f, 0b101 | if ro { 0b000 } else { 0b010 })
 }
+// }}}
 
 static LS_COLORS: OnceLock<LsColors> = OnceLock::new();
 
@@ -211,8 +213,8 @@ impl Provider for Fs {
         }
     }
 
-    fn provide(&mut self, path: Vec<&Self::Fragment>) -> Vec<Self::Fragment> {
-        let Ok(dir) = fs::read_dir(path.into_iter().map(|n| &n.name).collect::<PathBuf>()) else {
+    fn provide(&mut self, path: &[&Self::Fragment]) -> Vec<Self::Fragment> {
+        let Ok(dir) = fs::read_dir(path.iter().map(|n| &n.name).collect::<PathBuf>()) else {
             return Vec::new();
         };
         dir.filter_map(|d| {
@@ -230,7 +232,7 @@ impl Provider for Fs {
 }
 
 impl ProviderExt for Fs {
-    fn fmt_frag_path(&self, f: &mut Formatter, path: Vec<&Self::Fragment>) -> FmtResult {
+    fn fmt_frag_path(&self, f: &mut Formatter, path: &[&Self::Fragment]) -> FmtResult {
         let node = path.last().unwrap();
         write_meta(f, node)?;
 
@@ -261,6 +263,46 @@ impl ProviderExt for Fs {
         }?;
 
         path.iter().try_for_each(|it| write!(f, "{it}"))
+    }
+
+    fn command(&mut self, cmd: &[String]) -> Result<String> {
+        match cmd[0].as_str() {
+            "ed" => todo!(),
+
+            "mv" => {
+                if 3 == cmd.len() {
+                    fs::rename(&cmd[1], &cmd[2])?;
+                    Ok(format!("moved {} to {}", cmd[1], cmd[2]))
+                } else {
+                    Err(CmdError::WrongArgCount {
+                        name: "mv".to_string(),
+                        given: cmd.len() - 1,
+                        expected: 3 - 1,
+                    }
+                    .into())
+                }
+            }
+
+            "rm" => todo!(),
+
+            "mk" => todo!(),
+
+            "cp" => {
+                if 3 == cmd.len() {
+                    fs::copy(&cmd[1], &cmd[2])?;
+                    Ok(format!("moved {} to {}", cmd[1], cmd[2]))
+                } else {
+                    Err(CmdError::WrongArgCount {
+                        name: "cp".to_string(),
+                        given: cmd.len() - 1,
+                        expected: 3 - 1,
+                    }
+                    .into())
+                }
+            }
+
+            n => Err(CmdError::NotACommand(n.to_string()).into()),
+        }
     }
 }
 

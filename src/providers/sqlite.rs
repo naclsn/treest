@@ -132,10 +132,10 @@ impl Provider for Sqlite {
         Top
     }
 
-    fn provide(&mut self, path: Vec<&Self::Fragment>) -> Vec<Self::Fragment> {
+    fn provide(&mut self, path: &[&Self::Fragment]) -> Vec<Self::Fragment> {
         const LIMIT: usize = 42;
 
-        match path[..] {
+        match path {
             [Top] => self
                 .connection
                 .prepare("select name from sqlite_master where 'table' = type")

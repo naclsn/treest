@@ -61,10 +61,10 @@ macro_rules! providers {
                 }
             }
 
-            fn provide(&mut self, path: Vec<&Self::Fragment>) -> Vec<Self::Fragment> {
+            fn provide(&mut self, path: &[&Self::Fragment]) -> Vec<Self::Fragment> {
                 match self {
                     $(DynProvider::$ty(it) => it
-                        .provide(path.into_iter().map(DynFragment::$nm).collect())
+                        .provide(&path.iter().copied().map(DynFragment::$nm).collect::<Vec<_>>())
                         .into_iter()
                         .map(DynFragment::$ty)
                         .collect(),)+
@@ -73,12 +73,19 @@ macro_rules! providers {
         }
 
         impl $crate::tree::ProviderExt for DynProvider {
-            fn fmt_frag_path(&self, f: &mut std::fmt::Formatter, path: Vec<&Self::Fragment>) -> std::fmt::Result {
+            fn fmt_frag_path(&self, f: &mut std::fmt::Formatter, path: &[&Self::Fragment]) -> std::fmt::Result {
                 match self {
-                    $(DynProvider::$ty(it) => it.fmt_frag_path(f, path
-                        .into_iter()
+                    $(DynProvider::$ty(it) => it.fmt_frag_path(f, &path
+                        .iter()
+                        .copied()
                         .map(DynFragment::$nm)
-                        .collect(),),)+
+                        .collect::<Vec<_>>()),)+
+                }
+            }
+
+            fn command(&mut self, cmd: &[String]) -> Result<String> {
+                match self {
+                    $(DynProvider::$ty(it) => it.command(cmd),)+
                 }
             }
         }

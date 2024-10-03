@@ -1,7 +1,13 @@
 use std::cell::RefCell;
-use std::fmt::{Display, Formatter, Result as FmtResult};
+use std::fmt::Display;
 use std::mem;
 use std::ops::Range;
+
+mod display;
+mod keymap;
+mod options;
+
+use options::Options;
 
 use crate::reqres::ReqRes;
 use crate::terminal;
@@ -14,6 +20,7 @@ pub struct Navigate<P: Provider> {
     pending: Vec<u8>,
     message: Option<String>,
     view: RefCell<View>, // is mutated during rendering to stay up to date
+    options: Options,
 }
 
 pub enum State {
@@ -127,10 +134,15 @@ impl<P: Provider> Navigate<P> {
                 total: 0..0,
                 line_mapping: Vec::new(),
             }),
+            options: Options::default(),
         }
     }
 
-    pub fn is_continue(&mut self) -> bool {
+    pub fn is_continue(&mut self) -> bool
+    where
+        P::Fragment: Display,
+        P: ProviderExt,
+    {
         match mem::take(&mut self.state) {
             State::Continue(r) => {
                 self.pending.push(r.unwrap());
@@ -195,6 +207,7 @@ impl<P: Provider> Navigate<P> {
                         self.state = State::Prompt(ReqRes::new(":".into()));
                         self.message = None;
                     }
+
                     _ => return true, // XXX(wip): for now skip `pending.clear()`
                 }
             }
@@ -203,14 +216,26 @@ impl<P: Provider> Navigate<P> {
                 if let Some(r) = r.unwrap().take_if(|r| !r.is_empty()) {
                     match r[0].as_str() {
                         "se" | "set" => {
-                            let mut msg = "NIY:".to_string();
-                            for opt in &r[1..] {
-                                msg.push_str("  :set ");
-                                msg.push_str(opt);
-                            }
-                            self.message = Some(msg)
+                            let r: Vec<_> = r[1..]
+                                .iter()
+                                .filter_map(|o| self.options.update(o))
+                                .collect();
+                            self.message = if r.is_empty() {
+                                None
+                            } else {
+                                Some(r.join("  "))
+                            };
                         }
-                        n => self.message = Some(format!("not a command: {n}")),
+
+                        "q" | "quit" => return false,
+
+                        _ => {
+                            let info = self
+                                .tree
+                                .provider_command(&r)
+                                .unwrap_or_else(|e| format!("\x1b[31m{e}\x1b[m"));
+                            self.message = if !info.is_empty() { Some(info) } else { None }
+                        }
                     }
                 }
             }
@@ -273,134 +298,5 @@ impl<P: Provider> Navigate<P> {
 
     pub fn toggle_mark(&mut self) {
         self.tree.toggle_mark_at(self.cursor);
-    }
-}
-
-const BRANCH: &str = "\u{251c}\u{2500}\u{2500} "; //      "|-- "
-const INDENT: &str = "\u{2502}   "; //                    "|   "
-const BRANCH_LAST: &str = "\u{2514}\u{2500}\u{2500} "; // "`-- "
-const INDENT_LAST: &str = "    "; //                      "    "
-
-impl<P: Provider + ProviderExt> Display for Navigate<P>
-where
-    <P as Provider>::Fragment: Display,
-{
-    fn fmt(&self, f: &mut Formatter) -> FmtResult {
-        write!(f, "\x1b[H\x1b[J")?;
-
-        let mut view = self.view.borrow_mut();
-
-        let visible = view.visible();
-        view.line_mapping.resize(visible.len(), self.tree.root());
-
-        let mut current = 0;
-        self.fmt_at(
-            f,
-            self.tree.root(),
-            "".into(),
-            &mut current,
-            &visible,
-            &mut view.line_mapping,
-        )?;
-        view.total.end = current;
-
-        if current < visible.end {
-            write!(f, "{}", "\n".repeat(visible.end - current))?;
-        }
-
-        self.tree
-            .provider()
-            .fmt_frag_path(f, self.tree.path_at(self.cursor))?;
-        write!(f, "\r\n")?;
-
-        if let Some(message) = &self.message {
-            write!(f, "{message}    ")?;
-            message.chars().count();
-        }
-
-        for k in &self.pending {
-            if k.is_ascii_graphic() {
-                write!(f, "{}", *k as char)
-            } else {
-                write!(f, "<{k}>")
-            }?;
-        }
-
-        Ok(())
-    }
-}
-
-impl<P: Provider> Navigate<P>
-where
-    <P as Provider>::Fragment: Display,
-{
-    fn fmt_at(
-        &self,
-        f: &mut Formatter,
-        at: NodeRef,
-        indent: String,
-        current: &mut usize,
-        visible: &Range<usize>,
-        which: &mut [NodeRef],
-    ) -> FmtResult {
-        let node = self.tree.at(at);
-        let frag = &node.fragment;
-
-        if visible.contains(current) {
-            if node.marked() {
-                write!(f, " \x1b[4m")?;
-            }
-            if self.cursor == at {
-                write!(f, "\x1b[7m")?;
-            }
-            write!(f, "{frag}\x1b[m")?;
-            which[*current - visible.start] = at;
-        }
-
-        if node.folded() {
-            if visible.contains(current) {
-                write!(f, "\r\n")?;
-            }
-            *current += 1;
-            return Ok(());
-        }
-        let children = node.children().unwrap();
-        if 0 == children.len() {
-            if visible.contains(current) {
-                write!(f, "\r\n")?;
-            }
-            *current += 1;
-            return Ok(());
-        }
-
-        if 1 == children.len() {
-            self.fmt_at(f, children[0], indent, current, visible, which)
-        } else {
-            if visible.contains(current) {
-                write!(f, "\r\n")?;
-            }
-            *current += 1;
-
-            let mut iter = children.iter();
-
-            for it in iter.by_ref().take(children.len() - 1) {
-                if visible.contains(current) {
-                    write!(f, "{indent}{BRANCH}")?;
-                }
-                self.fmt_at(f, *it, format!("{indent}{INDENT}"), current, visible, which)?;
-            }
-
-            if visible.contains(current) {
-                write!(f, "{indent}{BRANCH_LAST}")?;
-            }
-            self.fmt_at(
-                f,
-                *iter.next().unwrap(),
-                format!("{indent}{INDENT_LAST}"),
-                current,
-                visible,
-                which,
-            )
-        }
     }
 }

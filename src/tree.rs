@@ -1,42 +1,56 @@
 use std::fmt::{Display, Formatter, Result as FmtResult};
 
+use anyhow::Result;
+use thiserror::Error;
+
 use crate::fisovec::{FilterSorter, FisoVec};
 use crate::stabvec::StabVec;
 
 pub trait Fragment: PartialEq {}
 impl<T: PartialEq> Fragment for T {}
 
+/// A type that is able to provide a tree structure.
 pub trait Provider: FilterSorter<Self::Fragment> {
+    /// The fragment type essentially correspond to a path component. A sequence of fragments (eg.
+    /// `Vec<&Fragment>`) locates a node in the tree. Fragment must implement `PartialEq`, and
+    /// usually also implement `Display` (see also `ProviderExt`).
     type Fragment: Fragment;
 
+    /// Provide the root of the tree. This is usualy an enum unit type.
+    /// Note that mutations are disable here.
     fn provide_root(&self) -> Self::Fragment;
-    fn provide(&mut self, path: Vec<&Self::Fragment>) -> Vec<Self::Fragment>;
+
+    /// Provide/generate the children nodes for the node at the given path.
+    /// Note that the path is never empty (at least the root).
+    fn provide(&mut self, path: &[&Self::Fragment]) -> Vec<Self::Fragment>;
 }
 
+/// Extra things, every functions are defaulted.
 pub trait ProviderExt: Provider
 where
     Self::Fragment: Display,
 {
-    fn fmt_frag_path(&self, f: &mut Formatter, path: Vec<&Self::Fragment>) -> FmtResult {
+    /// For the navigation view, this is the path shown a the bottom.
+    fn fmt_frag_path(&self, f: &mut Formatter, path: &[&Self::Fragment]) -> FmtResult {
         path.iter().try_for_each(|it| write!(f, "{it}"))
+    }
+
+    /// lskdjf
+    fn command(&mut self, cmd: &[String]) -> Result<String> {
+        Err(CmdError::NotACommand(cmd[0].clone()).into())
     }
 }
 
-// TODO(wip)
-#[allow(dead_code)]
-pub trait ProviderMut: Provider {
-    fn ed(&mut self, _path: Vec<&Self::Fragment>) {
-        panic!("operation not implemented for this provider");
-    }
-    fn mv(&mut self, _path: Vec<&Self::Fragment>, _dest: Vec<&Self::Fragment>) {
-        panic!("operation not implemented for this provider");
-    }
-    fn rm(&mut self, _path: Vec<&Self::Fragment>) {
-        panic!("operation not implemented for this provider");
-    }
-    fn mk(&mut self, _path: Vec<&Self::Fragment>) {
-        panic!("operation not implemented for this provider");
-    }
+#[derive(Error, Debug)]
+pub enum CmdError {
+    #[error("not a command: {0}")]
+    NotACommand(String),
+    #[error("incorrect number arguments for {name}: {given} given, expected {expected}")]
+    WrongArgCount {
+        name: String,
+        given: usize,
+        expected: usize,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -151,7 +165,7 @@ impl<P: Provider> Tree<P> {
         }
 
         let mut children: FisoVec<_> = unsafe { &mut *(&mut self.provider as *mut P) }
-            .provide(self.path_at(at))
+            .provide(&self.path_at(at))
             .into_iter()
             .map(|fragment| NodeRef(self.nodes.insert(Node::new(fragment, at))))
             .collect();
@@ -197,7 +211,7 @@ impl<P: Provider> Tree<P> {
         }
 
         let mut children: FisoVec<_> = unsafe { &mut *(&mut self.provider as *mut P) }
-            .provide(self.path_at(at))
+            .provide(&self.path_at(at))
             .into_iter()
             .map(|fragment| {
                 let searched = prev_refs
@@ -223,5 +237,14 @@ impl<P: Provider> Tree<P> {
     pub fn toggle_mark_at(&mut self, at: NodeRef) {
         let node = self.at_mut(at);
         node.marked = !node.marked;
+    }
+}
+
+impl<P: ProviderExt> Tree<P>
+where
+    <P as Provider>::Fragment: Display,
+{
+    pub fn provider_command(&mut self, cmd: &[String]) -> Result<String> {
+        self.provider.command(cmd)
     }
 }

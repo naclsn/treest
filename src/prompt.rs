@@ -1,6 +1,7 @@
 use std::io::Write;
 use std::mem;
 
+// TODO: should split at point, also in_arg when after last one, should be tested too
 fn split(line: &[char], point: usize) -> (Vec<String>, usize) {
     let mut args = Vec::new();
     let mut curr = String::new();

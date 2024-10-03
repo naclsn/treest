@@ -19,18 +19,23 @@ $ treest --help
 
 ### settings, config, ..
 
-- enable/disable mouse support
-- enable/disable alt screen
-- enable/disable pretty (ascii)
+- [x] enable/disable mouse support
+- [x] enable/disable alt screen
+- [x] enable/disable pretty (ascii)
 
-- enable/disable single nested child
+- [ ] enable/disable single nested child
 
 - provider-specific
-    - sorting/filtering
-    - fn: chdir to root
-    - fn: .ignore
-    - json: render keys as quoted strings
+    - [ ] sorting/filtering
+    - [ ] fs: chdir to root
+    - [ ] fs: .ignore
+    - [ ] json: render keys as quoted strings
 
 ### `ProviderMut`
+
+mv: edit a fragment
+mk: add and edit a fragment -> add
+rm: remove a fragment
+cp
 
 ### better redraw logic than "redraw all"

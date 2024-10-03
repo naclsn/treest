@@ -35,6 +35,20 @@ fn rst_term() {
     }
 }
 
+fn temporary_completion(args: Vec<&str>, in_arg: usize) -> Vec<String> {
+    if 0 == in_arg {
+        &["set", "quit"][..]
+    } else {
+        match args[0] {
+            "set" => &["mouse", "altscreen", "pretty", "onlychild"][..],
+            _ => &[][..],
+        }
+    }
+    .iter()
+    .filter_map(|word| word.strip_prefix(args[in_arg]).map(|_| word.to_string()))
+    .collect()
+}
+
 fn main() {
     let mut args = env::args();
     let prog = args.next().unwrap();
@@ -96,7 +110,7 @@ fn main() {
         State::Continue(r) => input.next().map(|key| r.process(|()| key)).is_some(),
         State::Prompt(r) => {
             eprint!("\x1b[?25h\x1b[?1000l");
-            r.process(|r| prompt::prompt(&r, input.by_ref(), io::stderr(), |_, _| Vec::new()));
+            r.process(|r| prompt::prompt(&r, input.by_ref(), io::stderr(), temporary_completion));
             eprint!("\x1b[?25l\x1b[?1000h");
             true
         }
