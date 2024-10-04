@@ -1,4 +1,4 @@
-use std::fmt::{Display, Formatter, Result as FmtResult};
+use std::fmt::{Display, Result as FmtResult, Write};
 
 use anyhow::Result;
 use thiserror::Error;
@@ -30,8 +30,13 @@ pub trait ProviderExt: Provider
 where
     Self::Fragment: Display,
 {
-    /// For the navigation view, this is the path shown a the bottom.
-    fn fmt_frag_path(&self, f: &mut Formatter, path: &[&Self::Fragment]) -> FmtResult {
+    /// For the navigation view, this is the path shown at the bottom.
+    fn write_nav_path(&self, f: &mut impl Write, path: &[&Self::Fragment]) -> FmtResult {
+        path.iter().try_for_each(|it| write!(f, "{it}"))
+    }
+
+    /// This is the path as expanded when a '%' is found in command args.
+    fn write_arg_path(&self, f: &mut impl Write, path: &[&Self::Fragment]) -> FmtResult {
         path.iter().try_for_each(|it| write!(f, "{it}"))
     }
 

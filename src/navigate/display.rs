@@ -54,7 +54,7 @@ where
 
         self.tree
             .provider()
-            .fmt_frag_path(f, &self.tree.path_at(self.cursor))?;
+            .write_nav_path(f, &self.tree.path_at(self.cursor))?;
         write!(f, "\r\n")?;
 
         if let Some(message) = &self.message {

@@ -213,7 +213,15 @@ impl<P: Provider> Navigate<P> {
             }
 
             State::Prompt(r) => {
-                if let Some(r) = r.unwrap().take_if(|r| !r.is_empty()) {
+                if let Some(mut r) = r.unwrap().take_if(|r| !r.is_empty()) {
+                    for arg in r.iter_mut() {
+                        if "%" == arg {
+                            arg.clear();
+                            let path = self.tree.path_at(self.cursor);
+                            self.tree.provider().write_arg_path(arg, &path).unwrap();
+                        }
+                    }
+
                     match r[0].as_str() {
                         "se" | "set" => {
                             let r: Vec<_> = r[1..]
@@ -229,12 +237,14 @@ impl<P: Provider> Navigate<P> {
 
                         "q" | "quit" => return false,
 
+                        "ec" | "echo" => self.message = Some(r[1..].join(" ")),
+
                         _ => {
                             let info = self
                                 .tree
                                 .provider_command(&r)
                                 .unwrap_or_else(|e| format!("\x1b[31m{e}\x1b[m"));
-                            self.message = if !info.is_empty() { Some(info) } else { None }
+                            self.message = if info.is_empty() { None } else { Some(info) }
                         }
                     }
                 }

@@ -1,6 +1,6 @@
 use std::cmp::Ordering;
 use std::error::Error;
-use std::fmt::{Display, Formatter, Result as FmtResult};
+use std::fmt::{Display, Formatter, Result as FmtResult, Write};
 use std::fs::{self, Metadata};
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
@@ -105,7 +105,7 @@ impl From<(PathBuf, &Option<Metadata>)> for FsNodeKind {
 }
 
 #[inline(always)]
-fn write_perm(f: &mut Formatter, perm: u32) -> FmtResult {
+fn write_perm(f: &mut impl Write, perm: u32) -> FmtResult {
     write!(
         f,
         "{}{}{}",
@@ -116,7 +116,7 @@ fn write_perm(f: &mut Formatter, perm: u32) -> FmtResult {
 }
 
 #[cfg(unix)]
-fn write_meta(f: &mut Formatter, node: &FsNode) -> FmtResult {
+fn write_meta(f: &mut impl Write, node: &FsNode) -> FmtResult {
     use std::os::unix::fs::PermissionsExt;
     let mode = node
         .meta
@@ -146,7 +146,7 @@ fn write_meta(f: &mut Formatter, node: &FsNode) -> FmtResult {
 }
 
 #[cfg(windows)]
-fn write_meta(f: &mut Formatter, node: &FsNode) -> FmtResult {
+fn write_meta(f: &mut impl Write, node: &FsNode) -> FmtResult {
     let ro = node
         .meta
         .as_ref()
@@ -232,7 +232,7 @@ impl Provider for Fs {
 }
 
 impl ProviderExt for Fs {
-    fn fmt_frag_path(&self, f: &mut Formatter, path: &[&Self::Fragment]) -> FmtResult {
+    fn write_nav_path(&self, f: &mut impl Write, path: &[&Self::Fragment]) -> FmtResult {
         let node = path.last().unwrap();
         write_meta(f, node)?;
 
@@ -265,6 +265,16 @@ impl ProviderExt for Fs {
         path.iter().try_for_each(|it| write!(f, "{it}"))
     }
 
+    fn write_arg_path(&self, f: &mut impl Write, path: &[&Self::Fragment]) -> FmtResult {
+        path.iter().try_for_each(|it| {
+            write!(f, "{}", it.name)?;
+            match it.kind {
+                Directory => write!(f, "/"),
+                _ => Ok(()),
+            }
+        })
+    }
+
     fn command(&mut self, cmd: &[String]) -> Result<String> {
         match cmd[0].as_str() {
             "ed" => todo!(),
@@ -290,7 +300,7 @@ impl ProviderExt for Fs {
             "cp" => {
                 if 3 == cmd.len() {
                     fs::copy(&cmd[1], &cmd[2])?;
-                    Ok(format!("moved {} to {}", cmd[1], cmd[2]))
+                    Ok(format!("copied {} to {}", cmd[1], cmd[2]))
                 } else {
                     Err(CmdError::WrongArgCount {
                         name: "cp".to_string(),

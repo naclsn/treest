@@ -73,9 +73,19 @@ macro_rules! providers {
         }
 
         impl $crate::tree::ProviderExt for DynProvider {
-            fn fmt_frag_path(&self, f: &mut std::fmt::Formatter, path: &[&Self::Fragment]) -> std::fmt::Result {
+            fn write_nav_path(&self, f: &mut impl std::fmt::Write, path: &[&Self::Fragment]) -> std::fmt::Result {
                 match self {
-                    $(DynProvider::$ty(it) => it.fmt_frag_path(f, &path
+                    $(DynProvider::$ty(it) => it.write_nav_path(f, &path
+                        .iter()
+                        .copied()
+                        .map(DynFragment::$nm)
+                        .collect::<Vec<_>>()),)+
+                }
+            }
+
+            fn write_arg_path(&self, f: &mut impl std::fmt::Write, path: &[&Self::Fragment]) -> std::fmt::Result {
+                match self {
+                    $(DynProvider::$ty(it) => it.write_arg_path(f, &path
                         .iter()
                         .copied()
                         .map(DynFragment::$nm)

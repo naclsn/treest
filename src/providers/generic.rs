@@ -1,5 +1,5 @@
 use std::cmp::Ordering;
-use std::fmt::{Display, Formatter, Result as FmtResult};
+use std::fmt::{Display, Write, Formatter, Result as FmtResult};
 use std::marker::PhantomPinned;
 use std::pin::Pin;
 use std::ptr::NonNull;
@@ -66,7 +66,7 @@ impl<T: Generic> ProviderExt for T
 where
     <T::Value as GenericValue>::Index: Display,
 {
-    fn fmt_frag_path(&self, f: &mut Formatter, path: &[&Self::Fragment]) -> FmtResult {
+    fn write_nav_path(&self, f: &mut impl Write, path: &[&Self::Fragment]) -> FmtResult {
         path.iter()
             .try_for_each(|GenericFragment(i, _)| write!(f, " {i}"))
     }
