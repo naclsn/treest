@@ -17,6 +17,10 @@ $ treest --help
 
 ## (wip and such)
 
+thing too long that cause terminal line wrap
+
+### subtrees
+
 ### settings, config, ..
 
 - [x] enable/disable mouse support

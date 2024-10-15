@@ -1,4 +1,5 @@
 use std::env;
+use std::process;
 use std::fs::File;
 use std::io::{self, Read};
 use std::panic;
@@ -93,7 +94,7 @@ fn main() {
                     eprintln!("Because ...");
                 }
             }
-            return;
+            process::exit(1);
         }
     });
 
@@ -110,8 +111,37 @@ fn main() {
         State::Continue(r) => input.next().map(|key| r.process(|()| key)).is_some(),
         State::Prompt(r) => {
             eprint!("\x1b[?25h\x1b[?1000l");
-            r.process(|r| prompt::prompt(&r, input.by_ref(), io::stderr(), temporary_completion));
+            r.process(|r| {
+                let l = prompt::prompt(&r, input.by_ref(), io::stderr(), temporary_completion);
+                (r, l)
+            });
             eprint!("\x1b[?25l\x1b[?1000h");
+            true
+        }
+        State::ExecStatus(r) => {
+            r.process(|(restore, mut r)| {
+                if restore {
+                    rst_term();
+                }
+                let r = r.status();
+                if restore {
+                    set_term();
+                }
+                r
+            });
+            true
+        }
+        State::ExecOutput(r) => {
+            r.process(|(restore, mut r)| {
+                if restore {
+                    rst_term();
+                }
+                let r = r.output();
+                if restore {
+                    set_term();
+                }
+                r
+            });
             true
         }
     }) && nav.is_continue()

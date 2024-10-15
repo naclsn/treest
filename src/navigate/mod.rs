@@ -1,7 +1,10 @@
-use std::cell::RefCell;
+use std::cell::{LazyCell, RefCell};
 use std::fmt::Display;
+use std::fs::File;
+use std::io::{Read, Result as IoResult};
 use std::mem;
 use std::ops::Range;
+use std::process::{Command as ProcCommand, ExitStatus as ProcStatus, Output as ProcOutput};
 
 mod display;
 mod keymap;
@@ -25,7 +28,9 @@ pub struct Navigate<P: Provider> {
 
 pub enum State {
     Continue(ReqRes<(), u8>),
-    Prompt(ReqRes<String, Option<Vec<String>>>),
+    Prompt(ReqRes<String, (String, Option<Vec<String>>)>),
+    ExecStatus(ReqRes<(/*restore*/ bool, ProcCommand), IoResult<ProcStatus>>),
+    ExecOutput(ReqRes<(/*restore*/ bool, ProcCommand), IoResult<ProcOutput>>),
 }
 
 impl Default for State {
@@ -191,6 +196,7 @@ impl<P: Provider> Navigate<P> {
                     /* ^G */ [.., 0x07] => (),
                     /* ^J */ [0x0a] => self.sibling_wrap(Direction::Next),
                     /* ^K */ [0x0b] => self.sibling_wrap(Direction::Prev),
+                    /* ^L */ [0x0c] => self.message = None,
                     /* ^U */ [0x15] => self.view.borrow_mut().up(ViewJumpBy::HalfWin),
                     /* ^Y */ [0x19] => self.view.borrow_mut().up(ViewJumpBy::Line),
                     //* ^[ */ [0x1b, ..] => todo!("wip"),
@@ -208,46 +214,107 @@ impl<P: Provider> Navigate<P> {
                         self.message = None;
                     }
 
+                    // temporary subtrees solution
+                    b"t" => {
+                        let mut com = ProcCommand::new("treest");
+                        com.arg(self.curr_path_string());
+                        self.state = State::ExecStatus((true, com).into());
+                    }
+                    b"T" => {
+                        self.message = None;
+                        self.state = State::Prompt(ReqRes::new("sub-tree type: ".into()));
+                    }
+
+                    b"f" => {
+                        let mut com = ProcCommand::new("file");
+                        com.arg(self.curr_path_string());
+                        self.state = State::ExecOutput((false, com).into());
+                    }
+                    b"F" => {
+                        self.message = File::open(self.curr_path_string())
+                            .and_then(|mut f| {
+                                let mut r = String::new();
+                                f.read_to_string(&mut r).map(|_| r.replace('\n', "\r\n"))
+                            })
+                            .ok();
+                    }
+
                     _ => return true, // XXX(wip): for now skip `pending.clear()`
                 }
             }
 
             State::Prompt(r) => {
-                if let Some(mut r) = r.unwrap().take_if(|r| !r.is_empty()) {
-                    for arg in r.iter_mut() {
-                        if "%" == arg {
-                            arg.clear();
-                            let path = self.tree.path_at(self.cursor);
-                            self.tree.provider().write_arg_path(arg, &path).unwrap();
+                let (prompt, resp) = r.unwrap();
+                match (prompt.as_str(), resp) {
+                    (":", Some(mut resp)) => {
+                        let path = LazyCell::new(|| self.curr_path_string());
+
+                        for arg in resp.iter_mut() {
+                            // replace only one occurence, and if it's not "%%"
+                            let mut bytes = arg.bytes();
+                            if let Some(k) = bytes.position(|b| b'%' == b) {
+                                if Some(b'%') == bytes.next() {
+                                    arg.remove(k + 1); // "%%" -> "%"
+                                } else {
+                                    arg.replace_range(k..=k, &path);
+                                }
+                            }
                         }
+
+                        match resp[0].as_str() {
+                            "se" | "set" => {
+                                let r: Vec<_> = resp[1..]
+                                    .iter()
+                                    .filter_map(|o| self.options.update(o))
+                                    .collect();
+                                self.message = if r.is_empty() {
+                                    None
+                                } else {
+                                    Some(r.join("  "))
+                                };
+                            }
+
+                            "q" | "quit" => return false,
+
+                            "ec" | "echo" => self.message = Some(resp[1..].join(" ")),
+
+                            _ => {
+                                let info = self
+                                    .tree
+                                    .provider_command(&resp)
+                                    .unwrap_or_else(|e| format!("\x1b[31m{e}\x1b[m"));
+                                self.message = if info.is_empty() { None } else { Some(info) }
+                            }
+                        }
+                    } // ":"
+
+                    ("sub-tree type: ", Some(prov)) => {
+                        let mut com = ProcCommand::new("treest");
+                        // "%"
+                        com.arg({
+                            let mut r = String::new();
+                            self.tree
+                                .provider()
+                                .write_arg_path(&mut r, &self.tree.path_at(self.cursor))
+                                .unwrap();
+                            r
+                        });
+                        com.arg(&prov[0]);
+                        self.state = State::ExecStatus((true, com).into());
                     }
 
-                    match r[0].as_str() {
-                        "se" | "set" => {
-                            let r: Vec<_> = r[1..]
-                                .iter()
-                                .filter_map(|o| self.options.update(o))
-                                .collect();
-                            self.message = if r.is_empty() {
-                                None
-                            } else {
-                                Some(r.join("  "))
-                            };
-                        }
-
-                        "q" | "quit" => return false,
-
-                        "ec" | "echo" => self.message = Some(r[1..].join(" ")),
-
-                        _ => {
-                            let info = self
-                                .tree
-                                .provider_command(&r)
-                                .unwrap_or_else(|e| format!("\x1b[31m{e}\x1b[m"));
-                            self.message = if info.is_empty() { None } else { Some(info) }
-                        }
-                    }
+                    _ => unreachable!(),
                 }
+            }
+
+            State::ExecStatus(r) => self.message = Some(format!("{:?}", r.unwrap())),
+            State::ExecOutput(r) => {
+                self.message = Some(match r.unwrap() {
+                    Ok(r) => String::from_utf8_lossy(&r.stdout)
+                        .to_string()
+                        .replace('\n', "  "),
+                    Err(e) => e.to_string(),
+                });
             }
         }
 
@@ -308,5 +375,19 @@ impl<P: Provider> Navigate<P> {
 
     pub fn toggle_mark(&mut self) {
         self.tree.toggle_mark_at(self.cursor);
+    }
+
+    // "%"
+    pub fn curr_path_string(&self) -> String
+    where
+        P::Fragment: Display,
+        P: ProviderExt,
+    {
+        let mut r = String::new();
+        self.tree
+            .provider()
+            .write_arg_path(&mut r, &self.tree.path_at(self.cursor))
+            .unwrap();
+        r
     }
 }

@@ -7,6 +7,12 @@ pub enum ReqRes<Req, Res> {
 }
 use ReqRes::*;
 
+impl<Req, Res> From<Req> for ReqRes<Req, Res> {
+    fn from(value: Req) -> Self {
+        Self::new(value)
+    }
+}
+
 #[allow(dead_code)]
 impl<Req, Res> ReqRes<Req, Res> {
     pub fn new(req: Req) -> Self {
