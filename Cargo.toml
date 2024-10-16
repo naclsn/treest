@@ -17,3 +17,4 @@ serde_yml = "0.0.12"
 sqlite = "0.36.1"
 thiserror = "1.0.64"
 toml = { version = "0.8.19", default-features = false, features = ["parse"] }
+xml-rs = "0.8.22"

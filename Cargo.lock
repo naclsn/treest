@@ -293,6 +293,7 @@ dependencies = [
  "thiserror",
  "toml",
  "winapi",
+ "xml-rs",
 ]
 
 [[package]]
@@ -337,3 +338,9 @@ checksum = "36c1fec1a2bb5866f07c25f68c26e565c4c200aebb96d7e55710c19d3e8ac49b"
 dependencies = [
  "memchr",
 ]
+
+[[package]]
+name = "xml-rs"
+version = "0.8.22"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "af4e2e2f7cba5a093896c1e150fbfe177d1883e7448200efb81d40b9d339ef26"

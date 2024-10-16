@@ -136,5 +136,6 @@ providers! {
     json: Json     if |ext: &str| ext.ends_with(".json"),
     sqlite: Sqlite if |ext: &str| [".sqlite", ".sqlite3", ".db"].iter().any(|&s| ext.ends_with(s)),
     toml: Toml     if |ext: &str| ext.ends_with(".toml"),
+    xml: Xml       if |ext: &str| [".xml", ".htm", ".html"].iter().any(|&s| ext.ends_with(s)),
     yaml: Yaml     if |ext: &str| [".yaml", ".yml"].iter().any(|&s| ext.ends_with(s)),
 }
