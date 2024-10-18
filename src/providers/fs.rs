@@ -1,11 +1,11 @@
 use std::cmp::Ordering;
-use std::error::Error;
 use std::fmt::{Display, Formatter, Result as FmtResult, Write};
 use std::fs::{self, Metadata};
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 
 use anyhow::Result;
+use thiserror::Error;
 use lscolors::{LsColors, Style};
 
 use crate::fisovec::FilterSorter;
@@ -15,18 +15,11 @@ pub struct Fs {
     root: PathBuf,
 }
 
-#[derive(Debug)]
+#[derive(Error, Debug)]
 pub enum FsProviderError {
+    #[error("path is not a directory")]
     NotADirectory,
 }
-impl Display for FsProviderError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
-        match self {
-            FsProviderError::NotADirectory => write!(f, "path is not a directory"),
-        }
-    }
-}
-impl Error for FsProviderError {}
 
 #[derive(PartialEq)]
 enum FsNodeKind {

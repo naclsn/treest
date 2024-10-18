@@ -18,6 +18,11 @@ $ treest --help
 ## (wip and such)
 
 thing too long that cause terminal line wrap
+https://crates.io/crates/unicode-ellipsis/0.2.0
+
+### ps
+
+https://docs.rs/sysinfo/0.30.13/sysinfo/struct.Process.html
 
 ### subtrees
 

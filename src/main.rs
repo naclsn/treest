@@ -1,8 +1,8 @@
 use std::env;
-use std::process;
 use std::fs::File;
 use std::io::{self, Read};
 use std::panic;
+use std::process;
 
 mod fisovec;
 mod navigate;

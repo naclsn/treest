@@ -1,23 +1,13 @@
-use std::error::Error;
-use std::fmt::{Display, Formatter, Result as FmtResult};
-
 use anyhow::Result;
+use thiserror::Error;
 
-#[derive(Debug)]
+#[derive(Error, Debug)]
 pub enum DynProviderError {
+    #[error("the provider to use could not be guessed from argument")]
     ProviderNeeded,
+    #[error("'{0}' does not name an existing provider")]
     NotProvider(String),
 }
-impl Display for DynProviderError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
-        use DynProviderError::*;
-        match self {
-            ProviderNeeded => write!(f, "the provider to use could not be guessed from argument"),
-            NotProvider(name) => write!(f, "'{name}' does not name an existing provider"),
-        }
-    }
-}
-impl Error for DynProviderError {}
 
 macro_rules! providers {
     ($($nm:ident: $ty:ident if $ft:expr,)+) => {
@@ -133,9 +123,10 @@ macro_rules! providers {
 
 providers! {
     fs: Fs         if |path| std::path::Path::new(path).is_dir(),
-    json: Json     if |ext: &str| ext.ends_with(".json"),
-    sqlite: Sqlite if |ext: &str| [".sqlite", ".sqlite3", ".db"].iter().any(|&s| ext.ends_with(s)),
-    toml: Toml     if |ext: &str| ext.ends_with(".toml"),
-    xml: Xml       if |ext: &str| [".xml", ".htm", ".html"].iter().any(|&s| ext.ends_with(s)),
-    yaml: Yaml     if |ext: &str| [".yaml", ".yml"].iter().any(|&s| ext.ends_with(s)),
+    json: Json     if |path: &str| path.ends_with(".json"),
+    proc: Proc     if |_| false,
+    sqlite: Sqlite if |path: &str| [".sqlite", ".sqlite3", ".db"].iter().any(|&ext| path.ends_with(ext)),
+    toml: Toml     if |path: &str| path.ends_with(".toml"),
+    xml: Xml       if |path: &str| [".xml", ".htm", ".html"].iter().any(|&ext| path.ends_with(ext)),
+    yaml: Yaml     if |path: &str| [".yaml", ".yml"].iter().any(|&ext| path.ends_with(ext)),
 }
