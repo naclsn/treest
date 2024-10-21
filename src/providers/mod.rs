@@ -3,9 +3,9 @@ use thiserror::Error;
 
 #[derive(Error, Debug)]
 pub enum DynProviderError {
-    #[error("the provider to use could not be guessed from argument")]
+    #[error("the provider to use could not be guessed from the argument (see '--list')")]
     ProviderNeeded,
-    #[error("'{0}' does not name an existing provider")]
+    #[error("'{0}' does not name an existing provider (see '--list')")]
     NotProvider(String),
 }
 

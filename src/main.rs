@@ -54,13 +54,13 @@ fn main() {
     let mut args = env::args();
     let prog = args.next().unwrap();
     let arg = match args.next().unwrap_or(".".into()) {
-        list if "--list" == list => {
+        list if "--list" == list || "-l" == list => {
             for name in providers::NAMES {
                 println!("{name}");
             }
             return;
         }
-        help if "--help" == help => {
+        help if "--help" == help || "-h" == help => {
             eprintln!(
                 r#"Usage: {prog} [arg [name]]
 
