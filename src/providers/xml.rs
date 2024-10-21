@@ -88,12 +88,12 @@ impl Generic for Xml {
 
 impl Xml {
     pub fn new(path: &str) -> Result<Self> {
-        Ok(if path.is_empty() {
+        if path.is_empty() {
             Node::from_reader(io::stdin())
         } else {
             Node::from_reader(File::open(path)?)
         }
-        .map(|value| Self(Box::pin((value, PhantomPinned))))?)
+        .map(|value| Self(Box::pin((value, PhantomPinned))))
     }
 }
 

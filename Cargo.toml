@@ -15,6 +15,7 @@ lscolors = { version = "0.19.0", default-features = false, features = ["ansi_ter
 serde_json = "1.0.128"
 serde_yml = "0.0.12"
 sqlite = "0.36.1"
+sysinfo = { version = "0.32.0", default-features = false, features = ["system"] }
 thiserror = "1.0.64"
 toml = { version = "0.8.19", default-features = false, features = ["parse"] }
 xml-rs = "0.8.22"
