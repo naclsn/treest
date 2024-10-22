@@ -197,16 +197,17 @@ impl<P: Provider> Navigate<P> {
                     /* ^J */ [0x0a] => self.sibling_wrap(Direction::Next),
                     /* ^K */ [0x0b] => self.sibling_wrap(Direction::Prev),
                     /* ^L */ [0x0c] => self.message = None,
+                    /* ^M */ [0x0d] => self.toggle_fold(),
                     /* ^U */ [0x15] => self.view.borrow_mut().up(ViewJumpBy::HalfWin),
                     /* ^Y */ [0x19] => self.view.borrow_mut().up(ViewJumpBy::Line),
                     //* ^[ */ [0x1b, ..] => todo!("wip"),
                     b"0" => self.root(),
-                    b"H" => self.fold(),
+                    b"H" | [127] => self.fold(),
                     b"L" => self.unfold(),
-                    b"h" => self.leave(),
-                    b"j" => self.sibling_sat(Direction::Next),
-                    b"k" => self.sibling_sat(Direction::Prev),
-                    b"l" => self.enter(),
+                    b"h" | b"\x1b[D" => self.leave(),
+                    b"j" | b"\x1b[B" => self.sibling_sat(Direction::Next),
+                    b"k" | b"\x1b[A" => self.sibling_sat(Direction::Prev),
+                    b"l" | b"\x1b[C" => self.enter(),
                     b"q" => return false,
                     b" " => self.toggle_mark(),
                     b":" => {
@@ -371,6 +372,14 @@ impl<P: Provider> Navigate<P> {
 
     pub fn leave(&mut self) {
         self.cursor = self.tree.at(self.cursor).parent();
+    }
+
+    pub fn toggle_fold(&mut self) {
+        if self.tree.at(self.cursor).folded() {
+            self.unfold();
+        } else {
+            self.fold();
+        }
     }
 
     pub fn toggle_mark(&mut self) {

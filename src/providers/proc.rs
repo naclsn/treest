@@ -1,7 +1,9 @@
 use std::cmp::Ordering;
 use std::fmt::{Display, Formatter, Result as FmtResult};
+use std::sync::OnceLock;
 
 use anyhow::Result;
+use lscolors::{Indicator, LsColors, Style};
 use sysinfo::{Pid, ProcessRefreshKind, RefreshKind, System, UpdateKind};
 
 use crate::fisovec::FilterSorter;
@@ -42,6 +44,8 @@ impl PartialEq for ProcNode {
     }
 }
 
+static LS_COLORS: OnceLock<LsColors> = OnceLock::new();
+
 impl Display for ProcNode {
     fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
         match self {
@@ -51,7 +55,7 @@ impl Display for ProcNode {
 
             Command => write!(f, "\x1b[34mcommand\x1b[m "),
 
-            CmdArg(_, s) => write!(f, "{s}"),
+            CmdArg(_, s) => write!(f, "\x1b[32m{s}\x1b[m"),
 
             Environ => write!(f, "\x1b[34menviron\x1b[m "),
 
@@ -130,18 +134,29 @@ impl ProviderExt for Proc {
         match path {
             [Roots(_)] => {
                 let n = self.system.processes().len();
-                write!(f, "({} process{})", n, if 1 == n { " (!?)" } else { "es" })
+                write!(f, "({n} processes)") // if you mannage to have n be 1..!
             }
 
             [.., Info(ProcInfo { pid, name, .. })] => {
                 let proc = self.system.process(*pid).unwrap();
+
+                let ls_col = LS_COLORS.get_or_init(|| LsColors::from_env().unwrap_or_default());
+                let cwd_col = ls_col
+                    .style_for_indicator(Indicator::Directory)
+                    .unwrap_or(&Style::from_ansi_sequence("34").unwrap())
+                    .to_ansi_term_style();
+                let exe_col = ls_col
+                    .style_for_indicator(Indicator::ExecutableFile)
+                    .unwrap_or(&Style::from_ansi_sequence("34").unwrap())
+                    .to_ansi_term_style();
+
                 write!(f, "({:6}) cwd:", pid.as_u32())?;
                 proc.cwd()
-                    .map(|path| write!(f, "{}", path.display()))
-                    .unwrap_or_else(|| write!(f, "/"))?;
+                    .map(|path| write!(f, "{}", cwd_col.paint(path.to_string_lossy())))
+                    .unwrap_or_else(|| write!(f, "{}", cwd_col.paint("/")))?;
                 write!(f, " exe:")?;
                 proc.exe()
-                    .map(|path| write!(f, "{}", path.display()))
+                    .map(|path| write!(f, "{}", exe_col.paint(path.to_string_lossy())))
                     .unwrap_or_else(|| write!(f, "<{name}>"))
             }
 
@@ -150,7 +165,7 @@ impl ProviderExt for Proc {
                 write!(f, "({} argument{})", n, if 1 == n { "" } else { "s" })
             }
 
-            [.., CmdArg(_, s)] => write!(f, "{s}"),
+            [.., CmdArg(_, s)] => write!(f, "\x1b[32m{s}\x1b[m"),
 
             [.., Info(ProcInfo { pid, .. }), Environ] => {
                 let n = self.system.process(*pid).unwrap().environ().len();
