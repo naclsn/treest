@@ -13,7 +13,7 @@ mod stabvec;
 mod terminal;
 mod tree;
 
-use crate::navigate::{Navigate, State};
+use crate::navigate::Navigate;
 use crate::terminal::Restore;
 
 static mut RESTORE: Option<Restore> = None;
@@ -24,11 +24,15 @@ fn set_term() {
             RESTORE = Some(terminal::raw().unwrap());
         }
     }
-    eprint!("\x1b[?25l\x1b[?1000h\x1b[?1049h");
+    terminal::cursor_off();
+    terminal::mouse_on();
+    terminal::altscreen_on();
 }
 
 fn rst_term() {
-    eprint!("\x1b[?25h\x1b[?1000l\x1b[?1049l");
+    terminal::cursor_on();
+    terminal::mouse_off();
+    terminal::altscreen_off();
     unsafe {
         if let Some(term) = RESTORE.take() {
             term.restore();
@@ -107,7 +111,7 @@ fn main() {
     set_term();
 
     eprint!("{nav}");
-    while (match &mut nav.state {
+    /*while (match &mut nav.state {
         State::Continue(r) => input.next().map(|key| r.process(|()| key)).is_some(),
         State::Prompt(r) => {
             eprint!("\x1b[?25h\x1b[?1000l");
@@ -144,8 +148,11 @@ fn main() {
             });
             true
         }
-    }) && nav.is_continue()
-    {
+    }) && nav.is_continue()*/
+    loop {
+        let Some(byte) = input.next() else { break };
+        nav.feed(byte);
+
         let buf = nav.to_string();
         eprint!("{buf}");
     }

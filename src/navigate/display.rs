@@ -62,7 +62,7 @@ where
             message.chars().count();
         }
 
-        for k in &self.pending {
+        for k in self.input.get_pending() {
             if k.is_ascii_graphic() {
                 write!(f, "{}", *k as char)
             } else {
@@ -126,7 +126,8 @@ where
             *current += 1;
 
             let mut iter = children.iter();
-            let appearance = if self.options.pretty { PRETTY } else { ASCII };
+            //let appearance = if self.options.pretty { PRETTY } else { ASCII };
+            let appearance = PRETTY;
 
             for it in iter.by_ref().take(children.len() - 1) {
                 if visible.contains(current) {

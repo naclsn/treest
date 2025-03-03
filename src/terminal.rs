@@ -113,3 +113,119 @@ pub mod plat {
         }
     }
 }
+
+pub fn cursor_on() {
+    eprint!("\x1b[?25h");
+}
+pub fn mouse_on() {
+    eprint!("\x1b[?1000h");
+}
+pub fn altscreen_on() {
+    eprint!("\x1b[?1049h");
+}
+
+pub fn cursor_off() {
+    eprint!("\x1b[?25l");
+}
+pub fn mouse_off() {
+    eprint!("\x1b[?1000l");
+}
+pub fn altscreen_off() {
+    eprint!("\x1b[?1049l");
+}
+
+fn keytrans1(slice: &[u8], r: &mut Vec<u8>) -> Option<()> {
+    match slice {
+        b"NUL" => r.push(0),
+        b"BS" => r.push(0x7f),
+        b"TAB" => r.push(b'\t'),
+        b"NL" => r.push(b'\n'),
+        b"CR" | b"RETURN" | b"ENTER" => r.push(b'\r'),
+        b"ESC" | b"ESCAPE" => r.push(0x1b),
+        b"SPACE" => r.push(b' '),
+        b"LT" => r.push(b'<'),
+        b"GT" => r.push(b'>'),
+        b"BSLASH" => r.push(b'\\'),
+        b"BAR" => r.push(b'|'),
+        b"CSI" => r.extend(b"\x1b["),
+
+        b"UP" => r.extend(b"\x1b[A"),
+        b"DOWN" => r.extend(b"\x1b[B"),
+        b"RIGHT" => r.extend(b"\x1b[C"),
+        b"LEFT" => r.extend(b"\x1b[D"),
+
+        b"HOME" => r.extend(b"\x1b[H"),
+        b"END" => r.extend(b"\x1b[F"),
+        b"INS" | b"INSERT" => r.extend(b"\x1b[2~"),
+        b"DEL" | b"DELETE" => r.extend(b"\x1b[3~"),
+        b"PAGEUP" => r.extend(b"\x1b[5~"),
+        b"PAGEDOWN" => r.extend(b"\x1b[6~"),
+
+        [b'C', b'-', k @ b'@'..=b'_'] => r.push(*k ^ 0b1000000),
+        [b'M' | b'A', b'-', b'M' | b'A', b'-', ..] => return None,
+        [b'M' | b'A', b'-', rest @ ..] => {
+            r.push(0x1b);
+            keytrans1(rest, r)?;
+        }
+
+        b"LEFTMOUSE" => r.extend([0x1b, b'[', b'M', 32, b' ', b' ']),
+        b"RIGHTMOUSE" => r.extend([0x1b, b'[', b'M', 34, b' ', b' ']),
+        b"SCROLLWHEELUP" | b"FORWARDWHEEL" => r.extend([0x1b, b'[', b'M', 96, b' ', b' ']),
+        b"SCROLLWHEELDOWN" | b"BACKWARDWHEEL" => r.extend([0x1b, b'[', b'M', 97, b' ', b' ']),
+        b"UPMOUSE" => r.extend([0x1b, b'[', b'M', 35, b' ', b' ']),
+
+        _ => return None,
+    }
+    return Some(());
+}
+
+pub fn keytrans(text: &str) -> Option<Vec<u8>> {
+    let mut r = vec![];
+
+    let mut iter = text.char_indices();
+    let mut at = 0;
+    loop {
+        match iter.find(|(_, chr)| '<' == *chr) {
+            Some((start, _)) => {
+                let (end, _) = iter.find(|(_, chr)| '>' == *chr)?;
+                r.extend(text[at..start].as_bytes());
+                at = end + 1;
+                keytrans1(
+                    &text[start + 1..end].as_bytes().to_ascii_uppercase()[..],
+                    &mut r,
+                )?;
+            }
+            None => {
+                r.extend(text[at..text.len()].as_bytes());
+                break;
+            }
+        }
+    }
+
+    Some(r)
+}
+
+#[cfg(test)]
+macro_rules! assert_trans {
+    ($text:literal, None) => {
+        let trans = keytrans($text);
+        assert_eq!(trans, None, $text);
+    };
+
+    ($text:literal, $trans:expr) => {
+        let trans = keytrans($text).expect($text);
+        assert_eq!(trans, $trans, $text);
+    };
+}
+
+#[cfg(test)]
+#[test]
+fn test_keytrans() {
+    assert_trans!("xlty", b"xlty");
+    assert_trans!("x<lty", None);
+    assert_trans!("x<lt>y", b"x<y");
+    assert_trans!("x<LT>y", b"x<y");
+    assert_trans!("<C-x><C-e>", [0x18, 0x05]);
+    assert_trans!("<C-x><M-C-e>", [0x18, 0x1b, 0x05]);
+    assert_trans!("<C-x><M-A-C-e>", None);
+}

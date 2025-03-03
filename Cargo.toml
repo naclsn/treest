@@ -12,6 +12,7 @@ winapi = "0.3.9"
 [dependencies]
 anyhow = "1.0.89"
 lscolors = { version = "0.19.0", default-features = false, features = ["ansi_term"] }
+rhai = "1.21.0"
 serde_json = "1.0.128"
 serde_yml = "0.0.12"
 sqlite = "0.36.1"
