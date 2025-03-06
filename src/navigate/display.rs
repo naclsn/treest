@@ -1,7 +1,8 @@
 use std::fmt::{Display, Formatter, Result as FmtResult};
 use std::ops::Range;
 
-use crate::tree::{NodeRef, Provider, ProviderExt};
+use crate::tree::{Node, NodePath};
+use crate::providers::Provider;
 
 use super::Navigate;
 
@@ -25,26 +26,25 @@ const PRETTY: Appearance = Appearance {
     indent_last: "    ",
 };
 
-impl<P: Provider + ProviderExt> Display for Navigate<P>
-where
-    <P as Provider>::Fragment: Display,
-{
+impl Display for Navigate {
     fn fmt(&self, f: &mut Formatter) -> FmtResult {
         write!(f, "\x1b[H\x1b[J")?;
+
+        let cursor = self.resolve_cursor();
 
         let mut view = self.view.borrow_mut();
 
         let visible = view.visible();
-        view.line_mapping.resize(visible.len(), self.tree.root());
+        view.line_mapping.resize(visible.len(), 0);
 
         let mut current = 0;
         self.fmt_at(
             f,
-            self.tree.root(),
+            &mut vec![&self.tree], cursor,
             "".into(),
             &mut current,
             &visible,
-            &mut view.line_mapping,
+            //&mut view.line_mapping,
         )?;
         view.total.end = current;
 
@@ -52,9 +52,9 @@ where
             write!(f, "{}", "\n".repeat(visible.end - current))?;
         }
 
-        self.tree
-            .provider()
-            .write_nav_path(f, &self.tree.path_at(self.cursor))?;
+        //self.
+        //    provider
+        //    .write_nav_path(f, &self.tree.path_at(self.cursor))?;
         write!(f, "\r\n")?;
 
         if let Some(message) = &self.message {
@@ -74,31 +74,38 @@ where
     }
 }
 
-impl<P: Provider> Navigate<P>
-where
-    <P as Provider>::Fragment: Display,
-{
+impl Navigate {
     fn fmt_at(
         &self,
         f: &mut Formatter,
-        at: NodeRef,
+
+        at: &mut Vec<&Node>, // NodePathBuf (?maybe)
+        cursor: &Node,
+
         indent: String,
         current: &mut usize,
         visible: &Range<usize>,
-        which: &mut [NodeRef],
+        //which: &mut [NodeRef],
     ) -> FmtResult {
-        let node = self.tree.at(at);
-        let frag = &node.fragment;
+        let node = at.last().unwrap();
+        //let frag = &node.fragment;
 
         if visible.contains(current) {
             if node.marked() {
                 write!(f, " \x1b[4m")?;
             }
-            if self.cursor == at {
+            if std::ptr::eq(cursor, *node) {
                 write!(f, "\x1b[7m")?;
             }
+            // XXX: highly incorrect ofc, path needs to be accumulated as we go deep
+            //let frag = self.provider.display(TreePath { head: &[], tail: node.key });
+            //let frag = self.provider.display(at.as_path());
+            let frag = self.provider.display(NodePath {
+                head: &at[..at.len()-1],
+                tail: at.last().unwrap(),
+            });
             write!(f, "{frag}\x1b[m")?;
-            which[*current - visible.start] = at;
+            //which[*current - visible.start] = at;
         }
 
         if node.folded() {
@@ -108,7 +115,7 @@ where
             *current += 1;
             return Ok(());
         }
-        let children = node.children().unwrap();
+        let children: &Vec<Node> = node.children().unwrap();
         if 0 == children.len() {
             if visible.contains(current) {
                 write!(f, "\r\n")?;
@@ -118,7 +125,10 @@ where
         }
 
         if 1 == children.len() {
-            self.fmt_at(f, children[0], indent, current, visible, which)
+            at.push(&children[0]);
+            let r = self.fmt_at(f, at, cursor, indent, current, visible, /*which*/);
+            at.pop();
+            r
         } else {
             if visible.contains(current) {
                 write!(f, "\r\n")?;
@@ -133,27 +143,34 @@ where
                 if visible.contains(current) {
                     write!(f, "{indent}{}", appearance.branch)?;
                 }
+                at.push(                    it,
+                );
                 self.fmt_at(
                     f,
-                    *it,
+                    at, cursor,
                     format!("{indent}{}", appearance.indent),
                     current,
                     visible,
-                    which,
+                    //which,
                 )?;
+                at.pop();
             }
 
             if visible.contains(current) {
                 write!(f, "{indent}{}", appearance.branch_last)?;
             }
-            self.fmt_at(
+            at.push(                iter.next().unwrap(),
+            );
+            let r = self.fmt_at(
                 f,
-                *iter.next().unwrap(),
+                at, cursor,
                 format!("{indent}{}", appearance.indent_last),
                 current,
                 visible,
-                which,
-            )
+                //which,
+            );
+            at.pop();
+            r
         }
     }
 }

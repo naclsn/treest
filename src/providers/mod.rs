@@ -1,3 +1,36 @@
+use std::cmp::Ordering;
+
+pub mod fs;
+
+use crate::tree::NodePath;
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Fragment(pub usize);
+
+/// A type that is able to provide a tree structure.
+pub trait Provider {
+    fn provide(&mut self, path: NodePath) -> Vec<Fragment>;
+
+    fn order(&self, left: NodePath, right: NodePath) -> Ordering;
+    fn keep(&self, path: NodePath) -> bool;
+
+    fn display(&self, path: NodePath) -> String;
+    fn breadcrumb(&self, path: NodePath) -> String {
+        let mut v: Vec<String> = (0..path.head.len())
+            .map(|k| {
+                self.display(NodePath {
+                    head: &path.head[..k],
+                    tail: path.head[k],
+                })
+            })
+            .collect();
+        v.push(self.display(path));
+        v.join("/")
+    }
+}
+
+
+/*
 use anyhow::Result;
 use thiserror::Error;
 
@@ -16,94 +49,6 @@ macro_rules! providers {
 
         pub const NAMES: &'static [&'static str] = &[$(stringify!($nm),)+];
 
-        pub enum DynProvider {
-            $($ty($nm::$ty),)+
-        }
-
-        #[derive(PartialEq)]
-        pub enum DynFragment {
-            $($ty(<$nm::$ty as $crate::tree::Provider>::Fragment),)+
-        }
-
-        impl std::fmt::Display for DynFragment {
-            fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-                match self {
-                    $(DynFragment::$ty(it) => it.fmt(f),)+
-                }
-            }
-        }
-
-        impl DynFragment {
-            $(fn $nm(&self) -> &<$nm::$ty as $crate::tree::Provider>::Fragment {
-                match self {
-                    DynFragment::$ty(it) => it,
-                    _ => unreachable!(),
-                }
-            })+
-        }
-
-        impl $crate::tree::Provider for DynProvider {
-            type Fragment = DynFragment;
-
-            fn provide_root(&self) -> Self::Fragment {
-                match self {
-                    $(DynProvider::$ty(it) => DynFragment::$ty(it.provide_root()),)+
-                }
-            }
-
-            fn provide(&mut self, path: &[&Self::Fragment]) -> Vec<Self::Fragment> {
-                match self {
-                    $(DynProvider::$ty(it) => it
-                        .provide(&path.iter().copied().map(DynFragment::$nm).collect::<Vec<_>>())
-                        .into_iter()
-                        .map(DynFragment::$ty)
-                        .collect(),)+
-                }
-            }
-        }
-
-        impl $crate::tree::ProviderExt for DynProvider {
-            fn write_nav_path(&self, f: &mut impl std::fmt::Write, path: &[&Self::Fragment]) -> std::fmt::Result {
-                match self {
-                    $(DynProvider::$ty(it) => it.write_nav_path(f, &path
-                        .iter()
-                        .copied()
-                        .map(DynFragment::$nm)
-                        .collect::<Vec<_>>()),)+
-                }
-            }
-
-            fn write_arg_path(&self, f: &mut impl std::fmt::Write, path: &[&Self::Fragment]) -> std::fmt::Result {
-                match self {
-                    $(DynProvider::$ty(it) => it.write_arg_path(f, &path
-                        .iter()
-                        .copied()
-                        .map(DynFragment::$nm)
-                        .collect::<Vec<_>>()),)+
-                }
-            }
-
-            fn command(&mut self, cmd: &[String]) -> Result<String> {
-                match self {
-                    $(DynProvider::$ty(it) => it.command(cmd),)+
-                }
-            }
-        }
-
-        impl $crate::fisovec::FilterSorter<DynFragment> for DynProvider {
-            fn compare(&self, a: &DynFragment, b: &DynFragment) -> Option<std::cmp::Ordering> {
-                match self {
-                    $(DynProvider::$ty(it) => it.compare(a.$nm(), b.$nm()),)+
-                }
-            }
-
-            fn keep(&self, a: &DynFragment) -> bool {
-                match self {
-                    $(DynProvider::$ty(it) => it.keep(a.$nm()),)+
-                }
-            }
-        }
-
         pub fn guess(arg: &str) -> Option<&'static str> {
             $(if $ft(arg) {
                 return Some(stringify!($nm));
@@ -111,14 +56,14 @@ macro_rules! providers {
             None
         }
 
-        pub fn select(arg: &str, name: Option<&str>) -> Result<DynProvider> {
+        pub fn select(arg: &str, name: Option<&str>) -> Result<dyn Provider> {
             let name = name.or_else(|| guess(arg)).ok_or(DynProviderError::ProviderNeeded)?;
             match name {
                 $(stringify!($nm) => Ok(DynProvider::$ty($nm::$ty::new(arg)?)),)+
                 _ => Err(DynProviderError::NotProvider(name.into()).into()),
             }
         }
-    };
+    }
 }
 
 providers! {
@@ -130,3 +75,4 @@ providers! {
     xml: Xml       if |path: &str| [".xml", ".htm", ".html"].iter().any(|&ext| path.ends_with(ext)),
     yaml: Yaml     if |path: &str| [".yaml", ".yml"].iter().any(|&ext| path.ends_with(ext)),
 }
+*/

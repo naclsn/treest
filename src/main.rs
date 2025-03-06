@@ -4,11 +4,9 @@ use std::io::{self, Read};
 use std::panic;
 use std::process;
 
-mod fisovec;
 mod navigate;
 mod prompt;
 mod providers;
-mod reqres;
 mod stabvec;
 mod terminal;
 mod tree;
@@ -40,21 +38,147 @@ fn rst_term() {
     }
 }
 
-fn temporary_completion(args: Vec<&str>, in_arg: usize) -> Vec<String> {
-    if 0 == in_arg {
-        &["set", "quit"][..]
-    } else {
-        match args[0] {
-            "set" => &["mouse", "altscreen", "pretty", "onlychild"][..],
-            _ => &[][..],
-        }
+fn main() {
+    let mut input = match File::open("/dev/tty") {
+        Ok(f) => Box::new(f) as Box<dyn Read>,
+        Err(_) => Box::new(io::stdin()),
     }
-    .iter()
-    .filter_map(|word| word.strip_prefix(args[in_arg]).map(|_| word.to_string()))
-    .collect()
+    .bytes()
+    .map_while(Result::ok);
+
+    let mut nav = match providers::fs::Fs::new(".") {
+        Ok(prov) => Navigate::new(prov),
+        Err(err) => {
+            eprintln!("Error: {err}.");
+            if let Some(err) = err.source() {
+                eprintln!("Because {err}.");
+                if err.source().is_some() {
+                    eprintln!("Because ...");
+                }
+            }
+            process::exit(1);
+        }
+    };
+
+    let phook = panic::take_hook();
+    panic::set_hook(Box::new(move |info| {
+        rst_term();
+        phook(info)
+    }));
+
+    set_term();
+
+    eprint!("{nav}");
+    loop {
+        let Some(byte) = input.next() else { break };
+        nav.feed(byte);
+
+        let buf = nav.to_string();
+        eprint!("{buf}");
+    }
+
+    rst_term();
+}
+
+/*
+#[derive(Clone)]
+struct Api();
+
+impl Api {
+    fn new() -> Self {
+        Self()
+    }
+    fn prompt(&mut self, ps: &str) -> Option<Vec<String>> {
+        prompt::prompt(
+            ps,
+            io::stdin().bytes().map_while(Result::ok),
+            io::stderr(),
+            |_, _| vec![],
+        )
+    }
 }
 
 fn main() {
+    use tree::Provider;
+    struct Bidoof(Box<dyn Provider>);
+}
+
+fn main4() -> Result<(), Box<dyn std::error::Error>> {
+    use rhai::{Engine, Scope};
+
+    let mut engine = Engine::new();
+    engine
+        .register_type::<Api>()
+        //.register_fn("__new_api", Api::new)
+        .register_fn("prompt", Api::prompt);
+    let mut scope = Scope::new();
+    let mut api = Api::new();
+    scope.push_constant("api", &api);
+
+    set_term();
+    engine.eval_with_scope(
+        &mut scope,
+        r#"
+        print("hi");
+        //let api = __new_api();
+        print(api.prompt("butts "));
+        api = "crap";
+        ()
+    "#,
+    )?;
+
+    println!("api now: {:?}", scope.get("api"));
+
+    //for key in io::stdin().bytes().map_while(Result::ok) {
+    //    match key {
+    //        3 | b'q' => break,
+    //        b':' => (),
+    //        _ => (),
+    //    }
+    //}
+    rst_term();
+
+    Ok(())
+}
+
+fn main3() {
+    set_term();
+    while let Some(parts) = prompt::prompt(
+        "hello ",
+        io::stdin().bytes().map_while(Result::ok),
+        io::stderr(),
+        |_, _| vec![],
+    ) {
+        println!("{parts:?}");
+        if parts[0].is_empty() {
+            break;
+        }
+    }
+    rst_term();
+}
+
+fn main2() -> Result<(), Box<dyn std::error::Error>> {
+    use rhai::Engine;
+
+    // Define external function
+    fn compute_something(x: i64) -> bool {
+        (x % 40) == 0
+    }
+
+    // Create scripting engine
+    let mut engine = Engine::new();
+
+    engine.register_fn("compute", compute_something);
+
+    // Evaluate the script, expecting a 'bool' result
+    let result: bool = engine.eval_file("my_script.rhai".into())?;
+
+    assert_eq!(result, true);
+
+    Ok(())
+}
+
+fn main1() {
     let mut args = env::args();
     let prog = args.next().unwrap();
     let arg = match args.next().unwrap_or(".".into()) {
@@ -111,44 +235,6 @@ fn main() {
     set_term();
 
     eprint!("{nav}");
-    /*while (match &mut nav.state {
-        State::Continue(r) => input.next().map(|key| r.process(|()| key)).is_some(),
-        State::Prompt(r) => {
-            eprint!("\x1b[?25h\x1b[?1000l");
-            r.process(|r| {
-                let l = prompt::prompt(&r, input.by_ref(), io::stderr(), temporary_completion);
-                (r, l)
-            });
-            eprint!("\x1b[?25l\x1b[?1000h");
-            true
-        }
-        State::ExecStatus(r) => {
-            r.process(|(restore, mut r)| {
-                if restore {
-                    rst_term();
-                }
-                let r = r.status();
-                if restore {
-                    set_term();
-                }
-                r
-            });
-            true
-        }
-        State::ExecOutput(r) => {
-            r.process(|(restore, mut r)| {
-                if restore {
-                    rst_term();
-                }
-                let r = r.output();
-                if restore {
-                    set_term();
-                }
-                r
-            });
-            true
-        }
-    }) && nav.is_continue()*/
     loop {
         let Some(byte) = input.next() else { break };
         nav.feed(byte);
@@ -159,3 +245,4 @@ fn main() {
 
     rst_term();
 }
+*/

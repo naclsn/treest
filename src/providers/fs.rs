@@ -8,11 +8,12 @@ use anyhow::Result;
 use thiserror::Error;
 use lscolors::{LsColors, Style};
 
-use crate::fisovec::FilterSorter;
-use crate::tree::{CmdError, Provider, ProviderExt};
+use crate::tree::NodePath;
+use crate::providers::{Provider, Fragment};
 
 pub struct Fs {
-    root: PathBuf,
+    //nodes: Vec<Node>,
+    fs_nodes: Vec<FsNode>,
 }
 
 #[derive(Error, Debug)]
@@ -196,126 +197,45 @@ impl Display for FsNode {
 }
 
 impl Provider for Fs {
-    type Fragment = FsNode;
+    //fn tree(&self) -> &Tree { &self.nodes }
+    //fn tree_mut(&mut self) -> &mut Vec<Node> { &mut self.nodes }
 
-    fn provide_root(&self) -> Self::Fragment {
-        FsNode {
-            kind: Directory,
-            name: self.root.to_string_lossy().into(),
-            meta: fs::metadata(&self.root).ok().map(Box::new),
-        }
-    }
+    fn provide(&mut self, path: NodePath) -> Vec<Fragment> {
+        let mut pb = path.head.iter().map(|n| &self.fs_nodes[n.fragment.0].name).collect::<PathBuf>();
+        pb.push(&self.fs_nodes[path.tail.fragment.0].name);
 
-    fn provide(&mut self, path: &[&Self::Fragment]) -> Vec<Self::Fragment> {
-        let Ok(dir) = fs::read_dir(path.iter().map(|n| &n.name).collect::<PathBuf>()) else {
-            return Vec::new();
-        };
+        let Ok(dir) = fs::read_dir(pb) else { return Vec::new(); };
+
         dir.filter_map(|d| {
             let entry = d.ok()?;
             let meta = entry.metadata().ok();
             let name = entry.file_name().into_string().ok()?;
-            Some(FsNode {
+
+            self.fs_nodes.push(FsNode {
                 kind: (entry.path(), &meta).into(),
                 name,
                 meta: meta.map(Box::new),
-            })
+            });
+
+            Some(Fragment(self.fs_nodes.len() - 1))
         })
         .collect()
     }
-}
 
-impl ProviderExt for Fs {
-    fn write_nav_path(&self, f: &mut impl Write, path: &[&Self::Fragment]) -> FmtResult {
-        let node = path.last().unwrap();
-        write_meta(f, node)?;
-
-        match &node.meta {
-            Some(meta) => {
-                write!(f, " {:8} ", meta.len())?;
-                match meta
-                    .modified()
-                    .ok()
-                    .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-                {
-                    Some(duration) => {
-                        let s = duration.as_secs();
-                        write!(
-                            f,
-                            "{:02}:{:02}:{:02} ",
-                            // TODO(+2): get tz properly, likely stealing from
-                            // https://github.com/chronotope/chrono/tree/main/src/offset/local/tz_info
-                            (s / 60 / 60) % 24 + 2,
-                            (s / 60) % 60,
-                            s % 60,
-                        )
-                    }
-                    None => write!(f, "??:??:?? "),
-                }
-            }
-            None => write!(f, "        ? ??:??:?? "),
-        }?;
-
-        path.iter().try_for_each(|it| write!(f, "{it}"))
+    fn order(&self, left: NodePath, right: NodePath) -> Ordering {
+        let left = &self.fs_nodes[left.tail.fragment.0];
+        let right = &self.fs_nodes[right.tail.fragment.0];
+        Ord::cmp(&left.name, &right.name)
     }
 
-    fn write_arg_path(&self, f: &mut impl Write, path: &[&Self::Fragment]) -> FmtResult {
-        path.iter().try_for_each(|it| {
-            write!(f, "{}", it.name)?;
-            match it.kind {
-                Directory => write!(f, "/"),
-                _ => Ok(()),
-            }
-        })
+    fn keep(&self, path: NodePath) -> bool {
+        let node = &self.fs_nodes[path.tail.fragment.0];
+        !node.name.starts_with('.')
     }
 
-    fn command(&mut self, cmd: &[String]) -> Result<String> {
-        match cmd[0].as_str() {
-            "ed" => todo!(),
-
-            "mv" => {
-                if 3 == cmd.len() {
-                    fs::rename(&cmd[1], &cmd[2])?;
-                    Ok(format!("moved {} to {}", cmd[1], cmd[2]))
-                } else {
-                    Err(CmdError::WrongArgCount {
-                        name: "mv".to_string(),
-                        given: cmd.len() - 1,
-                        expected: 3 - 1,
-                    }
-                    .into())
-                }
-            }
-
-            "rm" => todo!(),
-
-            "mk" => todo!(),
-
-            "cp" => {
-                if 3 == cmd.len() {
-                    fs::copy(&cmd[1], &cmd[2])?;
-                    Ok(format!("copied {} to {}", cmd[1], cmd[2]))
-                } else {
-                    Err(CmdError::WrongArgCount {
-                        name: "cp".to_string(),
-                        given: cmd.len() - 1,
-                        expected: 3 - 1,
-                    }
-                    .into())
-                }
-            }
-
-            n => Err(CmdError::NotACommand(n.to_string()).into()),
-        }
-    }
-}
-
-impl FilterSorter<FsNode> for Fs {
-    fn compare(&self, a: &FsNode, b: &FsNode) -> Option<Ordering> {
-        Some(Ord::cmp(&a.name, &b.name))
-    }
-
-    fn keep(&self, a: &FsNode) -> bool {
-        !a.name.starts_with('.')
+    fn display(&self, path: NodePath) -> String {
+        let node = &self.fs_nodes[path.tail.fragment.0];
+        node.to_string()
     }
 }
 
@@ -329,7 +249,12 @@ impl Fs {
             Err(FsProviderError::NotADirectory.into())
         } else {
             Ok(Self {
-                root: root.components().collect(),
+                //nodes: vec![Node::default()],
+                fs_nodes: vec![FsNode {
+                    kind: Directory,
+                    name: root.to_string_lossy().into(),
+                    meta: root.metadata().ok().map(Box::new), //meta: fs::metadata(root).ok().map(Box::new),
+                }],
             })
         }
     }

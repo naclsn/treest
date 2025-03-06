@@ -4,40 +4,35 @@ use std::io::Result as IoResult;
 use std::ops::Range;
 use std::process::{Command as ProcCommand, ExitStatus as ProcStatus, Output as ProcOutput};
 
+use rhai::Engine;
+
+mod api;
 mod display;
 mod input;
 
-use crate::reqres::ReqRes;
 use crate::terminal;
-use crate::tree::{NodeRef, Provider, ProviderExt, Tree};
+use crate::tree::Node;
+use crate::providers::Provider;
 
-pub struct Navigate<P: Provider> {
-    tree: Tree<P>,
-    cursor: NodeRef,
+pub struct Navigate {
+    tree: Node,
+    provider: Box<dyn Provider>,
+    cursor: Vec<usize>,
 
     input: input::Input,
 
     message: Option<String>,
     view: RefCell<View>, // is mutated during rendering to stay up to date
-}
 
-pub enum State {
-    Continue(ReqRes<(), u8>),
-    Prompt(ReqRes<String, (String, Option<Vec<String>>)>),
-    ExecStatus(ReqRes<(/*restore*/ bool, ProcCommand), IoResult<ProcStatus>>),
-    ExecOutput(ReqRes<(/*restore*/ bool, ProcCommand), IoResult<ProcOutput>>),
-}
-
-impl Default for State {
-    fn default() -> Self {
-        Self::Continue(ReqRes::new(()))
-    }
+    // XXX: is that just, like, RefCell or omsethingelse?
+    engine: Option<Engine>, // `.take`n during evaluation
+    // also think it could be just Engine directly
 }
 
 struct View {
     scroll: usize,
     total: Range<usize>,
-    line_mapping: Vec<NodeRef>,
+    line_mapping: Vec<usize>,
 }
 enum ViewJumpBy {
     Line,
@@ -118,14 +113,14 @@ impl Direction {
     }
 }
 
-impl<P: Provider> Navigate<P> {
-    pub fn new(provider: P) -> Self {
-        let mut tree = Tree::new(provider);
-        let cursor = tree.root();
-        tree.unfold_at(cursor);
+impl Navigate {
+    pub fn new(mut provider: impl Provider + 'static) -> Self {
+        let mut tree = Node::new();
+        tree.unfold(&mut provider, &[]);
         Self {
             tree,
-            cursor,
+            provider: Box::new(provider),
+            cursor: Vec::new(),
             input: {
                 let mut r = input::Input::default();
                 r.add_mapping(b"ab".to_vec(), ());
@@ -138,7 +133,13 @@ impl<P: Provider> Navigate<P> {
                 total: 0..0,
                 line_mapping: Vec::new(),
             }),
+            engine: Some(api::init_engine()),
         }
+    }
+
+    pub fn resolve_cursor(&self) -> &Node {
+        //self.tree.resolve();
+        self.cursor.iter().fold(&self.tree, |acc, cur| &acc.children().unwrap()[*cur])
     }
 
     pub fn feed(&mut self, byte: u8) {
@@ -146,8 +147,11 @@ impl<P: Provider> Navigate<P> {
         if 3 == byte {
             panic!();
         }
+
+        api::run_callback(self, "hello");
     }
 
+    /*
     pub fn root(&mut self) {
         self.cursor = self.tree.root();
     }
@@ -211,11 +215,7 @@ impl<P: Provider> Navigate<P> {
     }
 
     // "%"
-    pub fn curr_path_string(&self) -> String
-    where
-        P::Fragment: Display,
-        P: ProviderExt,
-    {
+    pub fn curr_path_string(&self) -> String {
         let mut r = String::new();
         self.tree
             .provider()
@@ -223,4 +223,5 @@ impl<P: Provider> Navigate<P> {
             .unwrap();
         r
     }
+    */
 }

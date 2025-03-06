@@ -1,123 +1,82 @@
-use std::fmt::{Display, Result as FmtResult, Write};
+use std::cmp::Ordering;
+use std::borrow::Borrow;
+//use std::fmt::{Display, Result as FmtResult, Write};
 
-use anyhow::Result;
-use thiserror::Error;
+//use anyhow::Result;
+//use thiserror::Error;
 
-use crate::fisovec::{FilterSorter, FisoVec};
-use crate::stabvec::StabVec;
-
-pub trait Fragment: PartialEq {}
-impl<T: PartialEq> Fragment for T {}
-
-/// A type that is able to provide a tree structure.
-pub trait Provider: FilterSorter<Self::Fragment> {
-    /// The fragment type essentially correspond to a path component. A sequence of fragments (eg.
-    /// `Vec<&Fragment>`) locates a node in the tree. Fragment must implement `PartialEq`, and
-    /// usually also implement `Display` (see also `ProviderExt`).
-    type Fragment: Fragment;
-
-    /// Provide the root of the tree. This is usualy an enum unit type.
-    /// Note that mutations are disable here.
-    fn provide_root(&self) -> Self::Fragment;
-
-    /// Provide/generate the children nodes for the node at the given path.
-    /// Note that the path is never empty (at least the root).
-    fn provide(&mut self, path: &[&Self::Fragment]) -> Vec<Self::Fragment>;
-}
-
-/// Extra things, every functions are defaulted.
-pub trait ProviderExt: Provider
-where
-    Self::Fragment: Display,
-{
-    /// For the navigation view, this is the path shown at the bottom.
-    fn write_nav_path(&self, f: &mut impl Write, path: &[&Self::Fragment]) -> FmtResult {
-        path.iter().try_for_each(|it| write!(f, "{it}"))
-    }
-
-    /// This is the path as expanded when a '%' is found in command args.
-    fn write_arg_path(&self, f: &mut impl Write, path: &[&Self::Fragment]) -> FmtResult {
-        path.iter().try_for_each(|it| write!(f, "{it}"))
-    }
-
-    /// lskdjf
-    fn command(&mut self, cmd: &[String]) -> Result<String> {
-        Err(CmdError::NotACommand(cmd[0].clone()).into())
-    }
-}
-
-#[derive(Error, Debug)]
-pub enum CmdError {
-    #[error("not a command: {0}")]
-    NotACommand(String),
-    #[error("incorrect number arguments for {name}: {given} given, expected {expected}")]
-    WrongArgCount {
-        name: String,
-        given: usize,
-        expected: usize,
-    },
-}
-
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct NodeRef(usize);
+//use crate::stabvec::StabVec;
+use crate::providers::{Fragment, Provider};
 
 #[derive(Debug, Clone)]
-pub struct Node<F: Fragment> {
-    pub fragment: F,
-    parent: NodeRef,
-    children: Option<FisoVec<NodeRef>>,
+pub struct Node {
+    //parent: Option<&Node>,
+    pub fragment: Fragment,
+    children: Option<Vec<Node>>,
     folded: bool,
     marked: bool,
 }
 
-#[derive(Debug)]
-pub struct Tree<P: Provider> {
-    provider: P,
-    nodes: StabVec<Node<P::Fragment>>,
+pub struct NodePath<'a> {
+    pub head: &'a [&'a Node],
+    pub tail: &'a Node,
 }
 
-impl<F: Fragment> Node<F> {
-    fn new(fragment: F, parent: NodeRef) -> Self {
-        Self {
-            fragment,
-            parent,
-            children: None,
-            folded: true,
-            marked: false,
-        }
-    }
+// XXX: make iterators
+impl Node {
+    //pub fn parent(&self) -> &Node {
+    //    self.parent
+    //}
 
-    pub fn parent(&self) -> NodeRef {
-        self.parent
-    }
-
-    pub fn children(&self) -> Option<&FisoVec<NodeRef>> {
+    pub fn children(&self) -> Option<&Vec<Node>> {
         self.children.as_ref()
     }
 
-    pub fn folded(&self) -> bool {
-        self.folded
-    }
+    pub fn folded(&self) -> bool { self.folded }
 
-    pub fn marked(&self) -> bool {
-        self.marked
-    }
+    pub fn marked(&self) -> bool { self.marked }
+
+    //pub fn iter_parents(&self) -> Vec<&Node> {
+    //    let Some(parent) = self.parent else { return Vec::new(); };
+    //    let mut r = parent.iter_parents();
+    //    r.push(self);
+    //    r
+    //}
 }
 
-#[allow(dead_code)]
-impl<P: Provider> Tree<P> {
-    pub fn new(provider: P) -> Self {
-        let fragment = provider.provide_root();
+
+//#[allow(dead_code)]
+impl Node {
+    pub fn new() -> Self {
         Self {
-            provider,
-            nodes: FromIterator::from_iter(vec![Node::new(fragment, NodeRef(0))]),
+                //parent: None,
+                fragment: Fragment(0),
+                children: None,
+                folded: true,
+                marked: false,
         }
     }
 
-    pub(crate) fn provider(&self) -> &P {
-        &self.provider
+    pub fn unfold(&mut self, provider: &mut impl Provider, parents: &[&Node]) {
+        self.children = Some(provider.provide(NodePath { head: parents, tail: self }).into_iter().map(|fragment| Node {
+            fragment,
+            children: None,
+            folded: true,
+            marked: false,
+        }).collect());
+        self.folded = false;
     }
 
+    /*
+    pub fn root(&self) -> TreePathBuf {
+        TreePathBuf {
+            head: Vec::new(),
+            tail: Fragment(0),
+        }
+    }
+    */
+
+    /*
     pub fn root(&self) -> NodeRef {
         NodeRef(0)
     }
@@ -243,13 +202,5 @@ impl<P: Provider> Tree<P> {
         let node = self.at_mut(at);
         node.marked = !node.marked;
     }
-}
-
-impl<P: ProviderExt> Tree<P>
-where
-    <P as Provider>::Fragment: Display,
-{
-    pub fn provider_command(&mut self, cmd: &[String]) -> Result<String> {
-        self.provider.command(cmd)
-    }
+    */
 }
