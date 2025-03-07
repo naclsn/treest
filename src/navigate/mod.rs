@@ -3,9 +3,9 @@ use std::ops::Range;
 
 use rhai::Engine;
 
-mod scripting;
 mod display;
 mod input;
+mod scripting;
 
 use crate::providers::Provider;
 use crate::terminal;
@@ -136,18 +136,4 @@ impl Navigate {
             .iter()
             .fold(&self.tree, |acc, cur| &acc.children().unwrap()[*cur])
     }
-
-    pub fn tick(&mut self) -> Option<scripting::ScriptFnRef> {
-        let buf = self.to_string();
-        eprint!("{buf}");
-
-        self.input.tick()
-    }
-
-    //pub fn feed(&mut self, byte: u8) {
-    //    self.input.feed(byte);
-    //    if 3 == byte {
-    //        panic!();
-    //    }
-    //}
 }

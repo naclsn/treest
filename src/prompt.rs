@@ -2,7 +2,7 @@ use std::io::Write;
 use std::mem;
 
 // TODO: should split at point, also in_arg when after last one, should be tested too
-fn split(line: &[char], point: usize) -> (Vec<String>, usize) {
+pub fn split(line: &[char], point: usize) -> (Vec<String>, usize) {
     let mut args = Vec::new();
     let mut curr = String::new();
     let mut in_arg = 0;
@@ -69,11 +69,11 @@ pub fn prompt(
     input: impl IntoIterator<Item = u8>,
     mut output: impl Write,
     complete: impl Fn(Vec<&str>, usize) -> Vec<String>,
-) -> Option<Vec<String>> {
+) -> Option<String> {
     write!(output, "{ps}").ok()?;
 
     let mut at = 0;
-    let mut s = Vec::new();
+    let mut s = Vec::new(); // meh, should rewrite with just String
 
     let mut pend = Vec::new();
     let mut input = input.into_iter();
@@ -173,7 +173,7 @@ pub fn prompt(
                 let hints = complete(args.iter().map(String::as_str).collect(), in_arg);
                 todo!("completion hints: {hints:?}");
             }
-            [0x0a | 0x0d] => return Some(split(&s, 0).0),
+            [0x0a | 0x0d] => return Some(s.into_iter().collect()),
             [0x0b] => {
                 write!(output, "\x1b[{}P", s.len() - at).ok()?;
                 s.truncate(at);

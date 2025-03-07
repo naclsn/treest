@@ -1,6 +1,4 @@
 use std::env;
-use std::fs::File;
-use std::io::{self, Read};
 use std::panic;
 use std::process;
 
@@ -37,54 +35,6 @@ fn rst_term() {
     }
 }
 
-fn main0() {
-    use rhai::{Engine, Scope, Dynamic, FnPtr};
-    #[derive(Clone, Debug)]
-    struct Api(Vec<FnPtr>);
-    impl Api {
-        fn hi(&mut self, www: &str) {
-            println!("hi {www}");
-        }
-
-        fn register(&mut self, cb: FnPtr) {
-            self.0.push(cb.into());
-        }
-    }
-
-    let mut engine = Engine::new();
-    let mut scope = Scope::new();
-    scope.push("api", Api(Vec::new()));
-
-    let src = r#"
-        api.hi("top");
-
-        fn crap() {
-            api.hi("but");
-        }
-
-        api.register(|| api.hi("inn"));
-
-        ()
-    "#;
-
-    let ast = engine
-        .register_type::<Api>()
-        .register_fn("hi", Api::hi)
-        .register_fn("register", Api::register)
-        .compile_with_scope(&mut scope, src)
-        //.eval_with_scope::<()>(&mut scope, src)
-        .unwrap();
-    _ = engine.eval_ast_with_scope::<Dynamic>(&mut scope, &ast).unwrap();
-
-    let api: Api = scope.get("api").unwrap().clone().try_cast_result().unwrap();
-    dbg!(&api);
-
-    let f = &api.0[0];
-    f.call::<()>(&engine, &ast, ()).unwrap();
-    //f.is_anonymous()
-    dbg!(&ast);
-}
-
 fn main() {
     let mut args = env::args();
     let prog = args.next().unwrap();
@@ -112,14 +62,7 @@ fn main() {
         arg => arg,
     };
 
-    let mut input = match File::open("/dev/tty") {
-        Ok(f) => Box::new(f) as Box<dyn Read>,
-        Err(_) => Box::new(io::stdin()),
-    }
-    .bytes()
-    .map_while(Result::ok);
-
-    let mut nav = match providers::select(&arg, args.next().as_deref()) {
+    let nav = match providers::select(&arg, args.next().as_deref()) {
         Ok(prov) => Navigate::new(prov),
         Err(err) => {
             eprintln!("Error: {err}.");
@@ -140,16 +83,6 @@ fn main() {
     }));
 
     set_term();
-
     nav.main_loop();
-    //eprint!("{nav}");
-    //loop {
-    //    let Some(byte) = input.next() else { break };
-    //    nav.feed(byte);
-    //
-    //    let buf = nav.to_string();
-    //    eprint!("{buf}");
-    //}
-
     rst_term();
 }

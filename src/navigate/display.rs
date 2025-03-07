@@ -1,9 +1,9 @@
 use std::fmt::{Display, Formatter, Result as FmtResult};
 use std::ops::Range;
 
+use crate::navigate::Navigate;
+use crate::terminal;
 use crate::tree::{Node, NodePath};
-
-use super::Navigate;
 
 struct Appearance {
     branch: &'static str,
@@ -62,13 +62,7 @@ impl Display for Navigate {
             message.chars().count();
         }
 
-        for k in self.input.get_pending() {
-            if k.is_ascii_graphic() {
-                write!(f, "{}", *k as char)
-            } else {
-                write!(f, "<{k}>")
-            }?;
-        }
+        write!(f, "{}", terminal::keyseqstr(self.input.get_pending()))?;
 
         Ok(())
     }

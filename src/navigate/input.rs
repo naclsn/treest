@@ -1,10 +1,11 @@
 use std::fs::File;
 use std::io::{self, Read};
 
-use super::scripting::ScriptFnRef;
+use crate::navigate::scripting::ScriptFnRef;
 
 pub struct Input {
     input: Box<dyn Iterator<Item = u8>>,
+    recycle: Option<u8>,
     pending: Vec<u8>,
     pending_mouse_info: Option<PendingMouseInfo>,
     mappings: Vec<Mapping>,
@@ -29,6 +30,7 @@ impl Input {
                 .bytes()
                 .map_while(Result::ok),
             ),
+            recycle: None,
             pending: Vec::new(),
             pending_mouse_info: None,
             mappings: Vec::new(),
@@ -36,9 +38,19 @@ impl Input {
         }
     }
 
+    fn clear_pending(&mut self) {
+        self.pending.clear();
+        self.pending_mouse_info = None;
+    }
+
     pub fn tick(&mut self) -> Option<ScriptFnRef> {
-        let byte = self.input.next().expect("niy: eof stopping condition");
+        let byte = self
+            .recycle
+            .take()
+            .or_else(|| self.input.next())
+            .expect("niy: eof stopping condition");
         if 3 == byte {
+            self.clear_pending();
             panic!("<C-C>");
         }
 
@@ -74,45 +86,28 @@ impl Input {
             [] => {
                 // if we get here it means the latest byte made `retain` drop all potential
                 // mapping; so excluding this byte, try to find an exact match
-                let mut recycle = false;
                 if let Some(map) = self
                     .mappings
                     .iter()
                     .find(|map| map.0 == self.pending[..self.pending.len() - 1])
                 {
-                    todo!("&map.1");
-                    recycle = true;
+                    let r = map.1;
+                    self.clear_pending();
+                    self.recycle = Some(byte);
+                    return Some(r);
                 }
 
-                self.pending.clear();
-                self.pending_mouse_info = None;
-
-                if recycle {
-                    // fake-ly recusive: limited to the first branch
-                    todo!("self.feed(byte)");
-                }
                 None
             }
 
             [single] if self.mappings[single].0.len() == self.pending.len() => {
-                let action = self.mappings[single].1;
-
-                self.pending.clear();
-                self.pending_mouse_info = None;
-
-                Some(action)
+                self.clear_pending();
+                Some(self.mappings[single].1)
             }
 
             _ => None,
         }
     }
-
-    //fn perform(&mut self, action: &ScriptFnRef) {
-    //    //todo!("{action:?}");
-    //    // likely that instead of performing the action here, it'll be returned to the navigate's
-    //    // `feed` frame so it can have access to everything
-    //    // well actually maybe not 'cause we could have 2 actions from a single byte fed..
-    //}
 
     pub fn get_pending(&self) -> &[u8] {
         &self.pending

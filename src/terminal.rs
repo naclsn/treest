@@ -205,27 +205,158 @@ pub fn keytrans(text: &str) -> Option<Vec<u8>> {
     Some(r)
 }
 
+macro_rules! extend_match_start {
+    {
+        $subj:ident $re:ident $r:ident
+        $( [$($with:expr),+] => $then:expr ,)+
+    } => {
+        match $subj {
+            $( [$($with,)+ ..] => {
+                if !$re { $r.push('<'); }
+                $r.push_str($then);
+                if !$re { $r.push('>'); }
+                return [$($with),+].len();
+            } )+
+            _ => (),
+        }
+    }
+}
+
+fn keyseqstr1(slice: &[u8], re: bool, r: &mut String) -> usize {
+    if slice.is_empty() {
+        return 0;
+    }
+
+    extend_match_start! { slice re r
+        [0x1b, b'[', b'M', 35, b' ', b' '] => "UpMouse",
+        [0x1b, b'[', b'M', 97, b' ', b' '] => "BackwardWheel",
+        [0x1b, b'[', b'M', 96, b' ', b' '] => "ForwardWheel",
+        [0x1b, b'[', b'M', 34, b' ', b' '] => "RightMouse",
+        [0x1b, b'[', b'M', 32, b' ', b' '] => "LeftMouse",
+
+        [0x1b, b'[', b'6', b'~'] => "PageDown",
+        [0x1b, b'[', b'5', b'~'] => "PageUp",
+        [0x1b, b'[', b'3', b'~'] => "Delete",
+        [0x1b, b'[', b'2', b'~'] => "Insert",
+        [0x1b, b'[', b'F'] => "End",
+        [0x1b, b'[', b'H'] => "Home",
+
+        [0x1b, b'[', b'D'] => "Left",
+        [0x1b, b'[', b'C'] => "Right",
+        [0x1b, b'[', b'B'] => "Down",
+        [0x1b, b'[', b'A'] => "Up",
+
+        [0x1b, b'['] => "CSI",
+        [b'|'] => "Bar",
+        [b'\\'] => "Bslash",
+        [b'>'] => "gt",
+        [b'<'] => "lt",
+        [b' '] => "Space",
+        [b'\r'] => "CR",
+        [b'\n'] => "NL",
+        [b'\t'] => "Tab",
+        [0x7f] => "BS",
+        [0] => "Nul",
+    }
+
+    if 0x1b == slice[0] {
+        if !re {
+            r.push('<');
+        }
+        let mut n = 1;
+        if 1 == slice.len() {
+            r.push_str("Esc");
+        } else {
+            r.push_str("M-");
+            n += keyseqstr1(&slice[1..], true, r)
+        }
+        if !re {
+            r.push('>');
+        }
+        return n;
+    }
+
+    if slice[0].is_ascii_control() {
+        if !re {
+            r.push('<');
+        }
+        r.push_str("C-");
+        r.push((slice[0] ^ 0b1000000) as char);
+        if !re {
+            r.push('>');
+        }
+        return 1;
+    }
+
+    if slice[0].is_ascii_graphic() {
+        r.push(slice[0] as char);
+        return 1;
+    }
+
+    // meh.. this part should be reached quite rarely (if at all? >0x7f through keytrans?)
+    if let Ok(as_str) = std::str::from_utf8(slice) {
+        if let Some((len, chr)) = as_str.char_indices().skip(1).next() {
+            r.push(chr);
+            return len;
+        }
+        return 1;
+    }
+
+    if !re {
+        r.push('<');
+    }
+    let h = slice[0] & 0xf0 >> 4;
+    let l = slice[0] & 0x0f;
+    r.push((if h < 10 { b'0' } else { b'a' } + h) as char);
+    r.push((if l < 10 { b'0' } else { b'a' } + l) as char);
+    if !re {
+        r.push('>');
+    }
+    1
+}
+
+pub fn keyseqstr(seq: &[u8]) -> String {
+    let mut r = String::new();
+
+    let mut k = 0;
+    while k < seq.len() {
+        k += keyseqstr1(&seq[k..], false, &mut r);
+    }
+
+    r
+}
+
 #[cfg(test)]
 macro_rules! assert_trans {
-    ($text:literal, None) => {
+    ($text:literal => None) => {
         let trans = keytrans($text);
         assert_eq!(trans, None, $text);
     };
 
-    ($text:literal, $trans:expr) => {
+    ($text:literal => $trans:expr) => {
         let trans = keytrans($text).expect($text);
-        assert_eq!(trans, $trans, $text);
+        assert_eq!(trans, $trans, stringify!($text));
+    };
+
+    ($text:literal <= $trans:expr) => {
+        let text = keyseqstr($trans);
+        assert_eq!(text, $text, stringify!($trans));
     };
 }
 
 #[cfg(test)]
 #[test]
 fn test_keytrans() {
-    assert_trans!("xlty", b"xlty");
-    assert_trans!("x<lty", None);
-    assert_trans!("x<lt>y", b"x<y");
-    assert_trans!("x<LT>y", b"x<y");
-    assert_trans!("<C-x><C-e>", [0x18, 0x05]);
-    assert_trans!("<C-x><M-C-e>", [0x18, 0x1b, 0x05]);
-    assert_trans!("<C-x><M-A-C-e>", None);
+    assert_trans!("xlty" => b"xlty");
+    assert_trans!("x<lty" => None);
+    assert_trans!("x<lt>y" => b"x<y");
+    assert_trans!("x<LT>y" => b"x<y");
+    assert_trans!("<C-x><C-e>" => &[0x18, 0x05]);
+    assert_trans!("<C-X><M-C-e>" => &[0x18, 0x1b, 0x05]);
+    assert_trans!("<C-x><M-A-C-e>" => None);
+
+    assert_trans!("xlty" <= b"xlty");
+    assert_trans!("x<lt>y" <= b"x<y");
+    assert_trans!("<C-X><C-E>" <= &[0x18, 0x05]);
+    assert_trans!("<C-X><M-C-E>" <= &[0x18, 0x1b, 0x05]);
 }
