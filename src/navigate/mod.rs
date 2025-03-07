@@ -132,6 +132,6 @@ impl Navigate {
     pub fn resolve_cursor(&self) -> &Node {
         self.cursor
             .iter()
-            .fold(&self.tree, |acc, cur| &acc.children().unwrap()[*cur])
+            .fold(&self.tree, |acc, cur| acc.children().unwrap()[*cur])
     }
 }

@@ -11,16 +11,16 @@ pub struct Fragment(pub usize);
 
 /// A type that is able to provide a tree structure.
 pub trait Provider {
-    fn provide(&mut self, path: NodePath) -> Vec<Fragment>;
+    fn provide(&mut self, path: &NodePath) -> Vec<Fragment>;
 
-    fn order(&self, left: NodePath, right: NodePath) -> Ordering;
-    fn keep(&self, path: NodePath) -> bool;
+    fn order(&self, left: &NodePath, right: &NodePath) -> Ordering;
+    fn keep(&self, path: &NodePath) -> bool;
 
-    fn display(&self, path: NodePath) -> String;
-    fn breadcrumb(&self, path: NodePath) -> String {
+    fn display(&self, path: &NodePath) -> String;
+    fn breadcrumb(&self, path: &NodePath) -> String {
         let mut v: Vec<String> = (0..path.head.len())
             .map(|k| {
-                self.display(NodePath {
+                self.display(&NodePath {
                     head: &path.head[..k],
                     tail: path.head[k],
                 })

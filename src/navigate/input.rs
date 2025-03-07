@@ -12,9 +12,10 @@ pub struct Input {
     pending_reachable: Vec<usize>,
 }
 
-struct PendingMouseInfo {
-    col: u8,
-    row: u8,
+#[derive(Clone)]
+pub struct PendingMouseInfo {
+    pub col: u8,
+    pub row: u8,
 }
 
 struct Mapping(Vec<u8>, ScriptFnRef);
@@ -111,6 +112,10 @@ impl Input {
 
     pub fn get_pending(&self) -> &[u8] {
         &self.pending
+    }
+
+    pub fn get_pending_mouse_info(&self) -> Option<&PendingMouseInfo> {
+        self.pending_mouse_info.as_ref()
     }
 
     pub fn add_mapping(&mut self, sequence: Vec<u8>, action: ScriptFnRef) {

@@ -200,7 +200,7 @@ impl Provider for Fs {
     //fn tree(&self) -> &Tree { &self.nodes }
     //fn tree_mut(&mut self) -> &mut Vec<Node> { &mut self.nodes }
 
-    fn provide(&mut self, path: NodePath) -> Vec<Fragment> {
+    fn provide(&mut self, path: &NodePath) -> Vec<Fragment> {
         let mut pb = path
             .head
             .iter()
@@ -228,18 +228,18 @@ impl Provider for Fs {
         .collect()
     }
 
-    fn order(&self, left: NodePath, right: NodePath) -> Ordering {
+    fn order(&self, left: &NodePath, right: &NodePath) -> Ordering {
         let left = &self.fs_nodes[left.tail.fragment.0];
         let right = &self.fs_nodes[right.tail.fragment.0];
         Ord::cmp(&left.name, &right.name)
     }
 
-    fn keep(&self, path: NodePath) -> bool {
+    fn keep(&self, path: &NodePath) -> bool {
         let node = &self.fs_nodes[path.tail.fragment.0];
         !node.name.starts_with('.')
     }
 
-    fn display(&self, path: NodePath) -> String {
+    fn display(&self, path: &NodePath) -> String {
         let node = &self.fs_nodes[path.tail.fragment.0];
         node.to_string()
     }

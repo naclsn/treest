@@ -91,7 +91,7 @@ impl Navigate {
             if std::ptr::eq(cursor, *node) {
                 write!(f, "\x1b[7m")?;
             }
-            let frag = self.provider.display(NodePath {
+            let frag = self.provider.display(&NodePath {
                 head: &at[..at.len() - 1],
                 tail: at.last().unwrap(),
             });
@@ -106,7 +106,7 @@ impl Navigate {
             *current += 1;
             return Ok(());
         }
-        let children: &Vec<Node> = node.children().unwrap();
+        let children = node.children().unwrap();
         if children.is_empty() {
             if visible.contains(current) {
                 write!(f, "\r\n")?;
@@ -116,7 +116,7 @@ impl Navigate {
         }
 
         if 1 == children.len() {
-            at.push(&children[0]);
+            at.push(children[0]);
             let r = self.fmt_at(
                 f, at, cursor, indent, current, visible, /*line_mapping*/
             );
