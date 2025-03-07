@@ -5,11 +5,11 @@ use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 
 use anyhow::Result;
-use thiserror::Error;
 use lscolors::{LsColors, Style};
+use thiserror::Error;
 
+use crate::providers::{Fragment, Provider};
 use crate::tree::NodePath;
-use crate::providers::{Provider, Fragment};
 
 pub struct Fs {
     //nodes: Vec<Node>,
@@ -201,10 +201,16 @@ impl Provider for Fs {
     //fn tree_mut(&mut self) -> &mut Vec<Node> { &mut self.nodes }
 
     fn provide(&mut self, path: NodePath) -> Vec<Fragment> {
-        let mut pb = path.head.iter().map(|n| &self.fs_nodes[n.fragment.0].name).collect::<PathBuf>();
+        let mut pb = path
+            .head
+            .iter()
+            .map(|n| &self.fs_nodes[n.fragment.0].name)
+            .collect::<PathBuf>();
         pb.push(&self.fs_nodes[path.tail.fragment.0].name);
 
-        let Ok(dir) = fs::read_dir(pb) else { return Vec::new(); };
+        let Ok(dir) = fs::read_dir(pb) else {
+            return Vec::new();
+        };
 
         dir.filter_map(|d| {
             let entry = d.ok()?;

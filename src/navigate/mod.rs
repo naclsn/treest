@@ -1,18 +1,15 @@
 use std::cell::RefCell;
-use std::fmt::Display;
-use std::io::Result as IoResult;
 use std::ops::Range;
-use std::process::{Command as ProcCommand, ExitStatus as ProcStatus, Output as ProcOutput};
 
 use rhai::Engine;
 
-mod api;
+mod scripting;
 mod display;
 mod input;
 
+use crate::providers::Provider;
 use crate::terminal;
 use crate::tree::Node;
-use crate::providers::Provider;
 
 pub struct Navigate {
     tree: Node,
@@ -24,15 +21,13 @@ pub struct Navigate {
     message: Option<String>,
     view: RefCell<View>, // is mutated during rendering to stay up to date
 
-    // XXX: is that just, like, RefCell or omsethingelse?
-    engine: Option<Engine>, // `.take`n during evaluation
-    // also think it could be just Engine directly
+    scripting: scripting::Scripting,
 }
 
 struct View {
     scroll: usize,
     total: Range<usize>,
-    line_mapping: Vec<usize>,
+    line_mapping: Vec<Vec<usize>>, // XXX: eeee, for now yes and with an actual 'Cursor' type
 }
 enum ViewJumpBy {
     Line,
@@ -114,114 +109,45 @@ impl Direction {
 }
 
 impl Navigate {
-    pub fn new(mut provider: impl Provider + 'static) -> Self {
+    pub fn new(mut provider: Box<dyn Provider>) -> Self {
         let mut tree = Node::new();
         tree.unfold(&mut provider, &[]);
         Self {
             tree,
-            provider: Box::new(provider),
+            provider,
             cursor: Vec::new(),
-            input: {
-                let mut r = input::Input::default();
-                r.add_mapping(b"ab".to_vec(), ());
-                r.add_mapping(b"abc".to_vec(), ());
-                r
-            },
+            input: input::Input::new(),
             message: None,
             view: RefCell::new(View {
                 scroll: 0,
                 total: 0..0,
                 line_mapping: Vec::new(),
             }),
-            engine: Some(api::init_engine()),
+            scripting: scripting::Scripting::new(),
         }
+    }
+
+    pub fn main_loop(self) {
+        scripting::main_loop(self);
     }
 
     pub fn resolve_cursor(&self) -> &Node {
-        //self.tree.resolve();
-        self.cursor.iter().fold(&self.tree, |acc, cur| &acc.children().unwrap()[*cur])
+        self.cursor
+            .iter()
+            .fold(&self.tree, |acc, cur| &acc.children().unwrap()[*cur])
     }
 
-    pub fn feed(&mut self, byte: u8) {
-        self.input.feed(byte);
-        if 3 == byte {
-            panic!();
-        }
+    pub fn tick(&mut self) -> Option<scripting::ScriptFnRef> {
+        let buf = self.to_string();
+        eprint!("{buf}");
 
-        api::run_callback(self, "hello");
+        self.input.tick()
     }
 
-    /*
-    pub fn root(&mut self) {
-        self.cursor = self.tree.root();
-    }
-
-    pub fn fold(&mut self) {
-        self.tree.fold_at(self.cursor)
-    }
-
-    pub fn unfold(&mut self) {
-        self.tree.unfold_at(self.cursor)
-    }
-
-    pub fn sibling_sat(&mut self, dir: Direction) {
-        let siblings = self
-            .tree
-            .at(self.tree.at(self.cursor).parent())
-            .children()
-            .unwrap();
-        if let Some(me) = siblings.iter().position(|c| self.cursor == *c) {
-            self.cursor = siblings[dir.go_sat(me, siblings.len())];
-        }
-    }
-
-    pub fn sibling_wrap(&mut self, dir: Direction) {
-        let siblings = self
-            .tree
-            .at(self.tree.at(self.cursor).parent())
-            .children()
-            .unwrap();
-        if let Some(me) = siblings.iter().position(|c| self.cursor == *c) {
-            self.cursor = siblings[dir.go_wrap(me, siblings.len())];
-        }
-    }
-
-    pub fn enter(&mut self) {
-        self.unfold();
-        if let Some(child) = self
-            .tree
-            .at(self.cursor)
-            .children()
-            .and_then(|cs| cs.iter().next())
-        {
-            self.cursor = *child;
-        }
-    }
-
-    pub fn leave(&mut self) {
-        self.cursor = self.tree.at(self.cursor).parent();
-    }
-
-    pub fn toggle_fold(&mut self) {
-        if self.tree.at(self.cursor).folded() {
-            self.unfold();
-        } else {
-            self.fold();
-        }
-    }
-
-    pub fn toggle_mark(&mut self) {
-        self.tree.toggle_mark_at(self.cursor);
-    }
-
-    // "%"
-    pub fn curr_path_string(&self) -> String {
-        let mut r = String::new();
-        self.tree
-            .provider()
-            .write_arg_path(&mut r, &self.tree.path_at(self.cursor))
-            .unwrap();
-        r
-    }
-    */
+    //pub fn feed(&mut self, byte: u8) {
+    //    self.input.feed(byte);
+    //    if 3 == byte {
+    //        panic!();
+    //    }
+    //}
 }

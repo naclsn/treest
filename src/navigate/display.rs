@@ -2,7 +2,6 @@ use std::fmt::{Display, Formatter, Result as FmtResult};
 use std::ops::Range;
 
 use crate::tree::{Node, NodePath};
-use crate::providers::Provider;
 
 use super::Navigate;
 
@@ -35,12 +34,13 @@ impl Display for Navigate {
         let mut view = self.view.borrow_mut();
 
         let visible = view.visible();
-        view.line_mapping.resize(visible.len(), 0);
+        view.line_mapping.resize_with(visible.len(), Vec::new);
 
         let mut current = 0;
         self.fmt_at(
             f,
-            &mut vec![&self.tree], cursor,
+            &mut vec![&self.tree],
+            cursor,
             "".into(),
             &mut current,
             &visible,
@@ -85,7 +85,7 @@ impl Navigate {
         indent: String,
         current: &mut usize,
         visible: &Range<usize>,
-        //which: &mut [NodeRef],
+        //line_mapping: &mut [Vec<usize>],
     ) -> FmtResult {
         let node = at.last().unwrap();
         //let frag = &node.fragment;
@@ -97,15 +97,12 @@ impl Navigate {
             if std::ptr::eq(cursor, *node) {
                 write!(f, "\x1b[7m")?;
             }
-            // XXX: highly incorrect ofc, path needs to be accumulated as we go deep
-            //let frag = self.provider.display(TreePath { head: &[], tail: node.key });
-            //let frag = self.provider.display(at.as_path());
             let frag = self.provider.display(NodePath {
-                head: &at[..at.len()-1],
+                head: &at[..at.len() - 1],
                 tail: at.last().unwrap(),
             });
             write!(f, "{frag}\x1b[m")?;
-            //which[*current - visible.start] = at;
+            //line_mapping[*current - visible.start] = at.clone();
         }
 
         if node.folded() {
@@ -126,7 +123,9 @@ impl Navigate {
 
         if 1 == children.len() {
             at.push(&children[0]);
-            let r = self.fmt_at(f, at, cursor, indent, current, visible, /*which*/);
+            let r = self.fmt_at(
+                f, at, cursor, indent, current, visible, /*line_mapping*/
+            );
             at.pop();
             r
         } else {
@@ -143,15 +142,15 @@ impl Navigate {
                 if visible.contains(current) {
                     write!(f, "{indent}{}", appearance.branch)?;
                 }
-                at.push(                    it,
-                );
+                at.push(it);
                 self.fmt_at(
                     f,
-                    at, cursor,
+                    at,
+                    cursor,
                     format!("{indent}{}", appearance.indent),
                     current,
                     visible,
-                    //which,
+                    //line_mapping,
                 )?;
                 at.pop();
             }
@@ -159,15 +158,15 @@ impl Navigate {
             if visible.contains(current) {
                 write!(f, "{indent}{}", appearance.branch_last)?;
             }
-            at.push(                iter.next().unwrap(),
-            );
+            at.push(iter.next().unwrap());
             let r = self.fmt_at(
                 f,
-                at, cursor,
+                at,
+                cursor,
                 format!("{indent}{}", appearance.indent_last),
                 current,
                 visible,
-                //which,
+                //line_mapping,
             );
             at.pop();
             r

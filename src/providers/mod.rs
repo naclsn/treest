@@ -1,5 +1,8 @@
 use std::cmp::Ordering;
 
+use anyhow::Result;
+use thiserror::Error;
+
 pub mod fs;
 
 use crate::tree::NodePath;
@@ -29,10 +32,16 @@ pub trait Provider {
     }
 }
 
+pub const NAMES: &'static [&'static str] = &["fs"];
+
+pub fn select(arg: &str, name: Option<&str>) -> Result<Box<dyn Provider>> {
+    fs::Fs::new(arg).map(|p| {
+        let p: Box<dyn Provider> = Box::new(p);
+        p
+    })
+}
 
 /*
-use anyhow::Result;
-use thiserror::Error;
 
 #[derive(Error, Debug)]
 pub enum DynProviderError {
