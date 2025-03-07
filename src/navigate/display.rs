@@ -107,7 +107,7 @@ impl Navigate {
             return Ok(());
         }
         let children: &Vec<Node> = node.children().unwrap();
-        if 0 == children.len() {
+        if children.is_empty() {
             if visible.contains(current) {
                 write!(f, "\r\n")?;
             }

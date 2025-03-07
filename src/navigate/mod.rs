@@ -1,8 +1,6 @@
 use std::cell::RefCell;
 use std::ops::Range;
 
-use rhai::Engine;
-
 mod display;
 mod input;
 mod scripting;

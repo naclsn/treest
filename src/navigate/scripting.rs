@@ -1,5 +1,4 @@
 use std::cell::RefCell;
-use std::fs::File;
 use std::io::{self, Read};
 use std::rc::Rc;
 
@@ -90,7 +89,8 @@ impl Api {
     /* exported but shoudnt be called */
     fn tick(&mut self, cc: NativeCallContext) {
         let mut nav = self.nav.borrow_mut();
-        eprint!("{}", nav.to_string());
+        let buf = nav.to_string();
+        eprint!("{buf}");
 
         if let Some(action) = nav.input.tick() {
             drop(nav);

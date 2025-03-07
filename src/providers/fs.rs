@@ -103,8 +103,8 @@ fn write_perm(f: &mut impl Write, perm: u32) -> FmtResult {
     write!(
         f,
         "{}{}{}",
-        if perm >> 2 & 0b1 == 1 { 'r' } else { '-' },
-        if perm >> 1 & 0b1 == 1 { 'w' } else { '-' },
+        if (perm >> 2) & 0b1 == 1 { 'r' } else { '-' },
+        if (perm >> 1) & 0b1 == 1 { 'w' } else { '-' },
         if perm & 0b1 == 1 { 'x' } else { '-' },
     )
 }
@@ -132,9 +132,9 @@ fn write_meta(f: &mut impl Write, node: &FsNode) -> FmtResult {
         }
     )?;
     // owner
-    write_perm(f, mode >> 6 & 0b111)?;
+    write_perm(f, (mode >> 6) & 0b111)?;
     // group
-    write_perm(f, mode >> 3 & 0b111)?;
+    write_perm(f, (mode >> 3) & 0b111)?;
     // world
     write_perm(f, mode & 0b111)
 }

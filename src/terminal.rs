@@ -176,7 +176,7 @@ fn keytrans1(slice: &[u8], r: &mut Vec<u8>) -> Option<()> {
 
         _ => return None,
     }
-    return Some(());
+    Some(())
 }
 
 pub fn keytrans(text: &str) -> Option<Vec<u8>> {
@@ -295,7 +295,7 @@ fn keyseqstr1(slice: &[u8], re: bool, r: &mut String) -> usize {
 
     // meh.. this part should be reached quite rarely (if at all? >0x7f through keytrans?)
     if let Ok(as_str) = std::str::from_utf8(slice) {
-        if let Some((len, chr)) = as_str.char_indices().skip(1).next() {
+        if let Some((len, chr)) = as_str.char_indices().nth(1) {
             r.push(chr);
             return len;
         }
@@ -305,8 +305,8 @@ fn keyseqstr1(slice: &[u8], re: bool, r: &mut String) -> usize {
     if !re {
         r.push('<');
     }
-    let h = slice[0] & 0xf0 >> 4;
-    let l = slice[0] & 0x0f;
+    let h = (slice[0] >> 4) & 0xf;
+    let l = slice[0] & 0xf;
     r.push((if h < 10 { b'0' } else { b'a' } + h) as char);
     r.push((if l < 10 { b'0' } else { b'a' } + l) as char);
     if !re {

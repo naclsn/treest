@@ -1,7 +1,6 @@
 use std::cmp::Ordering;
 
 use anyhow::Result;
-use thiserror::Error;
 
 pub mod fs;
 
@@ -32,7 +31,7 @@ pub trait Provider {
     }
 }
 
-pub const NAMES: &'static [&'static str] = &["fs"];
+pub const NAMES: &[&str] = &["fs"];
 
 pub fn select(arg: &str, name: Option<&str>) -> Result<Box<dyn Provider>> {
     fs::Fs::new(arg).map(|p| {
