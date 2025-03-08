@@ -2,8 +2,6 @@ use std::cmp::Ordering;
 
 use anyhow::Result;
 
-pub mod fs;
-
 use crate::tree::NodePath;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -18,41 +16,18 @@ pub trait Provider {
 
     fn display(&self, path: &NodePath) -> String;
     fn breadcrumb(&self, path: &NodePath) -> String {
-        let mut v: Vec<String> = (0..path.head.len())
-            .map(|k| {
-                self.display(&NodePath {
-                    head: &path.head[..k],
-                    tail: path.head[k],
-                })
-            })
-            .collect();
-        v.push(self.display(path));
-        v.join("/")
+        let mut r = (0..path.head.len()).fold(String::new(), |mut acc, k| {
+            acc.push_str(&self.display(&path.head[..=k].into()));
+            acc
+        });
+        r.push_str(&self.display(path));
+        r
     }
-}
-
-pub const NAMES: &[&str] = &["fs"];
-
-pub fn select(arg: &str, name: Option<&str>) -> Result<Box<dyn Provider>> {
-    fs::Fs::new(arg).map(|p| {
-        let p: Box<dyn Provider> = Box::new(p);
-        p
-    })
-}
-
-/*
-
-#[derive(Error, Debug)]
-pub enum DynProviderError {
-    #[error("the provider to use could not be guessed from the argument (see '--list')")]
-    ProviderNeeded,
-    #[error("'{0}' does not name an existing provider (see '--list')")]
-    NotProvider(String),
 }
 
 macro_rules! providers {
     ($($nm:ident: $ty:ident if $ft:expr,)+) => {
-        mod generic;
+        //mod generic;
         $(pub mod $nm;)+
 
         pub const NAMES: &'static [&'static str] = &[$(stringify!($nm),)+];
@@ -64,11 +39,13 @@ macro_rules! providers {
             None
         }
 
-        pub fn select(arg: &str, name: Option<&str>) -> Result<dyn Provider> {
-            let name = name.or_else(|| guess(arg)).ok_or(DynProviderError::ProviderNeeded)?;
+        pub fn select(arg: &str, name: &str) -> Result<Box<dyn Provider>> {
             match name {
-                $(stringify!($nm) => Ok(DynProvider::$ty($nm::$ty::new(arg)?)),)+
-                _ => Err(DynProviderError::NotProvider(name.into()).into()),
+                $(stringify!($nm) => $nm::$ty::new(arg).map(|p| {
+                    let p: Box<dyn Provider> = Box::new(p);
+                    p
+                }),)+
+                _ => unreachable!(),
             }
         }
     }
@@ -76,11 +53,10 @@ macro_rules! providers {
 
 providers! {
     fs: Fs         if |path| std::path::Path::new(path).is_dir(),
-    json: Json     if |path: &str| path.ends_with(".json"),
-    proc: Proc     if |_| false,
-    sqlite: Sqlite if |path: &str| [".sqlite", ".sqlite3", ".db"].iter().any(|&ext| path.ends_with(ext)),
-    toml: Toml     if |path: &str| path.ends_with(".toml"),
-    xml: Xml       if |path: &str| [".xml", ".htm", ".html"].iter().any(|&ext| path.ends_with(ext)),
-    yaml: Yaml     if |path: &str| [".yaml", ".yml"].iter().any(|&ext| path.ends_with(ext)),
+    //json: Json     if |path: &str| path.ends_with(".json"),
+    //proc: Proc     if |_| false,
+    //sqlite: Sqlite if |path: &str| [".sqlite", ".sqlite3", ".db"].iter().any(|&ext| path.ends_with(ext)),
+    //toml: Toml     if |path: &str| path.ends_with(".toml"),
+    //xml: Xml       if |path: &str| [".xml", ".htm", ".html"].iter().any(|&ext| path.ends_with(ext)),
+    //yaml: Yaml     if |path: &str| [".yaml", ".yml"].iter().any(|&ext| path.ends_with(ext)),
 }
-*/

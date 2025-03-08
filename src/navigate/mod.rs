@@ -1,10 +1,12 @@
 use std::cell::RefCell;
 use std::ops::Range;
+use std::path::PathBuf;
 
 mod display;
 mod input;
 mod scripting;
 
+use crate::navigate::scripting::Scripting;
 use crate::providers::Provider;
 use crate::terminal;
 use crate::tree::Node;
@@ -107,11 +109,9 @@ impl Direction {
 }
 
 impl Navigate {
-    pub fn new(mut provider: Box<dyn Provider>) -> Self {
-        let mut tree = Node::new();
-        tree.unfold(&mut provider, &[]);
+    pub fn new(user_script: Option<PathBuf>, provider: Box<dyn Provider>) -> Self {
         Self {
-            tree,
+            tree: Node::new(),
             provider,
             cursor: Vec::new(),
             input: input::Input::new(),
@@ -121,7 +121,7 @@ impl Navigate {
                 total: 0..0,
                 line_mapping: Vec::new(),
             }),
-            scripting: scripting::Scripting::new(),
+            scripting: Scripting::new(user_script),
         }
     }
 
@@ -129,9 +129,11 @@ impl Navigate {
         scripting::main_loop(self);
     }
 
-    pub fn resolve_cursor(&self) -> &Node {
-        self.cursor
-            .iter()
-            .fold(&self.tree, |acc, cur| acc.children().unwrap()[*cur])
+    pub fn unfold(&mut self, path: &[usize]) {
+        self.tree.unfold(&mut self.provider, path);
+    }
+
+    pub fn unfold_cursor(&mut self) {
+        self.tree.unfold(&mut self.provider, &self.cursor);
     }
 }

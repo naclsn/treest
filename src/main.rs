@@ -3,12 +3,13 @@ use std::panic;
 use std::process;
 
 mod navigate;
+mod options;
 mod prompt;
 mod providers;
 mod terminal;
 mod tree;
 
-use crate::navigate::Navigate;
+use crate::options::Options;
 use crate::terminal::Restore;
 
 static mut RESTORE: Option<Restore> = None;
@@ -36,35 +37,13 @@ fn rst_term() {
 }
 
 fn main() {
-    let mut args = env::args();
-    let prog = args.next().unwrap();
-    let arg = match args.next().unwrap_or(".".into()) {
-        list if "--list" == list || "-l" == list => {
-            for name in providers::NAMES {
-                println!("{name}");
-            }
-            return;
-        }
-        help if "--help" == help || "-h" == help => {
-            eprintln!(
-                r#"Usage: {prog} [arg [name]]
-
-    Navigate a tree-like space dynamically.
-
-    `arg` is passed to the provider `name`; if `name` is not given
-    it's guessed from `arg`. See '--list' for a list of providers.
-    Note: if `arg` is not given, it defaults to ".", so "fs" name.
-"#
-            );
-            return;
-        }
-        dash if "-" == dash => String::new(),
-        arg => arg,
-    };
-
-    let nav = match providers::select(&arg, args.next().as_deref()) {
-        Ok(prov) => Navigate::new(prov),
-        Err(err) => {
+    let nav = Options::parse(env::args())
+        .unwrap_or_else(|err| {
+            eprintln!("{err}");
+            process::exit(1);
+        })
+        .instanciate()
+        .unwrap_or_else(|err| {
             eprintln!("Error: {err}.");
             if let Some(err) = err.source() {
                 eprintln!("Because {err}.");
@@ -73,8 +52,7 @@ fn main() {
                 }
             }
             process::exit(1);
-        }
-    };
+        });
 
     let phook = panic::take_hook();
     panic::set_hook(Box::new(move |info| {

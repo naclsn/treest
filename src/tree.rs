@@ -14,9 +14,24 @@ pub struct NodePath<'a> {
     pub tail: &'a Node,
 }
 
+impl<'a> From<&'a [&'a Node]> for NodePath<'a> {
+    fn from(value: &'a [&'a Node]) -> Self {
+        let k = value.len() - 1;
+        Self {
+            head: &value[..k],
+            tail: value[k],
+        }
+    }
+}
+
 impl Node {
-    pub fn all_children(&self) -> Option<&[Node]> {
-        self.children.as_ref().map(|(nodes, _)| &nodes[..])
+    pub fn new() -> Self {
+        Self {
+            fragment: Fragment(0),
+            children: None,
+            folded: true,
+            marked: false,
+        }
     }
 
     pub fn children(&self) -> Option<Vec<&Node>> {
@@ -32,19 +47,22 @@ impl Node {
     pub fn marked(&self) -> bool {
         self.marked
     }
-}
 
-impl Node {
-    pub fn new() -> Self {
-        Self {
-            fragment: Fragment(0),
-            children: None,
-            folded: true,
-            marked: false,
-        }
+    pub fn resolve(&self, path: &[usize]) -> Vec<&Node> {
+        path.iter().fold(vec![self], |mut acc, cur| {
+            acc.push(acc.last().unwrap().children().unwrap()[*cur]);
+            acc
+        })
     }
 
-    pub fn unfold(&mut self, provider: &mut Box<dyn Provider>, parents: &[&Node]) {
+    pub fn resolve_node(&self, path: &[usize]) -> &Node {
+        path.iter()
+            .fold(self, |acc, cur| acc.children().unwrap()[*cur])
+    }
+
+    pub fn unfold(&mut self, provider: &mut Box<dyn Provider>, path: &[usize]) {
+        let parents = &self.resolve(path);
+
         let nodes: Vec<_> = provider
             .provide(&NodePath {
                 head: parents,

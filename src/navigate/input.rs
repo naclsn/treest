@@ -98,6 +98,7 @@ impl Input {
                     return Some(r);
                 }
 
+                self.clear_pending();
                 None
             }
 

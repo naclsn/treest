@@ -29,7 +29,7 @@ impl Display for Navigate {
     fn fmt(&self, f: &mut Formatter) -> FmtResult {
         write!(f, "\x1b[H\x1b[J")?;
 
-        let cursor = self.resolve_cursor();
+        let cursor = self.tree.resolve_node(&self.cursor);
 
         let mut view = self.view.borrow_mut();
 
@@ -52,10 +52,8 @@ impl Display for Navigate {
             write!(f, "{}", "\n".repeat(visible.end - current))?;
         }
 
-        //self.
-        //    provider
-        //    .write_nav_path(f, &self.tree.path_at(self.cursor))?;
-        write!(f, "\r\n")?;
+        let path = self.tree.resolve(&self.cursor);
+        write!(f, "{}\r\n", self.provider.breadcrumb(&path[..].into()))?;
 
         if let Some(message) = &self.message {
             write!(f, "{message}    ")?;

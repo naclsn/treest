@@ -1,5 +1,6 @@
 use std::cell::RefCell;
 use std::io::{self, Read};
+use std::path::PathBuf;
 use std::rc::Rc;
 
 use rhai::{plugin::*, Engine, FnPtr, NativeCallContext, Scope, AST};
@@ -15,13 +16,15 @@ pub struct ScriptFnRef(usize);
 pub struct Scripting {
     sourced: Vec<Option<AST>>,
     script_fns: Vec<Option<ScriptFn>>,
+    user_script: Option<PathBuf>,
 }
 
 impl Scripting {
-    pub fn new() -> Self {
+    pub fn new(user_script: Option<PathBuf>) -> Self {
         Self {
             sourced: Vec::new(),
             script_fns: Vec::new(),
+            user_script,
         }
     }
 }
@@ -32,38 +35,55 @@ struct Api {
     current_sourced: usize,
 }
 
+impl Api {
+    pub fn new(nav: Navigate) -> Self {
+        Self {
+            nav: Rc::new(RefCell::new(nav)),
+            current_sourced: 0, // 0 is user_script or default.rhai
+        }
+    }
+}
+
 #[derive(Clone)]
 struct MakeUncallable;
 
-pub fn main_loop(nav: Navigate) {
-    let mut scope = Scope::new();
-    let api = Api {
-        nav: Rc::new(RefCell::new(nav)),
-        current_sourced: usize::MAX,
-    };
+pub fn main_loop(mut nav: Navigate) {
+    let user_script = nav.scripting.user_script.take();
+
     let mut engine = Engine::new();
+    engine.register_global_module(exported_module!(api).into());
+
+    let ast = if let Some(file) = user_script {
+        engine
+            .compile_file(file)
+            .expect("somethin about user script not valid")
+    } else {
+        engine.compile(include_str!("default.rhai")).unwrap()
+    };
+
+    let mut scope = Scope::new();
     engine
-        .register_global_module(exported_module!(api).into())
+        .eval_ast_with_scope::<()>(scope.push("api", Api::new(nav)), &ast)
+        .unwrap();
+    scope
+        .get_value_mut::<Api>("api")
+        .unwrap()
+        .nav
+        .borrow_mut()
+        .scripting
+        .sourced
+        .push(Some(ast));
+
+    engine
         .eval_with_scope::<()>(
-            scope
-                .push("api", api)
-                .push("uncallable_token", MakeUncallable),
-            r##"
-                api.source(#"
-                    api.register("hi", |api| api.hi("heeeeeeeere"));
-                    api.register(":", |api| {
-                        let ans = api.prompt(":");
-                        //api.hi(ans.trim());
-                        if ans.starts_with("eval ") {
-                            api.source(ans[5..]);
-                        }
-                    });
-                "#);
+            scope.push("uncallable_token", MakeUncallable),
+            r#"
+                api.unfold();
                 loop {
                     api._tick(uncallable_token);
                 }
                 api.hi("fell out");
-            "##,
+            "#,
         )
         .unwrap();
 }
@@ -169,4 +189,20 @@ mod api {
         terminal::cursor_off();
         res.unwrap()
     }
+
+    pub fn unfold(api: &mut Api, path: Vec<usize>) {
+        api.nav.borrow_mut().unfold(&path);
+    }
+
+    #[rhai_fn(name = "unfold")]
+    pub fn unfold_cursor(api: &mut Api) {
+        api.nav.borrow_mut().unfold_cursor();
+    }
+
+    // XXX: stub
+    pub fn enter(api: &mut Api) { api.nav.borrow_mut().cursor.push(0); }
+    pub fn leave(api: &mut Api) { api.nav.borrow_mut().cursor.pop(); }
+    pub fn next(api: &mut Api) { api.nav.borrow_mut().cursor.last_mut().map(|k| *k+= 1); }
+    pub fn prev(api: &mut Api) { api.nav.borrow_mut().cursor.last_mut().map(|k| *k-= 1); }
+    pub fn quit(_: &mut Api) { panic!("haha"); }
 }
