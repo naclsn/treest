@@ -100,7 +100,7 @@ impl Options {
 
         if 1 == pos_count {
             let Some(name) = providers::guess(&r.provider_arg) else {
-                return Err(OptionsError::ProviderNeeded.into());
+                return Err(OptionsError::ProviderNeeded);
             };
             r.provider_name = name.into();
         }

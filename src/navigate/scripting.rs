@@ -1,11 +1,11 @@
-use std::cell::{RefMut, RefCell};
+use std::cell::{RefCell, RefMut};
 use std::io::{self, Read};
 use std::path::PathBuf;
 use std::rc::Rc;
 
-use rhai::{plugin::*, Engine, FnPtr, NativeCallContext, Scope, AST, Map, INT};
+use rhai::{plugin::*, Engine, FnPtr, Map, NativeCallContext, Scope, AST, INT};
 
-use crate::navigate::{ViewJumpBy, Navigate};
+use crate::navigate::{Navigate, ViewJumpBy};
 use crate::prompt;
 use crate::terminal;
 
@@ -130,32 +130,38 @@ mod api {
         }
     }
 
-    pub fn source_text(cc: NativeCallContext, api: &mut Api, text: &str) {
+    pub fn source_text(cc: NativeCallContext, api: &mut Api, text: &str) -> Dynamic {
         let p_current_sourced = api.current_sourced;
         api.current_sourced = api.nav.borrow().scripting.sourced.len();
 
         let ast = cc.engine().compile(text).unwrap();
         let mut scope = Scope::new();
-        cc.engine()
-            .eval_ast_with_scope::<()>(scope.push("api", api.clone()), &ast)
+        let r = cc
+            .engine()
+            .eval_ast_with_scope(scope.push("api", api.clone()), &ast)
             .unwrap();
 
         api.current_sourced = p_current_sourced;
         api.m().scripting.sourced.push(Some(ast));
+
+        r
     }
 
-    pub fn source(cc: NativeCallContext, api: &mut Api, file: &str) {
+    pub fn source(cc: NativeCallContext, api: &mut Api, file: &str) -> Dynamic {
         let p_current_sourced = api.current_sourced;
         api.current_sourced = api.nav.borrow().scripting.sourced.len();
 
         let ast = cc.engine().compile_file(file.into()).unwrap();
         let mut scope = Scope::new();
-        cc.engine()
-            .eval_ast_with_scope::<()>(scope.push("api", api.clone()), &ast)
+        let r = cc
+            .engine()
+            .eval_ast_with_scope(scope.push("api", api.clone()), &ast)
             .unwrap();
 
         api.current_sourced = p_current_sourced;
         api.m().scripting.sourced.push(Some(ast));
+
+        r
     }
 
     pub fn register(api: &mut Api, seq: &str, cb: FnPtr) {
@@ -171,12 +177,31 @@ mod api {
         );
     }
 
+    #[rhai_fn(global)]
+    pub fn keytrans(text: &str) -> Dynamic {
+        terminal::keytrans(text)
+            .map(Dynamic::from)
+            .unwrap_or(Dynamic::UNIT)
+    }
+
+    #[rhai_fn(global)]
+    pub fn keyseqstr(seq: Vec<u8>) -> String {
+        terminal::keyseqstr(&seq)
+    }
+
+    #[rhai_fn(pure, index_get)]
+    pub fn get_option(api: &mut Api, name: &str) -> Dynamic {
+        api.m().options.get(name)
+    }
+
+    #[rhai_fn(return_raw, index_set)]
+    pub fn set_option(api: &mut Api, name: &str, value: Dynamic) -> Result<(), Box<EvalAltResult>> {
+        Ok(api.m().options.set(name, value)?)
+    }
+
     #[rhai_fn(pure)]
     pub fn mouse_event_pos(api: &mut Api) -> Map {
-        let info = api.nav
-            .borrow()
-            .input
-            .get_pending_mouse_info();
+        let info = api.nav.borrow().input.get_pending_mouse_info();
         let mut r = Map::new();
         r.insert("row".into(), Dynamic::from(info.row as INT));
         r.insert("col".into(), Dynamic::from(info.col as INT));
@@ -198,33 +223,62 @@ mod api {
         res.unwrap()
     }
 
-    pub fn unfold(api: &mut Api, path: Vec<usize>) { api.m().unfold(&path); }
-    #[rhai_fn(name = "unfold")] pub fn unfold_cursor(api: &mut Api) { api.m().unfold_cursor(); }
+    pub fn unfold(api: &mut Api, path: Vec<usize>) {
+        api.m().unfold(&path);
+    }
+    #[rhai_fn(name = "unfold")]
+    pub fn unfold_cursor(api: &mut Api) {
+        api.m().unfold_cursor();
+    }
 
-    pub fn quit(_: &mut Api) { panic!("haha"); }
+    pub fn quit(_: &mut Api) {
+        panic!("haha");
+    }
 
-    pub fn enter(api: &mut Api) { api.m().enter(); }
-    pub fn leave(api: &mut Api) { api.m().leave(); }
+    pub fn enter(api: &mut Api) {
+        api.m().enter();
+    }
+    pub fn leave(api: &mut Api) {
+        api.m().leave();
+    }
 
-    pub fn next(api: &mut Api, wrapping: &str) { api.m().next("wrap" == wrapping); }
-    pub fn prev(api: &mut Api, wrapping: &str) { api.m().prev("wrap" == wrapping); }
-    #[rhai_fn(name = "next")] pub fn next_sat(api: &mut Api) { api.m().next(false); }
-    #[rhai_fn(name = "prev")] pub fn prev_sat(api: &mut Api) { api.m().prev(false); }
+    pub fn next(api: &mut Api, wrapping: &str) {
+        api.m().next("wrap" == wrapping);
+    }
+    pub fn prev(api: &mut Api, wrapping: &str) {
+        api.m().prev("wrap" == wrapping);
+    }
+    #[rhai_fn(name = "next")]
+    pub fn next_sat(api: &mut Api) {
+        api.m().next(false);
+    }
+    #[rhai_fn(name = "prev")]
+    pub fn prev_sat(api: &mut Api) {
+        api.m().prev(false);
+    }
 
-    pub fn view_down(api: &mut Api, by: &str) { api.m().view.borrow_mut().down(match by {
-        "win" => ViewJumpBy::Win,
-        "halfwin" => ViewJumpBy::HalfWin,
-        "mouse" => ViewJumpBy::Mouse,
-        _ => ViewJumpBy::Line,
-    }); }
-    pub fn view_up(api: &mut Api, by: &str) { api.m().view.borrow_mut().up(match by {
-        "win" => ViewJumpBy::Win,
-        "halfwin" => ViewJumpBy::HalfWin,
-        "mouse" => ViewJumpBy::Mouse,
-        _ => ViewJumpBy::Line,
-    }); }
+    pub fn view_down(api: &mut Api, by: &str) {
+        api.m().view.borrow_mut().down(match by {
+            "win" => ViewJumpBy::Win,
+            "halfwin" => ViewJumpBy::HalfWin,
+            "mouse" => ViewJumpBy::Mouse,
+            _ => ViewJumpBy::Line,
+        });
+    }
+    pub fn view_up(api: &mut Api, by: &str) {
+        api.m().view.borrow_mut().up(match by {
+            "win" => ViewJumpBy::Win,
+            "halfwin" => ViewJumpBy::HalfWin,
+            "mouse" => ViewJumpBy::Mouse,
+            _ => ViewJumpBy::Line,
+        });
+    }
     #[rhai_fn(name = "view_down")]
-    pub fn view_down_line(api: &mut Api) { api.m().view.borrow_mut().down(ViewJumpBy::Line); }
+    pub fn view_down_line(api: &mut Api) {
+        api.m().view.borrow_mut().down(ViewJumpBy::Line);
+    }
     #[rhai_fn(name = "view_up")]
-    pub fn view_up_line(api: &mut Api) { api.m().view.borrow_mut().up(ViewJumpBy::Line); }
+    pub fn view_up_line(api: &mut Api) {
+        api.m().view.borrow_mut().up(ViewJumpBy::Line);
+    }
 }

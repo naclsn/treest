@@ -9,7 +9,7 @@ api.register(":", |api| {
     }
 });
 
-api.register("=", |api| api.source_text(api.prompt("=")));
+api.register("=", |api| api.hi(api.source_text(api.prompt("="))));
 
 
 api.register("<C-E>", Fn("view_down"));

@@ -127,8 +127,10 @@ impl Navigate {
             *current += 1;
 
             let mut iter = children.iter();
-            //let appearance = if self.options.pretty { PRETTY } else { ASCII };
-            let appearance = PRETTY;
+            let appearance = match self.options.appearance.as_str() {
+                "pretty" => PRETTY,
+                _ => ASCII,
+            };
 
             for it in iter.by_ref().take(children.len() - 1) {
                 if visible.contains(current) {

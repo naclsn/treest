@@ -4,9 +4,10 @@ use std::path::PathBuf;
 
 mod display;
 mod input;
+mod options;
 mod scripting;
 
-use crate::navigate::scripting::Scripting;
+use crate::navigate::{options::Options, scripting::Scripting};
 use crate::providers::Provider;
 use crate::terminal;
 use crate::tree::{Cursor, Node};
@@ -21,7 +22,8 @@ pub struct Navigate {
     message: Option<String>,
     view: RefCell<View>, // is mutated during rendering to stay up to date
 
-    scripting: scripting::Scripting,
+    scripting: Scripting,
+    options: Options,
 }
 
 struct View {
@@ -83,14 +85,18 @@ impl Navigate {
             tree: Node::new(),
             provider,
             cursor: Vec::new(),
+
             input: input::Input::new(),
+
             message: None,
             view: RefCell::new(View {
                 scroll: 0,
                 total: 0..0,
                 line_mapping: Vec::new(),
             }),
+
             scripting: Scripting::new(user_script),
+            options: Options::default(),
         }
     }
 
@@ -120,12 +126,14 @@ impl Navigate {
         let l = self.cursor.len();
         if 0 < l {
             let m = self.tree.resolve_node(&self.cursor[..l - 1]).child_count() - 1;
-            self.cursor.last_mut().map(|k| match wrapping {
-                false if *k < m => *k += 1,
-                true if *k == m => *k = 0,
-                true => *k += 1,
-                _ => (),
-            });
+            if let Some(k) = self.cursor.last_mut() {
+                match wrapping {
+                    false if *k < m => *k += 1,
+                    true if *k == m => *k = 0,
+                    true => *k += 1,
+                    _ => (),
+                }
+            }
         }
     }
 
@@ -133,12 +141,14 @@ impl Navigate {
         let l = self.cursor.len();
         if 0 < l {
             let m = self.tree.resolve_node(&self.cursor[..l - 1]).child_count() - 1;
-            self.cursor.last_mut().map(|k| match wrapping {
-                false if 0 < *k => *k -= 1,
-                true if 0 == *k => *k = m,
-                true => *k -= 1,
-                _ => (),
-            });
+            if let Some(k) = self.cursor.last_mut() {
+                match wrapping {
+                    false if 0 < *k => *k -= 1,
+                    true if 0 == *k => *k = m,
+                    true => *k -= 1,
+                    _ => (),
+                }
+            }
         }
     }
 }

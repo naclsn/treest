@@ -1,5 +1,5 @@
 use std::cmp::Ordering;
-use std::fmt::{Display, Formatter, Result as FmtResult, Write};
+use std::fmt::{Display, Formatter, Result as FmtResult};
 use std::fs::{self, Metadata};
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
@@ -98,10 +98,9 @@ impl From<(PathBuf, &Option<Metadata>)> for FsNodeKind {
     }
 }
 
-#[inline(always)]
-fn write_perm(f: &mut impl Write, perm: u32) -> FmtResult {
-    write!(
-        f,
+#[inline]
+fn write_perm(perm: u32) -> String {
+    format!(
         "{}{}{}",
         if (perm >> 2) & 0b1 == 1 { 'r' } else { '-' },
         if (perm >> 1) & 0b1 == 1 { 'w' } else { '-' },
@@ -110,7 +109,7 @@ fn write_perm(f: &mut impl Write, perm: u32) -> FmtResult {
 }
 
 #[cfg(unix)]
-fn write_meta(f: &mut impl Write, node: &FsNode) -> FmtResult {
+fn write_meta(node: &FsNode) -> String {
     use std::os::unix::fs::PermissionsExt;
     let mode = node
         .meta
@@ -118,9 +117,8 @@ fn write_meta(f: &mut impl Write, node: &FsNode) -> FmtResult {
         .map(|m| m.permissions().mode())
         .unwrap_or(0);
 
-    write!(
-        f,
-        "{}",
+    format!(
+        "{}{}{}{}",
         match node.kind {
             Directory => 'd',
             SymLink(_) => 'l',
@@ -129,39 +127,32 @@ fn write_meta(f: &mut impl Write, node: &FsNode) -> FmtResult {
             BlockDevice => 'b',
             Socket => 's',
             Regular | Executable => '-',
-        }
-    )?;
-    // owner
-    write_perm(f, (mode >> 6) & 0b111)?;
-    // group
-    write_perm(f, (mode >> 3) & 0b111)?;
-    // world
-    write_perm(f, mode & 0b111)
+        },
+        write_perm((mode >> 6) & 0b111), // owner
+        write_perm((mode >> 3) & 0b111), // group
+        write_perm(mode & 0b111),        // world
+    )
 }
 
 #[cfg(windows)]
-fn write_meta(f: &mut impl Write, node: &FsNode) -> FmtResult {
+fn write_meta(node: &FsNode) -> String {
     let ro = node
         .meta
         .as_ref()
         .map(|m| m.permissions().readonly())
         .unwrap_or(true);
 
-    write!(
-        f,
-        "{}",
+    format!(
+        "{}{}{}{}",
         match node.kind {
             Directory => 'd',
             SymLink(_) => 'l',
             _ => '-',
-        }
-    )?;
-    // owner
-    write_perm(f, 0b101 | if ro { 0b000 } else { 0b010 })?;
-    // group
-    write_perm(f, 0b101 | if ro { 0b000 } else { 0b010 })?;
-    // world
-    write_perm(f, 0b101 | if ro { 0b000 } else { 0b010 })
+        },
+        write_perm(0b101 | if ro { 0b000 } else { 0b010 }), // owner
+        write_perm(0b101 | if ro { 0b000 } else { 0b010 }), // group
+        write_perm(0b101 | if ro { 0b000 } else { 0b010 }), // world
+    )
 }
 // }}}
 
@@ -242,6 +233,46 @@ impl Provider for Fs {
     fn display(&self, path: &NodePath) -> String {
         let node = &self.fs_nodes[path.tail.fragment.0];
         node.to_string()
+    }
+
+    fn breadcrumb(&self, path: &NodePath) -> String {
+        let node = &self.fs_nodes[path.tail.fragment.0];
+        let mut r = write_meta(node);
+
+        match &node.meta {
+            Some(meta) => {
+                r.push_str(&format!(" {:8} ", meta.len()));
+                match meta
+                    .modified()
+                    .ok()
+                    .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                {
+                    Some(duration) => {
+                        let s = duration.as_secs();
+                        r.push_str(&format!(
+                            "{:02}:{:02}:{:02} ",
+                            // TODO(+2): get tz properly, likely stealing from
+                            // https://github.com/chronotope/chrono/tree/main/src/offset/local/tz_info
+                            (s / 60 / 60) % 24 + 2,
+                            (s / 60) % 60,
+                            s % 60,
+                        ));
+                    }
+                    None => r.push_str("??:??:?? "),
+                }
+            }
+            None => r.push_str("        ? ??:??:?? "),
+        }
+
+        let path_string: String = path
+            .head
+            .iter()
+            .map(|n| self.fs_nodes[n.fragment.0].to_string())
+            .collect();
+        r.push_str(&path_string);
+        r.push_str(&self.fs_nodes[path.tail.fragment.0].to_string());
+
+        r
     }
 }
 

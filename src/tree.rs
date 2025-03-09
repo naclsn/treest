@@ -43,7 +43,10 @@ impl Node {
     }
 
     pub fn child_count(&self) -> usize {
-        self.children.as_ref().map(|(_, sel)| sel.len()).unwrap_or(0)
+        self.children
+            .as_ref()
+            .map(|(_, sel)| sel.len())
+            .unwrap_or(0)
     }
 
     pub fn folded(&self) -> bool {

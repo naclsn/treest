@@ -80,93 +80,76 @@ pub fn prompt(
     while let Some(key) = input.next() {
         pend.push(key);
         match &pend[..] {
-            b"\x1bb" => {
-                if 0 < at {
-                    let by = s[..at]
-                        .windows(2)
-                        .rev()
-                        .position(|p: &[char]| !p[0].is_alphanumeric() && p[1].is_alphanumeric())
-                        .map(|k| k + 1)
-                        .unwrap_or(at);
-                    write!(output, "\x1b[{by}D").ok()?;
-                    at -= by;
-                }
+            b"\x1bb" if 0 < at => {
+                let by = s[..at]
+                    .windows(2)
+                    .rev()
+                    .position(|p: &[char]| !p[0].is_alphanumeric() && p[1].is_alphanumeric())
+                    .map(|k| k + 1)
+                    .unwrap_or(at);
+                write!(output, "\x1b[{by}D").ok()?;
+                at -= by;
             }
-            b"\x1bd" => {
-                if at < s.len() {
-                    let by = s[at..]
-                        .windows(2)
-                        .position(|p| p[0].is_alphanumeric() && !p[1].is_alphanumeric())
-                        .map(|k| k + 1)
-                        .unwrap_or(s.len() - at);
-                    write!(output, "\x1b[{by}P").ok()?;
-                    s.drain(at..at + by);
-                }
+            b"\x1bd" if at < s.len() => {
+                let by = s[at..]
+                    .windows(2)
+                    .position(|p| p[0].is_alphanumeric() && !p[1].is_alphanumeric())
+                    .map(|k| k + 1)
+                    .unwrap_or(s.len() - at);
+                write!(output, "\x1b[{by}P").ok()?;
+                s.drain(at..at + by);
             }
-            b"\x1bf" => {
-                if at < s.len() {
-                    let by = s[at..]
-                        .windows(2)
-                        .position(|p| p[0].is_alphanumeric() && !p[1].is_alphanumeric())
-                        .map(|k| k + 1)
-                        .unwrap_or(s.len() - at);
-                    write!(output, "\x1b[{by}C").ok()?;
-                    at += by;
-                }
+            b"\x1bf" if at < s.len() => {
+                let by = s[at..]
+                    .windows(2)
+                    .position(|p| p[0].is_alphanumeric() && !p[1].is_alphanumeric())
+                    .map(|k| k + 1)
+                    .unwrap_or(s.len() - at);
+                write!(output, "\x1b[{by}C").ok()?;
+                at += by;
             }
             b"\x1b\x1b" => return None,
-            b"\x1b\x7f" => {
-                if 0 < at {
-                    let by = s[..at]
-                        .windows(2)
-                        .rev()
-                        .position(|p: &[char]| !p[0].is_alphanumeric() && p[1].is_alphanumeric())
-                        .map(|k| k + 1)
-                        .unwrap_or(at);
-                    write!(output, "\x1b[{by}D\x1b[{by}P").ok()?;
-                    s.drain(at - by..at);
-                    at -= by;
-                }
+            b"\x1b\x7f" if 0 < at => {
+                let by = s[..at]
+                    .windows(2)
+                    .rev()
+                    .position(|p: &[char]| !p[0].is_alphanumeric() && p[1].is_alphanumeric())
+                    .map(|k| k + 1)
+                    .unwrap_or(at);
+                write!(output, "\x1b[{by}D\x1b[{by}P").ok()?;
+                s.drain(at - by..at);
+                at -= by;
             }
 
-            [0x01] | b"\x1b[H" => {
-                if 0 < at {
-                    write!(output, "\x1b[{at}D").ok()?;
-                    at = 0;
-                }
+            [0x01] | b"\x1b[H" if 0 < at => {
+                write!(output, "\x1b[{at}D").ok()?;
+                at = 0;
             }
-            [0x02] | b"\x1b[D" => {
-                if 0 < at {
-                    write!(output, "\x08").ok()?;
-                    at -= 1;
-                }
+            [0x02] | b"\x1b[D" if 0 < at => {
+                write!(output, "\x08").ok()?;
+                at -= 1;
             }
             [0x03] => return None,
-            [0x04] | b"\x1b[3~" => {
-                if at < s.len() {
-                    s.remove(at);
-                    write!(output, "\x1b[P").ok()?;
-                }
+            [0x04] | b"\x1b[3~" if at < s.len() => {
+                s.remove(at);
+                write!(output, "\x1b[P").ok()?;
             }
-            [0x05] | b"\x1b[F" => {
-                if at < s.len() {
-                    write!(output, "\x1b[{}C", s.len() - at).ok()?;
-                    at = s.len();
-                }
+            [0x05] | b"\x1b[F" if at < s.len() => {
+                write!(output, "\x1b[{}C", s.len() - at).ok()?;
+                at = s.len();
             }
-            [0x06] | b"\x1b[C" => {
-                if at < s.len() {
-                    write!(output, "{}", s[at]).ok()?;
-                    at += 1;
-                }
+            [0x06] | b"\x1b[C" if at < s.len() => {
+                write!(output, "{}", s[at]).ok()?;
+                at += 1;
             }
             [.., 0x07] => pend.clear(),
             [0x08 | 127] => {
-                if 0 < at {
-                    at -= 1;
-                    s.remove(at);
-                    write!(output, "\x08\x1b[P").ok()?;
+                if 0 == at {
+                    return None;
                 }
+                at -= 1;
+                s.remove(at);
+                write!(output, "\x08\x1b[P").ok()?;
             }
             [0x09] => {
                 let (args, in_arg) = split(&s, at);
@@ -186,6 +169,17 @@ pub fn prompt(
             [0x15] => {
                 write!(output, "\x1b[{at}D\x1b[{at}P").ok()?;
                 s.drain(..at);
+            }
+            [0x17] if 0 < at => {
+                let by = s[..at]
+                    .windows(2)
+                    .rev()
+                    .position(|p: &[char]| p[0].is_whitespace() && !p[1].is_whitespace())
+                    .map(|k| k + 1)
+                    .unwrap_or(at);
+                write!(output, "\x1b[{by}D\x1b[{by}P").ok()?;
+                s.drain(at - by..at);
+                at -= by;
             }
 
             b"\x1b" | b"\x1b[" | [0x1b, b'[', b'0'..=b'9'] => continue,
