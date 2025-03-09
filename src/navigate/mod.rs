@@ -10,12 +10,14 @@ mod scripting;
 use crate::navigate::{options::Options, scripting::Scripting};
 use crate::providers::Provider;
 use crate::terminal;
-use crate::tree::{Cursor, Node};
+use crate::tree::Node;
+
+type CursorLikePath = Vec<usize>;
 
 pub struct Navigate {
     tree: Node,
     provider: Box<dyn Provider>,
-    cursor: Cursor,
+    cursor: (CursorLikePath, usize),
 
     input: input::Input,
 
@@ -29,7 +31,7 @@ pub struct Navigate {
 struct View {
     scroll: usize,
     total: Range<usize>,
-    line_mapping: Vec<Cursor>,
+    line_mapping: Vec<CursorLikePath>,
 }
 enum ViewJumpBy {
     Line,
@@ -84,7 +86,7 @@ impl Navigate {
         Self {
             tree: Node::new(),
             provider,
-            cursor: Vec::new(),
+            cursor: (vec![], 0),
 
             input: input::Input::new(),
 
@@ -104,51 +106,86 @@ impl Navigate {
         scripting::main_loop(self);
     }
 
-    pub fn unfold(&mut self, path: &[usize]) {
-        self.tree.unfold(&mut self.provider, path);
+    pub fn cursor(&self) -> &[usize] {
+        &self.cursor.0[..self.cursor.1]
     }
 
-    pub fn unfold_cursor(&mut self) {
-        self.tree.unfold(&mut self.provider, &self.cursor);
+    pub fn cursor_head(&self) -> &[usize] {
+        &self.cursor.0[..self.cursor.1 - 1]
+    }
+
+    pub fn cursor_tail_mut(&mut self) -> &mut usize {
+        &mut self.cursor.0[self.cursor.1 - 1]
+    }
+
+    pub fn unfold(&mut self, path: &[usize]) -> usize {
+        self.tree.unfold(&mut self.provider, path)
+    }
+
+    pub fn unfold_cursor(&mut self) -> usize {
+        self.tree
+            .unfold(&mut self.provider, &self.cursor.0[..self.cursor.1])
     }
 
     pub fn enter(&mut self) {
-        // TODO: !!
-        self.cursor.push(0);
+        let target = self.tree.resolve_node_mut(&self.cursor.0[..self.cursor.1]);
+
+        let child_count = if !target.is_loaded() {
+            self.unfold_cursor()
+        } else {
+            if target.is_folded() {
+                target.set_folded(true);
+            }
+            target.child_count()
+        };
+
+        if 0 == child_count {
+            return;
+        }
+
+        if self.cursor.0.len() == self.cursor.1 {
+            self.cursor.0.push(0);
+        }
+        self.cursor.1 += 1;
     }
 
     pub fn leave(&mut self) {
-        // TODO: !!
-        self.cursor.pop();
+        self.cursor.1 = self.cursor.1.saturating_sub(1);
     }
 
     pub fn next(&mut self, wrapping: bool) {
-        let l = self.cursor.len();
-        if 0 < l {
-            let m = self.tree.resolve_node(&self.cursor[..l - 1]).child_count() - 1;
-            if let Some(k) = self.cursor.last_mut() {
-                match wrapping {
-                    false if *k < m => *k += 1,
-                    true if *k == m => *k = 0,
-                    true => *k += 1,
-                    _ => (),
-                }
-            }
+        if 0 == self.cursor.1 {
+            return;
         }
+        let m = self.tree.resolve_node(self.cursor_head()).child_count();
+        if 0 == m {
+            return;
+        }
+        let k = self.cursor_tail_mut();
+        match wrapping {
+            false if *k < m - 1 => *k += 1,
+            true if *k == m - 1 => *k = 0,
+            true => *k += 1,
+            _ => (),
+        }
+        self.cursor.0.truncate(self.cursor.1);
     }
 
     pub fn prev(&mut self, wrapping: bool) {
-        let l = self.cursor.len();
-        if 0 < l {
-            let m = self.tree.resolve_node(&self.cursor[..l - 1]).child_count() - 1;
-            if let Some(k) = self.cursor.last_mut() {
-                match wrapping {
-                    false if 0 < *k => *k -= 1,
-                    true if 0 == *k => *k = m,
-                    true => *k -= 1,
-                    _ => (),
-                }
-            }
+        if 0 == self.cursor.1 {
+            return;
         }
+        let m = self.tree.resolve_node(self.cursor_head()).child_count();
+        if 0 == m {
+            return;
+        }
+        let k = self.cursor_tail_mut();
+        match wrapping {
+            false if 0 < *k => *k -= 1,
+            true if 0 == *k => *k = m - 1,
+            true => *k -= 1,
+            _ => (),
+        }
+        self.cursor.0.truncate(self.cursor.1);
     }
 }

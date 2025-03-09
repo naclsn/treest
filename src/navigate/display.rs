@@ -3,7 +3,7 @@ use std::ops::Range;
 
 use crate::navigate::Navigate;
 use crate::terminal;
-use crate::tree::{Node, NodePath};
+use crate::tree::Node;
 
 struct Appearance {
     branch: &'static str,
@@ -29,7 +29,7 @@ impl Display for Navigate {
     fn fmt(&self, f: &mut Formatter) -> FmtResult {
         write!(f, "\x1b[H\x1b[J")?;
 
-        let cursor = self.tree.resolve_node(&self.cursor);
+        let cursor = self.tree.resolve_node(self.cursor());
 
         let mut view = self.view.borrow_mut();
 
@@ -52,7 +52,7 @@ impl Display for Navigate {
             write!(f, "{}", "\n".repeat(visible.end - current))?;
         }
 
-        let path = self.tree.resolve(&self.cursor);
+        let path = self.tree.resolve(self.cursor());
         write!(f, "{}\r\n", self.provider.breadcrumb(&path[..].into()))?;
 
         if let Some(message) = &self.message {
@@ -83,21 +83,18 @@ impl Navigate {
         //let frag = &node.fragment;
 
         if visible.contains(current) {
-            if node.marked() {
+            if node.is_marked() {
                 write!(f, " \x1b[4m")?;
             }
             if std::ptr::eq(cursor, *node) {
                 write!(f, "\x1b[7m")?;
             }
-            let frag = self.provider.display(&NodePath {
-                head: &at[..at.len() - 1],
-                tail: at.last().unwrap(),
-            });
+            let frag = self.provider.display(&at[..].into());
             write!(f, "{frag}\x1b[m")?;
             //line_mapping[*current - visible.start] = at.clone();
         }
 
-        if node.folded() {
+        if node.is_folded() {
             if visible.contains(current) {
                 write!(f, "\r\n")?;
             }
