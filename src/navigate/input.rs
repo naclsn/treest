@@ -67,11 +67,6 @@ impl Input {
         }
     }
 
-    fn clear_pending(&mut self) {
-        self.pending.clear();
-        //self.pending_mouse_info = None;
-    }
-
     pub fn tick(&mut self) -> Option<ScriptFnRef> {
         let byte = self
             .recycle
@@ -79,11 +74,11 @@ impl Input {
             .or_else(|| self.input.next())
             .expect("niy: eof stopping condition");
         if 3 == byte {
-            self.clear_pending();
-            panic!("<C-C>");
+            if self.pending.is_empty() {
+                panic!("<C-C>");
+            }
+            self.pending.clear();
         }
-
-        let mut can_recycle = true;
 
         if self.pending.is_empty() {
             self.pending_reachable = self
@@ -98,19 +93,21 @@ impl Input {
 
             self.pending.push(byte);
         } else {
-            self.pending.push(byte);
-            match &mut self.pending[..] {
-                [.., 0x1b, b'[', b'M', _, col] => {
-                    self.pending_mouse_info.col = *col - b'!';
-                    *col = b' ';
-                    can_recycle = false;
+            match self.pending[..] {
+                [.., 0x1b, b'[', b'M'] => {
+                    self.pending.push(byte);
+                    return None;
                 }
-                [.., 0x1b, b'[', b'M', _, _, row] => {
-                    self.pending_mouse_info.row = *row - b'!';
-                    *row = b' ';
-                    can_recycle = false;
+                [.., 0x1b, b'[', b'M', _] => {
+                    self.pending.push(b' ');
+                    self.pending_mouse_info.col = byte.saturating_sub(b'!');
+                    return None;
                 }
-                _ => (),
+                [.., 0x1b, b'[', b'M', _, _] => {
+                    self.pending.push(b' ');
+                    self.pending_mouse_info.row = byte.saturating_sub(b'!');
+                }
+                _ => self.pending.push(byte),
             }
 
             self.pending_reachable
@@ -119,27 +116,25 @@ impl Input {
 
         match self.pending_reachable[..] {
             [] => {
-                if can_recycle {
-                    // if we get here it means the latest byte made `retain` drop all potential
-                    // mappings; so excluding this byte, try to find an exact match
-                    if let Some(map) = self
-                        .mappings
-                        .iter()
-                        .find(|map| map.0 == self.pending[..self.pending.len() - 1])
-                    {
-                        let r = map.1;
-                        self.clear_pending();
-                        self.recycle = Some(byte);
-                        return Some(r);
-                    }
+                // if we get here it means the latest byte made `retain` drop all potential
+                // mappings; so excluding this byte, try to find an exact match
+                if let Some(map) = self
+                    .mappings
+                    .iter()
+                    .find(|map| map.0 == self.pending[..self.pending.len() - 1])
+                {
+                    let r = map.1;
+                    self.pending.clear();
+                    self.recycle = Some(byte);
+                    Some(r)
+                } else {
+                    self.pending.clear();
+                    None
                 }
-
-                self.clear_pending();
-                None
             }
 
             [single] if self.mappings[single].0.len() == self.pending.len() => {
-                self.clear_pending();
+                self.pending.clear();
                 Some(self.mappings[single].1)
             }
 
