@@ -1,24 +1,52 @@
+use std::fmt::Debug;
 use std::fs::File;
 use std::io::{self, Read};
 
 use crate::navigate::scripting::ScriptFnRef;
+use crate::terminal;
 
 pub struct Input {
     input: Box<dyn Iterator<Item = u8>>,
     recycle: Option<u8>,
     pending: Vec<u8>,
-    pending_mouse_info: Option<PendingMouseInfo>,
+    pending_mouse_info: PendingMouseInfo,
     mappings: Vec<Mapping>,
     pending_reachable: Vec<usize>,
 }
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct PendingMouseInfo {
     pub col: u8,
     pub row: u8,
 }
 
 struct Mapping(Vec<u8>, ScriptFnRef);
+
+impl Debug for Input {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        #[allow(dead_code)]
+        #[derive(Debug)]
+        struct Input<'a> {
+            recycle: Option<String>,
+            pending: String,
+            pending_mouse_info: &'a PendingMouseInfo,
+            mappings: Vec<String>,
+            pending_reachable: &'a Vec<usize>,
+        }
+        Input {
+            recycle: self.recycle.map(|b| terminal::keyseqstr(&[b])),
+            pending: terminal::keyseqstr(&self.pending),
+            pending_mouse_info: &self.pending_mouse_info,
+            mappings: self
+                .mappings
+                .iter()
+                .map(|m| terminal::keyseqstr(&m.0))
+                .collect(),
+            pending_reachable: &self.pending_reachable,
+        }
+        .fmt(f)
+    }
+}
 
 impl Input {
     pub fn new() -> Self {
@@ -33,7 +61,7 @@ impl Input {
             ),
             recycle: None,
             pending: Vec::new(),
-            pending_mouse_info: None,
+            pending_mouse_info: PendingMouseInfo { row: 0, col: 0 },
             mappings: Vec::new(),
             pending_reachable: Vec::new(),
         }
@@ -41,7 +69,7 @@ impl Input {
 
     fn clear_pending(&mut self) {
         self.pending.clear();
-        self.pending_mouse_info = None;
+        //self.pending_mouse_info = None;
     }
 
     pub fn tick(&mut self) -> Option<ScriptFnRef> {
@@ -54,6 +82,8 @@ impl Input {
             self.clear_pending();
             panic!("<C-C>");
         }
+
+        let mut can_recycle = true;
 
         if self.pending.is_empty() {
             self.pending_reachable = self
@@ -69,14 +99,18 @@ impl Input {
             self.pending.push(byte);
         } else {
             self.pending.push(byte);
-            if let [.., 0x1b, b'[', b'M', _, col, row] = &self.pending[..] {
-                self.pending_mouse_info = Some(PendingMouseInfo {
-                    col: *col - b'!',
-                    row: *row - b'!',
-                });
-                let l = self.pending.len();
-                self.pending[l - 2] = b' ';
-                self.pending[l - 1] = b' ';
+            match &mut self.pending[..] {
+                [.., 0x1b, b'[', b'M', _, col] => {
+                    self.pending_mouse_info.col = *col - b'!';
+                    *col = b' ';
+                    can_recycle = false;
+                }
+                [.., 0x1b, b'[', b'M', _, _, row] => {
+                    self.pending_mouse_info.row = *row - b'!';
+                    *row = b' ';
+                    can_recycle = false;
+                }
+                _ => (),
             }
 
             self.pending_reachable
@@ -85,17 +119,19 @@ impl Input {
 
         match self.pending_reachable[..] {
             [] => {
-                // if we get here it means the latest byte made `retain` drop all potential
-                // mapping; so excluding this byte, try to find an exact match
-                if let Some(map) = self
-                    .mappings
-                    .iter()
-                    .find(|map| map.0 == self.pending[..self.pending.len() - 1])
-                {
-                    let r = map.1;
-                    self.clear_pending();
-                    self.recycle = Some(byte);
-                    return Some(r);
+                if can_recycle {
+                    // if we get here it means the latest byte made `retain` drop all potential
+                    // mappings; so excluding this byte, try to find an exact match
+                    if let Some(map) = self
+                        .mappings
+                        .iter()
+                        .find(|map| map.0 == self.pending[..self.pending.len() - 1])
+                    {
+                        let r = map.1;
+                        self.clear_pending();
+                        self.recycle = Some(byte);
+                        return Some(r);
+                    }
                 }
 
                 self.clear_pending();
@@ -115,8 +151,8 @@ impl Input {
         &self.pending
     }
 
-    pub fn get_pending_mouse_info(&self) -> Option<&PendingMouseInfo> {
-        self.pending_mouse_info.as_ref()
+    pub fn get_pending_mouse_info(&self) -> PendingMouseInfo {
+        self.pending_mouse_info.clone()
     }
 
     pub fn add_mapping(&mut self, sequence: Vec<u8>, action: ScriptFnRef) {

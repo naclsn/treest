@@ -326,6 +326,10 @@ pub fn keyseqstr(seq: &[u8]) -> String {
     r
 }
 
+pub fn keyseqstr_each(seq: &[u8]) -> String {
+    seq.iter().map(|b| keyseqstr(&[*b])).collect()
+}
+
 #[cfg(test)]
 macro_rules! assert_trans {
     ($text:literal => None) => {

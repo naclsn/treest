@@ -1,11 +1,11 @@
-use std::cell::RefCell;
+use std::cell::{RefMut, RefCell};
 use std::io::{self, Read};
 use std::path::PathBuf;
 use std::rc::Rc;
 
-use rhai::{plugin::*, Engine, FnPtr, NativeCallContext, Scope, AST};
+use rhai::{plugin::*, Engine, FnPtr, NativeCallContext, Scope, AST, Map, INT};
 
-use crate::navigate::Navigate;
+use crate::navigate::{ViewJumpBy, Navigate};
 use crate::prompt;
 use crate::terminal;
 
@@ -41,6 +41,11 @@ impl Api {
             nav: Rc::new(RefCell::new(nav)),
             current_sourced: 0, // 0 is user_script or default.rhai
         }
+    }
+
+    #[inline]
+    pub fn m(&mut self) -> RefMut<'_, Navigate> {
+        self.nav.borrow_mut()
     }
 }
 
@@ -90,13 +95,13 @@ pub fn main_loop(mut nav: Navigate) {
 
 #[export_module]
 mod api {
-    pub fn hi(api: &mut Api, w: &str) {
-        api.nav.borrow_mut().message = Some(format!("hellloo {w}"));
+    pub fn hi(api: &mut Api, w: Dynamic) {
+        api.m().message = Some(format!("hellloo {w:#?}").replace("\n", "\r\n"));
         //panic!("hellloo {w}");
     }
 
     pub fn _tick(cc: NativeCallContext, api: &mut Api, _: MakeUncallable) {
-        let mut nav = api.nav.borrow_mut();
+        let mut nav = api.m();
 
         let buf = nav.to_string();
         eprint!("{buf}");
@@ -119,13 +124,13 @@ mod api {
                 .call::<()>(cc.engine(), &ast, (api.clone(),))
                 .unwrap();
 
-            let mut nav = api.nav.borrow_mut();
+            let mut nav = api.m();
             nav.scripting.sourced[ast_ref] = Some(ast);
             nav.scripting.script_fns[action.0] = Some(ScriptFn(fn_ptr, ast_ref));
         }
     }
 
-    pub fn source(cc: NativeCallContext, api: &mut Api, text: &str) {
+    pub fn source_text(cc: NativeCallContext, api: &mut Api, text: &str) {
         let p_current_sourced = api.current_sourced;
         api.current_sourced = api.nav.borrow().scripting.sourced.len();
 
@@ -136,10 +141,10 @@ mod api {
             .unwrap();
 
         api.current_sourced = p_current_sourced;
-        api.nav.borrow_mut().scripting.sourced.push(Some(ast));
+        api.m().scripting.sourced.push(Some(ast));
     }
 
-    pub fn source_file(cc: NativeCallContext, api: &mut Api, file: &str) {
+    pub fn source(cc: NativeCallContext, api: &mut Api, file: &str) {
         let p_current_sourced = api.current_sourced;
         api.current_sourced = api.nav.borrow().scripting.sourced.len();
 
@@ -150,12 +155,12 @@ mod api {
             .unwrap();
 
         api.current_sourced = p_current_sourced;
-        api.nav.borrow_mut().scripting.sourced.push(Some(ast));
+        api.m().scripting.sourced.push(Some(ast));
     }
 
     pub fn register(api: &mut Api, seq: &str, cb: FnPtr) {
         let script_fn = ScriptFn(cb, api.current_sourced);
-        let mut nav = api.nav.borrow_mut();
+        let mut nav = api.m();
 
         let fnref = nav.scripting.script_fns.len();
         nav.scripting.script_fns.push(Some(script_fn));
@@ -167,15 +172,18 @@ mod api {
     }
 
     #[rhai_fn(pure)]
-    pub fn mouse_event_pos(api: &mut Api) -> Option<(u8, u8)> {
-        api.nav
+    pub fn mouse_event_pos(api: &mut Api) -> Map {
+        let info = api.nav
             .borrow()
             .input
-            .get_pending_mouse_info()
-            .map(|info| (info.row, info.col))
+            .get_pending_mouse_info();
+        let mut r = Map::new();
+        r.insert("row".into(), Dynamic::from(info.row as INT));
+        r.insert("col".into(), Dynamic::from(info.col as INT));
+        r
     }
 
-    #[rhai_fn(pure)]
+    #[rhai_fn(pure)] // not when adding TODO: history
     pub fn prompt(_: &mut Api, ps: &str) -> String {
         terminal::mouse_off();
         terminal::cursor_on();
@@ -190,19 +198,33 @@ mod api {
         res.unwrap()
     }
 
-    pub fn unfold(api: &mut Api, path: Vec<usize>) {
-        api.nav.borrow_mut().unfold(&path);
-    }
+    pub fn unfold(api: &mut Api, path: Vec<usize>) { api.m().unfold(&path); }
+    #[rhai_fn(name = "unfold")] pub fn unfold_cursor(api: &mut Api) { api.m().unfold_cursor(); }
 
-    #[rhai_fn(name = "unfold")]
-    pub fn unfold_cursor(api: &mut Api) {
-        api.nav.borrow_mut().unfold_cursor();
-    }
-
-    // XXX: stub
-    pub fn enter(api: &mut Api) { api.nav.borrow_mut().cursor.push(0); }
-    pub fn leave(api: &mut Api) { api.nav.borrow_mut().cursor.pop(); }
-    pub fn next(api: &mut Api) { api.nav.borrow_mut().cursor.last_mut().map(|k| *k+= 1); }
-    pub fn prev(api: &mut Api) { api.nav.borrow_mut().cursor.last_mut().map(|k| *k-= 1); }
     pub fn quit(_: &mut Api) { panic!("haha"); }
+
+    pub fn enter(api: &mut Api) { api.m().enter(); }
+    pub fn leave(api: &mut Api) { api.m().leave(); }
+
+    pub fn next(api: &mut Api, wrapping: &str) { api.m().next("wrap" == wrapping); }
+    pub fn prev(api: &mut Api, wrapping: &str) { api.m().prev("wrap" == wrapping); }
+    #[rhai_fn(name = "next")] pub fn next_sat(api: &mut Api) { api.m().next(false); }
+    #[rhai_fn(name = "prev")] pub fn prev_sat(api: &mut Api) { api.m().prev(false); }
+
+    pub fn view_down(api: &mut Api, by: &str) { api.m().view.borrow_mut().down(match by {
+        "win" => ViewJumpBy::Win,
+        "halfwin" => ViewJumpBy::HalfWin,
+        "mouse" => ViewJumpBy::Mouse,
+        _ => ViewJumpBy::Line,
+    }); }
+    pub fn view_up(api: &mut Api, by: &str) { api.m().view.borrow_mut().up(match by {
+        "win" => ViewJumpBy::Win,
+        "halfwin" => ViewJumpBy::HalfWin,
+        "mouse" => ViewJumpBy::Mouse,
+        _ => ViewJumpBy::Line,
+    }); }
+    #[rhai_fn(name = "view_down")]
+    pub fn view_down_line(api: &mut Api) { api.m().view.borrow_mut().down(ViewJumpBy::Line); }
+    #[rhai_fn(name = "view_up")]
+    pub fn view_up_line(api: &mut Api) { api.m().view.borrow_mut().up(ViewJumpBy::Line); }
 }

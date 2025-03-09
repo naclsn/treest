@@ -14,6 +14,8 @@ pub struct NodePath<'a> {
     pub tail: &'a Node,
 }
 
+pub type Cursor = Vec<usize>;
+
 impl<'a> From<&'a [&'a Node]> for NodePath<'a> {
     fn from(value: &'a [&'a Node]) -> Self {
         let k = value.len() - 1;
@@ -38,6 +40,10 @@ impl Node {
         self.children
             .as_ref()
             .map(|(nodes, sel)| sel.iter().map(|k| &nodes[*k]).collect())
+    }
+
+    pub fn child_count(&self) -> usize {
+        self.children.as_ref().map(|(_, sel)| sel.len()).unwrap_or(0)
     }
 
     pub fn folded(&self) -> bool {

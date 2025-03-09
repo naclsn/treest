@@ -9,12 +9,12 @@ mod scripting;
 use crate::navigate::scripting::Scripting;
 use crate::providers::Provider;
 use crate::terminal;
-use crate::tree::Node;
+use crate::tree::{Cursor, Node};
 
 pub struct Navigate {
     tree: Node,
     provider: Box<dyn Provider>,
-    cursor: Vec<usize>,
+    cursor: Cursor,
 
     input: input::Input,
 
@@ -27,7 +27,7 @@ pub struct Navigate {
 struct View {
     scroll: usize,
     total: Range<usize>,
-    line_mapping: Vec<Vec<usize>>, // XXX: eeee, for now yes and with an actual 'Cursor' type
+    line_mapping: Vec<Cursor>,
 }
 enum ViewJumpBy {
     Line,
@@ -60,7 +60,7 @@ impl View {
     fn down(&mut self, by: ViewJumpBy) {
         let by = self.jump_by(by);
         let end = self.total.end;
-        if self.scroll < end - by {
+        if self.scroll + by < end {
             self.scroll += by;
         } else {
             self.scroll = end - 1;
@@ -73,37 +73,6 @@ impl View {
             self.scroll -= by;
         } else {
             self.scroll = 0;
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub enum Direction {
-    Prev,
-    Next,
-}
-
-impl Direction {
-    pub fn go(&self, k: usize) -> usize {
-        match self {
-            Direction::Prev => k - 1,
-            Direction::Next => k + 1,
-        }
-    }
-
-    pub fn go_sat(&self, k: usize, m: usize) -> usize {
-        match self {
-            Direction::Prev if 0 != k => k - 1,
-            Direction::Next if k < m - 1 => k + 1,
-            _ => k,
-        }
-    }
-
-    pub fn go_wrap(&self, k: usize, m: usize) -> usize {
-        match self {
-            Direction::Prev if 0 == k => m - 1,
-            Direction::Next if k == m - 1 => 0,
-            _ => self.go(k),
         }
     }
 }
@@ -135,5 +104,41 @@ impl Navigate {
 
     pub fn unfold_cursor(&mut self) {
         self.tree.unfold(&mut self.provider, &self.cursor);
+    }
+
+    pub fn enter(&mut self) {
+        // TODO: !!
+        self.cursor.push(0);
+    }
+
+    pub fn leave(&mut self) {
+        // TODO: !!
+        self.cursor.pop();
+    }
+
+    pub fn next(&mut self, wrapping: bool) {
+        let l = self.cursor.len();
+        if 0 < l {
+            let m = self.tree.resolve_node(&self.cursor[..l - 1]).child_count() - 1;
+            self.cursor.last_mut().map(|k| match wrapping {
+                false if *k < m => *k += 1,
+                true if *k == m => *k = 0,
+                true => *k += 1,
+                _ => (),
+            });
+        }
+    }
+
+    pub fn prev(&mut self, wrapping: bool) {
+        let l = self.cursor.len();
+        if 0 < l {
+            let m = self.tree.resolve_node(&self.cursor[..l - 1]).child_count() - 1;
+            self.cursor.last_mut().map(|k| match wrapping {
+                false if 0 < *k => *k -= 1,
+                true if 0 == *k => *k = m,
+                true => *k -= 1,
+                _ => (),
+            });
+        }
     }
 }
