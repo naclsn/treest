@@ -49,6 +49,7 @@ impl Node {
     pub fn set_folded(&mut self, is: bool) {
         self.folded = is;
     }
+
     pub fn set_marked(&mut self, is: bool) {
         self.marked = is;
     }
@@ -93,8 +94,35 @@ impl Node {
             .fold(self, |acc, cur| acc.child_mut(*cur).unwrap())
     }
 
-    pub fn unfold(&mut self, provider: &mut Box<dyn Provider>, path: &[usize]) -> usize {
+    /// Load the child nodes for the target at path.
+    ///
+    /// `folded` indicates whether to actually unfold the node.
+    ///
+    /// If these where already loaded and `force` is not true,
+    /// this is equivalent to `target.set_folded(folded)`.
+    ///
+    /// The number of (visible) children is always returned.
+    pub fn load(
+        &mut self,
+        provider: &mut Box<dyn Provider>,
+        path: &[usize],
+        force: bool,
+        folded: bool,
+    ) -> usize {
         let parents = self.resolve(path);
+
+        if !force {
+            let target = parents.last().unwrap();
+            if target.is_loaded() {
+                if target.is_folded() != folded {
+                    let target = self.resolve_node_mut(path);
+                    target.set_folded(folded);
+                    return target.child_count();
+                } else {
+                    return target.child_count();
+                }
+            }
+        }
 
         let nodes: Vec<_> = provider
             .provide(&parents[..].into())
@@ -120,9 +148,9 @@ impl Node {
         let sel: Vec<_> = filtered_sorted.into_iter().map(|p| p.0).collect();
 
         let r = sel.len();
-        let unfolded = self.resolve_node_mut(path);
-        unfolded.children = Some((nodes, sel));
-        unfolded.folded = false;
+        let target = self.resolve_node_mut(path);
+        target.children = Some((nodes, sel));
+        target.set_folded(folded);
         r
     }
 }

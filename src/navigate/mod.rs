@@ -8,7 +8,9 @@ mod input;
 mod options;
 mod scripting;
 
-use crate::navigate::{input::Input, options::Options, scripting::Scripting};
+use crate::navigate::input::Input;
+use crate::navigate::options::Options;
+use crate::navigate::scripting::Scripting;
 use crate::providers::Provider;
 use crate::terminal;
 use crate::tree::Node;
@@ -29,6 +31,12 @@ pub struct Navigate {
 
     scripting: Scripting,
     options: Options,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum Target<'a> {
+    Cursor,
+    Path(&'a [usize]),
 }
 
 struct View {
@@ -84,6 +92,15 @@ impl View {
     }
 }
 
+macro_rules! as_path {
+    ($self:ident, $at:expr) => {
+        match $at {
+            Target::Cursor => &$self.cursor.0[..$self.cursor.1],
+            Target::Path(path) => path,
+        }
+    };
+}
+
 impl Navigate {
     pub fn new(user_script: Option<PathBuf>, provider: Box<dyn Provider>) -> Self {
         Self {
@@ -123,31 +140,28 @@ impl Navigate {
         &mut self.cursor.0[self.cursor.1 - 1]
     }
 
-    pub fn unfold(&mut self, path: &[usize]) -> usize {
-        self.tree.unfold(&mut self.provider, path)
+    pub fn set_folded(&mut self, at: Target, is: bool) -> usize {
+        self.tree
+            .load(&mut self.provider, as_path!(self, at), false, is)
+    }
+    pub fn get_folded(&self, at: Target) -> bool {
+        self.tree.resolve_node(as_path!(self, at)).is_folded()
     }
 
-    pub fn unfold_cursor(&mut self) -> usize {
+    pub fn set_marked(&mut self, at: Target, is: bool) {
         self.tree
-            .unfold(&mut self.provider, &self.cursor.0[..self.cursor.1])
+            .resolve_node_mut(as_path!(self, at))
+            .set_marked(is);
+    }
+    pub fn get_marked(&self, at: Target) -> bool {
+        self.tree.resolve_node(as_path!(self, at)).is_marked()
     }
 
     pub fn enter(&mut self) {
-        let target = self.tree.resolve_node_mut(&self.cursor.0[..self.cursor.1]);
-
-        let child_count = if !target.is_loaded() {
-            self.unfold_cursor()
-        } else {
-            if target.is_folded() {
-                target.set_folded(true);
-            }
-            target.child_count()
-        };
-
+        let child_count = self.set_folded(Target::Cursor, false);
         if 0 == child_count {
             return;
         }
-
         if self.cursor.0.len() == self.cursor.1 {
             self.cursor.0.push(0);
         }

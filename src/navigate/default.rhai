@@ -34,5 +34,12 @@ api.register("j", Fn("next"));
 api.register("k", Fn("prev"));
 api.register("q", Fn("quit"));
 
+api.register("L", |api| api.fold(false));
+api.register("H", |api| api.fold(true));
+
+api.register("<Space>", |api| {
+    api.mark(true);
+    api.next();
+});
 
 api.register("<LeftMouse>", |api| api.hi(api.mouse_event_pos()));

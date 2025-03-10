@@ -3,9 +3,10 @@ use std::io::{self, Read};
 use std::path::PathBuf;
 use std::rc::Rc;
 
-use rhai::{plugin::*, Engine, FnPtr, Map, NativeCallContext, Scope, AST, INT};
+use rhai::plugin::*;
+use rhai::{Engine, FnPtr, Map, NativeCallContext, Scope, AST, INT};
 
-use crate::navigate::{Navigate, ViewJumpBy};
+use crate::navigate::{Navigate, Target, ViewJumpBy};
 use crate::prompt;
 use crate::terminal;
 
@@ -83,7 +84,7 @@ pub fn main_loop(mut nav: Navigate) {
         .eval_with_scope::<()>(
             scope.push("uncallable_token", MakeUncallable),
             r#"
-                api.unfold();
+                api.fold(false);
                 loop {
                     api._tick(uncallable_token);
                 }
@@ -246,13 +247,44 @@ mod api {
         prompt::split(line, 0).0
     }
 
-    pub fn unfold(api: &mut Api, path: Vec<INT>) {
-        api.m()
-            .unfold(&path.iter().map(|k| *k as usize).collect::<Vec<_>>());
+    pub fn fold(api: &mut Api, is: bool, path: Vec<INT>) {
+        api.m().set_folded(
+            Target::Path(&path.iter().map(|k| *k as usize).collect::<Vec<_>>()),
+            is,
+        );
     }
-    #[rhai_fn(name = "unfold")]
-    pub fn unfold_cursor(api: &mut Api) {
-        api.m().unfold_cursor();
+    #[rhai_fn(name = "fold")]
+    pub fn fold_cursor(api: &mut Api, is: bool) {
+        api.m().set_folded(Target::Cursor, is);
+    }
+    pub fn folded(api: &mut Api, path: Vec<INT>) -> bool {
+        api.m().get_folded(Target::Path(
+            &path.iter().map(|k| *k as usize).collect::<Vec<_>>(),
+        ))
+    }
+    #[rhai_fn(name = "folded")]
+    pub fn folded_cursor(api: &mut Api) -> bool {
+        api.m().get_folded(Target::Cursor)
+    }
+
+    pub fn mark(api: &mut Api, is: bool, path: Vec<INT>) {
+        api.m().set_marked(
+            Target::Path(&path.iter().map(|k| *k as usize).collect::<Vec<_>>()),
+            is,
+        );
+    }
+    #[rhai_fn(name = "mark")]
+    pub fn mark_cursor(api: &mut Api, is: bool) {
+        api.m().set_marked(Target::Cursor, is);
+    }
+    pub fn marked(api: &mut Api, path: Vec<INT>) -> bool {
+        api.m().get_marked(Target::Path(
+            &path.iter().map(|k| *k as usize).collect::<Vec<_>>(),
+        ))
+    }
+    #[rhai_fn(name = "marked")]
+    pub fn marked_cursor(api: &mut Api) -> bool {
+        api.m().get_marked(Target::Cursor)
     }
 
     pub fn quit(_: &mut Api) {
