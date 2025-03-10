@@ -40,7 +40,7 @@ impl Api {
     pub fn new(nav: Navigate) -> Self {
         Self {
             nav: Rc::new(RefCell::new(nav)),
-            current_sourced: 0, // 0 is user_script or default.rhai
+            current_sourced: 0, // 0 is user_script or defaults.rhai
         }
     }
 
@@ -64,7 +64,7 @@ pub fn main_loop(mut nav: Navigate) {
             .compile_file(file)
             .expect("somethin about user script not valid")
     } else {
-        engine.compile(include_str!("default.rhai")).unwrap()
+        engine.compile(include_str!("../defaults.rhai")).unwrap()
     };
 
     let mut scope = Scope::new();
@@ -176,6 +176,25 @@ mod api {
             terminal::keytrans(seq).expect("need valid seq something blbl"),
             ScriptFnRef(fnref),
         );
+    }
+
+    #[rhai_fn(name = "register")]
+    pub fn register_multiple(api: &mut Api, map: Map) {
+        let current_sourced = api.current_sourced;
+        let mut nav = api.m();
+
+        for (seq, cb) in map {
+            let Some(cb) = cb.try_cast() else { continue };
+            let script_fn = ScriptFn(cb, current_sourced);
+
+            let fnref = nav.scripting.script_fns.len();
+            nav.scripting.script_fns.push(Some(script_fn));
+
+            nav.input.add_mapping(
+                terminal::keytrans(&seq).expect("need valid seq something blbl"),
+                ScriptFnRef(fnref),
+            );
+        }
     }
 
     #[rhai_fn(global)]

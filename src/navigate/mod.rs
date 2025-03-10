@@ -1,5 +1,5 @@
 use std::cell::RefCell;
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 use std::ops::Range;
 use std::path::PathBuf;
 
@@ -24,7 +24,7 @@ pub struct Navigate {
 
     input: input::Input,
 
-    prompt_history: HashMap<String, Vec<String>>,
+    prompt_history: BTreeMap<String, Vec<String>>,
 
     message: Option<String>,
     view: RefCell<View>, // is mutated during rendering to stay up to date
@@ -110,7 +110,7 @@ impl Navigate {
 
             input: Input::new(),
 
-            prompt_history: HashMap::new(),
+            prompt_history: BTreeMap::new(),
 
             message: None,
             view: RefCell::new(View {
