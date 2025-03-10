@@ -19,8 +19,10 @@ type CursorLikePath = Vec<usize>;
 
 pub struct Navigate {
     tree: Node,
-    provider: Box<dyn Provider>,
     cursor: (CursorLikePath, usize),
+
+    provider: Box<dyn Provider>,
+    provider_name: String,
 
     input: input::Input,
 
@@ -102,11 +104,17 @@ macro_rules! as_path {
 }
 
 impl Navigate {
-    pub fn new(user_script: Option<PathBuf>, provider: Box<dyn Provider>) -> Self {
+    pub fn new(
+        user_script: Option<PathBuf>,
+        provider: Box<dyn Provider>,
+        provider_name: String,
+    ) -> Self {
         Self {
             tree: Node::new(),
-            provider,
             cursor: (vec![], 0),
+
+            provider,
+            provider_name,
 
             input: Input::new(),
 

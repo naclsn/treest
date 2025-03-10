@@ -110,6 +110,6 @@ impl Options {
 
     pub fn instanciate(self) -> Result<Navigate> {
         providers::select(&self.provider_arg, &self.provider_name)
-            .map(|prov| Navigate::new(self.user_script, prov))
+            .map(|prov| Navigate::new(self.user_script, prov, self.provider_name))
     }
 }

@@ -220,6 +220,11 @@ mod api {
     }
 
     #[rhai_fn(pure)]
+    pub fn provider_name(api: &mut Api) -> String {
+        api.nav.borrow().provider_name.clone()
+    }
+
+    #[rhai_fn(pure)]
     pub fn mouse_event_pos(api: &mut Api) -> Map {
         let info = api.nav.borrow().input.get_pending_mouse_info();
         let mut r = Map::new();
