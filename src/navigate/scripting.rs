@@ -208,23 +208,47 @@ mod api {
         r
     }
 
-    #[rhai_fn(pure)] // not when adding TODO: history
-    pub fn prompt(_: &mut Api, ps: &str) -> String {
+    pub fn prompt(cc: NativeCallContext, api: &mut Api, ps: &str, completion: FnPtr) -> Dynamic {
+        let mut nav = api.m();
+        let history = nav.prompt_history.entry(ps.into()).or_default();
+
         terminal::mouse_off();
         terminal::cursor_on();
         let res = prompt::prompt(
             ps,
             io::stdin().bytes().map_while(Result::ok),
             io::stderr(),
-            |_, _| vec![],
+            history.clone(),
+            |line, point| {
+                completion
+                    .call_within_context(&cc, (line.to_string(), point))
+                    .unwrap_or_default()
+            },
         );
         terminal::mouse_on();
         terminal::cursor_off();
-        res.unwrap()
+
+        let Some(r) = res else { return Dynamic::UNIT };
+        history.push(r.clone());
+        r.into()
     }
 
-    pub fn unfold(api: &mut Api, path: Vec<usize>) {
-        api.m().unfold(&path);
+    #[rhai_fn(global)]
+    pub fn prompt_split(line: &str, point: INT) -> Map {
+        let (args, in_arg) = prompt::split(line, point as usize);
+        let mut r = Map::new();
+        r.insert("args".into(), args.into());
+        r.insert("in_arg".into(), Dynamic::from(in_arg as INT));
+        r
+    }
+    #[rhai_fn(global, name = "prompt_split")]
+    pub fn prompt_split_vec(line: &str) -> Vec<String> {
+        prompt::split(line, 0).0
+    }
+
+    pub fn unfold(api: &mut Api, path: Vec<INT>) {
+        api.m()
+            .unfold(&path.iter().map(|k| *k as usize).collect::<Vec<_>>());
     }
     #[rhai_fn(name = "unfold")]
     pub fn unfold_cursor(api: &mut Api) {
@@ -232,7 +256,7 @@ mod api {
     }
 
     pub fn quit(_: &mut Api) {
-        // TODO
+        // TODO: quit
         panic!("haha");
     }
 

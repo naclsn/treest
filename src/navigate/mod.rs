@@ -1,4 +1,5 @@
 use std::cell::RefCell;
+use std::collections::HashMap;
 use std::ops::Range;
 use std::path::PathBuf;
 
@@ -7,7 +8,7 @@ mod input;
 mod options;
 mod scripting;
 
-use crate::navigate::{options::Options, scripting::Scripting};
+use crate::navigate::{input::Input, options::Options, scripting::Scripting};
 use crate::providers::Provider;
 use crate::terminal;
 use crate::tree::Node;
@@ -20,6 +21,8 @@ pub struct Navigate {
     cursor: (CursorLikePath, usize),
 
     input: input::Input,
+
+    prompt_history: HashMap<String, Vec<String>>,
 
     message: Option<String>,
     view: RefCell<View>, // is mutated during rendering to stay up to date
@@ -88,7 +91,9 @@ impl Navigate {
             provider,
             cursor: (vec![], 0),
 
-            input: input::Input::new(),
+            input: Input::new(),
+
+            prompt_history: HashMap::new(),
 
             message: None,
             view: RefCell::new(View {

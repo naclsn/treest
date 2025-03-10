@@ -1,15 +1,22 @@
 
+// TODO: might move out if src/
+
 //api.register("hi", |api| api.hi("heeeeeeeere"));
 
 api.register(":", |api| {
-    let ans = api.prompt(":");
+    let ans = api.prompt(":", |line, point| []);
+    if () == ans { return; }
     //api.hi(ans.trim());
     if ans.starts_with("eval ") {
         api.source_text(ans[5..]);
     }
 });
 
-api.register("=", |api| api.hi(api.source_text(api.prompt("="))));
+api.register("=", |api| {
+    let s = api.prompt("=", |line, point| []);
+    if () == s { return; }
+    api.hi(api.source_text(s));
+});
 
 
 api.register("<C-E>", Fn("view_down"));

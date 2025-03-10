@@ -1,8 +1,7 @@
 use std::io::Write;
 use std::mem;
 
-// TODO: should split at point, also in_arg when after last one, should be tested too
-pub fn split(line: &[char], point: usize) -> (Vec<String>, usize) {
+pub fn split(line: &str, point: usize) -> (Vec<String>, usize) {
     let mut args = Vec::new();
     let mut curr = String::new();
     let mut in_arg = 0;
@@ -15,10 +14,11 @@ pub fn split(line: &[char], point: usize) -> (Vec<String>, usize) {
     }
     use State::*;
 
-    let word = line.is_empty() || !line[0].is_whitespace();
+    let mut chars = line.chars().enumerate();
+
+    let word = chars.next().is_none_or(|(_, c)| !c.is_whitespace());
     let mut state = if word { Word } else { Blank };
 
-    let mut chars = line.iter().copied().enumerate();
     while let Some((k, c)) = chars.next() {
         match state {
             Word | Blank if '\'' == c => state = SingleQuote,
@@ -50,6 +50,7 @@ pub fn split(line: &[char], point: usize) -> (Vec<String>, usize) {
             DoubleQuote if '\\' == c => match chars.next() {
                 Some((_, 't')) => curr.push('\t'),
                 Some((_, 'n')) => curr.push('\n'),
+                Some((_, 'r')) => curr.push('\r'),
                 Some((_, 'e')) => curr.push('\x1b'),
                 Some((_, c)) => curr.push(c),
                 None => break,
@@ -68,12 +69,17 @@ pub fn prompt(
     ps: &str,
     input: impl IntoIterator<Item = u8>,
     mut output: impl Write,
-    complete: impl Fn(Vec<&str>, usize) -> Vec<String>,
+    mut history: Vec<String>,
+    complete: impl Fn(&str, usize) -> Vec<String>,
 ) -> Option<String> {
     write!(output, "{ps}").ok()?;
 
     let mut at = 0;
-    let mut s = Vec::new(); // meh, should rewrite with just String
+    // not a string but a vec of char so it can be indexed directly
+    let mut s = Vec::new();
+
+    let mut in_hist = history.len();
+    history.push(String::new());
 
     let mut pend = Vec::new();
     let mut input = input.into_iter();
@@ -152,9 +158,10 @@ pub fn prompt(
                 write!(output, "\x08\x1b[P").ok()?;
             }
             [0x09] => {
-                let (args, in_arg) = split(&s, at);
-                let hints = complete(args.iter().map(String::as_str).collect(), in_arg);
-                todo!("completion hints: {hints:?}");
+                //let (args, in_arg) = split(&s, at);
+                //let hints = complete(args.iter().map(String::as_str).collect(), in_arg);
+                let hints = complete(&s.into_iter().collect::<String>(), at);
+                todo!("completion hints: {hints:?}"); // TODO
             }
             [0x0a | 0x0d] => return Some(s.into_iter().collect()),
             [0x0b] => {
@@ -165,6 +172,28 @@ pub fn prompt(
                 write!(output, "\x1b[G\x1b[K{ps}").ok()?;
                 s.iter().try_for_each(|c| write!(output, "{c}")).ok()?;
                 write!(output, "\x1b[{}D", s.len() - at).ok()?;
+            }
+            [0x0e] if in_hist < history.len() - 1 => {
+                if !s.is_empty() {
+                    write!(output, "\x1b[{at}D\x1b[{}P", s.len()).ok()?;
+                }
+                in_hist += 1;
+                s = history[in_hist].chars().collect();
+                s.iter().try_for_each(|c| write!(output, "{c}")).ok()?;
+                at = s.len();
+            }
+            [0x0f] => {
+                // TODO: prompt ^O
+                return Some(s.into_iter().collect());
+            }
+            [0x10] if 0 < in_hist => {
+                if !s.is_empty() {
+                    write!(output, "\x1b[{at}D\x1b[{}P", s.len()).ok()?;
+                }
+                in_hist -= 1;
+                s = history[in_hist].chars().collect();
+                s.iter().try_for_each(|c| write!(output, "{c}")).ok()?;
+                at = s.len();
             }
             [0x15] => {
                 write!(output, "\x1b[{at}D\x1b[{at}P").ok()?;
@@ -222,7 +251,7 @@ pub fn prompt(
 #[cfg(test)]
 macro_rules! assert_args {
     ($line:literal, $args:expr) => {
-        let (args, _) = split(&$line.chars().collect::<Box<_>>(), 0);
+        let (args, _) = split($line, 0);
         assert_eq!(args, $args, $line);
     };
 }
