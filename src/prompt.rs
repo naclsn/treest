@@ -136,9 +136,13 @@ pub fn prompt(
                 at -= 1;
             }
             [0x03] => return None,
-            [0x04] | b"\x1b[3~" if at < s.len() => {
-                s.remove(at);
-                write!(output, "\x1b[P").ok()?;
+            [0x04] | b"\x1b[3~" => {
+                if at < s.len() {
+                    s.remove(at);
+                    write!(output, "\x1b[P").ok()?;
+                } else if s.is_empty() {
+                    return None;
+                }
             }
             [0x05] | b"\x1b[F" if at < s.len() => {
                 write!(output, "\x1b[{}C", s.len() - at).ok()?;

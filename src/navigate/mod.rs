@@ -15,24 +15,25 @@ use crate::providers::Provider;
 use crate::terminal;
 use crate::tree::Node;
 
+pub use scripting::make_engine;
+
 type CursorLikePath = Vec<usize>;
 
 pub struct Navigate {
     tree: Node,
-    cursor: (CursorLikePath, usize),
+    cursor: (usize, CursorLikePath),
 
     provider: Box<dyn Provider>,
     provider_name: String,
 
     input: input::Input,
 
-    prompt_history: BTreeMap<String, Vec<String>>,
-
     message: Option<String>,
     view: RefCell<View>, // is mutated during rendering to stay up to date
 
     scripting: Scripting,
     options: Options,
+    registers: BTreeMap<String, Vec<String>>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -51,6 +52,16 @@ enum ViewJumpBy {
     Mouse,
     HalfWin,
     Win,
+}
+
+impl Default for View {
+    fn default() -> Self {
+        Self {
+            scroll: 0,
+            total: 0..0,
+            line_mapping: Vec::new(),
+        }
+    }
 }
 
 impl View {
@@ -97,7 +108,7 @@ impl View {
 macro_rules! as_path {
     ($self:ident, $at:expr) => {
         match $at {
-            Target::Cursor => &$self.cursor.0[..$self.cursor.1],
+            Target::Cursor => &$self.cursor.1[..$self.cursor.0],
             Target::Path(path) => path,
         }
     };
@@ -111,24 +122,19 @@ impl Navigate {
     ) -> Self {
         Self {
             tree: Node::new(),
-            cursor: (vec![], 0),
+            cursor: (0, vec![]),
 
             provider,
             provider_name,
 
             input: Input::new(),
 
-            prompt_history: BTreeMap::new(),
-
             message: None,
-            view: RefCell::new(View {
-                scroll: 0,
-                total: 0..0,
-                line_mapping: Vec::new(),
-            }),
+            view: RefCell::default(),
 
             scripting: Scripting::new(user_script),
             options: Options::default(),
+            registers: BTreeMap::new(),
         }
     }
 
@@ -136,16 +142,20 @@ impl Navigate {
         scripting::main_loop(self);
     }
 
+    pub fn is_cursor_root(&self) -> bool {
+        0 == self.cursor.0
+    }
+
     pub fn cursor(&self) -> &[usize] {
-        &self.cursor.0[..self.cursor.1]
+        &self.cursor.1[..self.cursor.0]
     }
 
     pub fn cursor_head(&self) -> &[usize] {
-        &self.cursor.0[..self.cursor.1 - 1]
+        &self.cursor.1[..self.cursor.0 - 1]
     }
 
     pub fn cursor_tail_mut(&mut self) -> &mut usize {
-        &mut self.cursor.0[self.cursor.1 - 1]
+        &mut self.cursor.1[self.cursor.0 - 1]
     }
 
     pub fn set_folded(&mut self, at: Target, is: bool) -> usize {
@@ -170,18 +180,18 @@ impl Navigate {
         if 0 == child_count {
             return;
         }
-        if self.cursor.0.len() == self.cursor.1 {
-            self.cursor.0.push(0);
+        if self.cursor.1.len() == self.cursor.0 {
+            self.cursor.1.push(0);
         }
-        self.cursor.1 += 1;
+        self.cursor.0 += 1;
     }
 
     pub fn leave(&mut self) {
-        self.cursor.1 = self.cursor.1.saturating_sub(1);
+        self.cursor.0 = self.cursor.0.saturating_sub(1);
     }
 
     pub fn next(&mut self, wrapping: bool) {
-        if 0 == self.cursor.1 {
+        if 0 == self.cursor.0 {
             return;
         }
         let m = self.tree.resolve_node(self.cursor_head()).child_count();
@@ -195,11 +205,11 @@ impl Navigate {
             true => *k += 1,
             _ => (),
         }
-        self.cursor.0.truncate(self.cursor.1);
+        self.cursor.1.truncate(self.cursor.0);
     }
 
     pub fn prev(&mut self, wrapping: bool) {
-        if 0 == self.cursor.1 {
+        if 0 == self.cursor.0 {
             return;
         }
         let m = self.tree.resolve_node(self.cursor_head()).child_count();
@@ -213,6 +223,6 @@ impl Navigate {
             true => *k -= 1,
             _ => (),
         }
-        self.cursor.0.truncate(self.cursor.1);
+        self.cursor.1.truncate(self.cursor.0);
     }
 }

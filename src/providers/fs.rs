@@ -52,9 +52,7 @@ impl PartialEq for FsNode {
 #[cfg(unix)]
 impl From<(PathBuf, &Option<Metadata>)> for FsNodeKind {
     fn from(value: (PathBuf, &Option<Metadata>)) -> Self {
-        let Some(meta) = value.1 else {
-            return Regular;
-        };
+        let Some(meta) = value.1 else { return Regular };
 
         if meta.is_dir() {
             Directory
@@ -199,9 +197,7 @@ impl Provider for Fs {
             .collect::<PathBuf>();
         pb.push(&self.fs_nodes[path.tail.fragment.0].name);
 
-        let Ok(dir) = fs::read_dir(pb) else {
-            return Vec::new();
-        };
+        let Ok(dir) = fs::read_dir(pb) else { return Vec::new() };
 
         dir.filter_map(|d| {
             let entry = d.ok()?;

@@ -4,11 +4,12 @@ use std::path::PathBuf;
 use std::rc::Rc;
 
 use rhai::plugin::*;
-use rhai::{Engine, FnPtr, Map, NativeCallContext, Scope, AST, INT};
+use rhai::{Array, Blob, Engine, FnPtr, Map, NativeCallContext, Scope, AST, INT};
 
 use crate::navigate::{Navigate, Target, ViewJumpBy};
 use crate::prompt;
 use crate::terminal;
+use crate::tree::NodePath;
 
 struct ScriptFn(FnPtr, usize);
 #[derive(Clone, Copy)]
@@ -53,11 +54,16 @@ impl Api {
 #[derive(Clone)]
 struct MakeUncallable;
 
+pub fn make_engine() -> Engine {
+    let mut engine = Engine::new();
+    engine.register_global_module(exported_module!(api).into());
+    engine
+}
+
 pub fn main_loop(mut nav: Navigate) {
     let user_script = nav.scripting.user_script.take();
 
-    let mut engine = Engine::new();
-    engine.register_global_module(exported_module!(api).into());
+    let engine = make_engine();
 
     let ast = if let Some(file) = user_script {
         engine
@@ -88,17 +94,25 @@ pub fn main_loop(mut nav: Navigate) {
                 loop {
                     api._tick(uncallable_token);
                 }
-                api.hi("fell out");
             "#,
         )
         .unwrap();
 }
 
+fn host_path(path: &Array) -> Result<Vec<usize>, &'static str> {
+    path.iter()
+        .map(|d| d.as_int().map(|k| k as usize))
+        .collect()
+}
+
+fn script_path(path: &[usize]) -> Array {
+    path.iter().map(|k| (*k as INT).into()).collect()
+}
+
 #[export_module]
 mod api {
-    pub fn hi(api: &mut Api, w: Dynamic) {
-        api.m().message = Some(format!("hellloo {w:#?}").replace("\n", "\r\n"));
-        //panic!("hellloo {w}");
+    pub fn message(api: &mut Api, w: Dynamic) {
+        api.m().message = Some(w.to_string().replace("\n", "\r\n"));
     }
 
     pub fn _tick(cc: NativeCallContext, api: &mut Api, _: MakeUncallable) {
@@ -200,12 +214,12 @@ mod api {
     #[rhai_fn(global)]
     pub fn keytrans(text: &str) -> Dynamic {
         terminal::keytrans(text)
-            .map(Dynamic::from)
+            .map(Dynamic::from_blob)
             .unwrap_or(Dynamic::UNIT)
     }
 
     #[rhai_fn(global)]
-    pub fn keyseqstr(seq: Vec<u8>) -> String {
+    pub fn keyseqstr(seq: Blob) -> String {
         terminal::keyseqstr(&seq)
     }
 
@@ -228,14 +242,14 @@ mod api {
     pub fn mouse_event_pos(api: &mut Api) -> Map {
         let info = api.nav.borrow().input.get_pending_mouse_info();
         let mut r = Map::new();
-        r.insert("row".into(), Dynamic::from(info.row as INT));
-        r.insert("col".into(), Dynamic::from(info.col as INT));
+        r.insert("row".into(), (info.row as INT).into());
+        r.insert("col".into(), (info.col as INT).into());
         r
     }
 
     pub fn prompt(cc: NativeCallContext, api: &mut Api, ps: &str, completion: FnPtr) -> Dynamic {
         let mut nav = api.m();
-        let history = nav.prompt_history.entry(ps.into()).or_default();
+        let history = nav.registers.entry(ps.into()).or_default();
 
         terminal::mouse_off();
         terminal::cursor_on();
@@ -263,7 +277,7 @@ mod api {
         let (args, in_arg) = prompt::split(line, point as usize);
         let mut r = Map::new();
         r.insert("args".into(), args.into());
-        r.insert("in_arg".into(), Dynamic::from(in_arg as INT));
+        r.insert("in_arg".into(), (in_arg as INT).into());
         r
     }
     #[rhai_fn(global, name = "prompt_split")]
@@ -271,40 +285,34 @@ mod api {
         prompt::split(line, 0).0
     }
 
-    pub fn fold(api: &mut Api, is: bool, path: Vec<INT>) {
-        api.m().set_folded(
-            Target::Path(&path.iter().map(|k| *k as usize).collect::<Vec<_>>()),
-            is,
-        );
+    pub fn fold(api: &mut Api, is: bool, path: Array) {
+        let path = host_path(&path).unwrap();
+        api.m().set_folded(Target::Path(&path), is);
     }
     #[rhai_fn(name = "fold")]
     pub fn fold_cursor(api: &mut Api, is: bool) {
         api.m().set_folded(Target::Cursor, is);
     }
-    pub fn folded(api: &mut Api, path: Vec<INT>) -> bool {
-        api.m().get_folded(Target::Path(
-            &path.iter().map(|k| *k as usize).collect::<Vec<_>>(),
-        ))
+    pub fn folded(api: &mut Api, path: Array) -> bool {
+        let path = host_path(&path).unwrap();
+        api.m().get_folded(Target::Path(&path))
     }
     #[rhai_fn(name = "folded")]
     pub fn folded_cursor(api: &mut Api) -> bool {
         api.m().get_folded(Target::Cursor)
     }
 
-    pub fn mark(api: &mut Api, is: bool, path: Vec<INT>) {
-        api.m().set_marked(
-            Target::Path(&path.iter().map(|k| *k as usize).collect::<Vec<_>>()),
-            is,
-        );
+    pub fn mark(api: &mut Api, is: bool, path: Array) {
+        let path = host_path(&path).unwrap();
+        api.m().set_marked(Target::Path(&path), is);
     }
     #[rhai_fn(name = "mark")]
     pub fn mark_cursor(api: &mut Api, is: bool) {
         api.m().set_marked(Target::Cursor, is);
     }
-    pub fn marked(api: &mut Api, path: Vec<INT>) -> bool {
-        api.m().get_marked(Target::Path(
-            &path.iter().map(|k| *k as usize).collect::<Vec<_>>(),
-        ))
+    pub fn marked(api: &mut Api, path: Array) -> bool {
+        let path = host_path(&path).unwrap();
+        api.m().get_marked(Target::Path(&path))
     }
     #[rhai_fn(name = "marked")]
     pub fn marked_cursor(api: &mut Api) -> bool {
@@ -338,6 +346,16 @@ mod api {
         api.m().prev(false);
     }
 
+    pub fn jumpto(api: &mut Api, path: Array) {
+        // TODO: check validity before assigning, unfolding and cropping as needed
+        let path = host_path(&path).unwrap();
+        api.m().cursor = (path.len(), path);
+    }
+    #[rhai_fn(pure)]
+    pub fn cursor(api: &mut Api) -> Array {
+        script_path(&api.m().cursor())
+    }
+
     pub fn view_down(api: &mut Api, by: &str) {
         api.m().view.borrow_mut().down(match by {
             "win" => ViewJumpBy::Win,
@@ -361,5 +379,43 @@ mod api {
     #[rhai_fn(name = "view_up")]
     pub fn view_up_line(api: &mut Api) {
         api.m().view.borrow_mut().up(ViewJumpBy::Line);
+    }
+
+    // XXX: this can only search from cursor...
+    pub fn search_next(api: &mut Api, q: &str) -> Dynamic {
+        api.m()
+            .registers
+            .entry("/".into())
+            .or_default()
+            .push(q.into());
+        search_next_already(api)
+    }
+    #[rhai_fn(name = "search_next")]
+    pub fn search_next_already(api: &mut Api) -> Dynamic {
+        let nav = api.nav.borrow();
+
+        let s = nav.registers.get("/").unwrap().last().unwrap();
+
+        if nav.is_cursor_root() {
+            return Dynamic::UNIT;
+        };
+        let parent_path = nav.cursor_head();
+
+        let parent = nav.tree.resolve(parent_path);
+        let chs = parent.last().unwrap().children().unwrap();
+        let Some((found, _)) = chs.into_iter().enumerate().find(|(_, node)| {
+            nav.provider
+                .display(&NodePath {
+                    head: &parent,
+                    tail: node,
+                })
+                .contains(s)
+        }) else {
+            return Dynamic::UNIT;
+        };
+
+        let mut r = script_path(parent_path);
+        r.push((found as INT).into());
+        r.into()
     }
 }

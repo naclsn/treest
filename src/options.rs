@@ -58,14 +58,15 @@ impl Options {
 
         let mut pos_count = 0;
         while let Some(arg) = args.next() {
-            match arg {
-                list if "--list" == list || "-l" == list => {
-                    return Err(OptionsError::List(providers::NAMES.join("\n")))
-                }
+            match arg.as_str() {
+                // yea why nat
+                "=" => rhai_interp(),
 
-                help if "--help" == help || "-h" == help => return Err(OptionsError::Help(prog)),
+                "--list" | "-l" => return Err(OptionsError::List(providers::NAMES.join("\n"))),
 
-                user if "--user" == user || "-u" == user => {
+                "--help" | "-h" => return Err(OptionsError::Help(prog)),
+
+                "--user" | "-u" => {
                     let user = args.next().ok_or(OptionsError::UserArgMissing)?;
                     let file = PathBuf::from(&user);
                     if !file.is_file() {
@@ -74,27 +75,27 @@ impl Options {
                     r.user_script = Some(file);
                 }
 
-                dash if 0 == pos_count && "-" == dash => {
+                "-" if 0 == pos_count => {
                     pos_count += 1;
                     r.provider_arg.clear();
                 }
-                ddash if 0 == pos_count && "--" == ddash => {
+                "--" if 0 == pos_count => {
                     pos_count += 1;
                     r.provider_arg = args.next().unwrap_or_default();
                 }
-                arg if 0 == pos_count => {
+                _ if 0 == pos_count => {
                     pos_count += 1;
                     r.provider_arg = arg;
                 }
                 name if 1 == pos_count => {
-                    if !providers::NAMES.contains(&name.as_str()) {
-                        return Err(OptionsError::NotProvider(name));
+                    if !providers::NAMES.contains(&name) {
+                        return Err(OptionsError::NotProvider(arg));
                     }
                     pos_count += 1;
-                    r.provider_name = name;
+                    r.provider_name = arg;
                 }
 
-                unknown => return Err(OptionsError::UnexpectedArg(unknown)),
+                _ => return Err(OptionsError::UnexpectedArg(arg)),
             }
         }
 
@@ -112,4 +113,65 @@ impl Options {
         providers::select(&self.provider_arg, &self.provider_name)
             .map(|prov| Navigate::new(self.user_script, prov, self.provider_name))
     }
+}
+
+fn rhai_interp() {
+    use std::io::{self, IsTerminal, Read};
+    use std::process;
+
+    use rhai::{Dynamic, Scope};
+
+    use crate::navigate;
+    use crate::prompt;
+    use crate::terminal;
+
+    let mut input = io::stdin();
+    let output = io::stderr();
+    let mut history = Vec::new();
+    let engine = navigate::make_engine();
+    let mut scope = Scope::new();
+
+    if input.is_terminal() {
+        let mut restore = terminal::raw().unwrap();
+
+        let mut input = input.bytes().map_while(Result::ok);
+        while let Some(line) =
+            prompt::prompt("?? ", &mut input, &output, history.clone(), |_, _| {
+                Vec::new()
+            })
+        {
+            restore.restore();
+            eprintln!();
+
+            match engine.compile(&line) {
+                Ok(ast) => {
+                    eprintln!("{ast:#?}");
+                    match engine.eval_ast_with_scope::<Dynamic>(&mut scope, &ast) {
+                        Ok(ans) => {
+                            if !ans.is_unit() {
+                                eprintln!(":: {ans:#?}");
+                            }
+                        }
+                        Err(err) => eprintln!("!! {err}"),
+                    }
+                }
+                Err(err) => eprintln!("!! {err}"),
+            }
+            history.push(line);
+
+            restore = terminal::raw().unwrap();
+        }
+
+        restore.restore();
+    } else {
+        let mut s = String::new();
+        if input.read_to_string(&mut s).is_ok() {
+            match engine.eval::<Dynamic>(&s) {
+                Ok(ans) => eprintln!("{ans:#?}"),
+                Err(err) => eprintln!("!! {err}"),
+            }
+        }
+    }
+
+    process::exit(0);
 }

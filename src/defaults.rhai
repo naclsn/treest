@@ -1,7 +1,6 @@
 api.register(#{
     ":": |api| {
-        let ans = api.prompt(":", |line, point| []);
-        if () == ans { return; }
+        let ans = api.prompt(":", |line, point| []) ?? return;
         //api.hi(ans.trim());
         if ans.starts_with("eval ") {
             api.source_text(ans[5..]);
@@ -9,9 +8,25 @@ api.register(#{
     },
 
     "=": |api| {
-        let s = api.prompt("=", |line, point| []);
-        if () == s { return; }
-        api.hi(api.source_text(s));
+        let s = api.prompt("=", |line, point| []) ?? return;
+        api.message(api.source_text(s));
+    },
+
+    "/": |api| {
+        // no `let`: search_next already uses the "/" register
+        api.prompt("/", |line, point| []) ?? return;
+        let found = api.search_next() ?? {
+            api.message("not found: " + "bsdlfb");
+            return;
+        };
+        api.jumpto(found);
+    },
+    "n": |api| {
+        let found = api.search_next() ?? {
+            api.message("not found: " + "bsdlfb");
+            return;
+        };
+        api.jumpto(found);
     },
 
 
@@ -38,5 +53,5 @@ api.register(#{
         api.next();
     },
 
-    "<LeftMouse>": |api| api.hi(api.mouse_event_pos()),
+    "<LeftMouse>": |api| api.message(api.mouse_event_pos()),
 });
