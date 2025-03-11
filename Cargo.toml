@@ -4,19 +4,19 @@ version = "0.1.0"
 edition = "2021"
 
 [target."cfg(unix)".dependencies]
-libc = "0.2.158"
+libc = "0.2.171"
 
 [target."cfg(windows)".dependencies]
 winapi = "0.3.9"
 
 [dependencies]
-anyhow = "1.0.89"
-lscolors = { version = "0.19.0", default-features = false, features = ["ansi_term"] }
+anyhow = "1.0.97"
+lscolors = { version = "0.20.0", default-features = false, features = ["ansi_term"] }
 rhai = "1.21.0"
-serde_json = "1.0.128"
+serde_json = "1.0.140"
 serde_yml = "0.0.12"
-sqlite = "0.36.1"
-sysinfo = { version = "0.32.0", default-features = false, features = ["system"] }
-thiserror = "1.0.64"
-toml = { version = "0.8.19", default-features = false, features = ["parse"] }
-xml-rs = "0.8.22"
+sqlite = "0.36.2"
+sysinfo = { version = "0.33.1", default-features = false, features = ["system"] }
+thiserror = "2.0.12"
+toml = { version = "0.8.20", default-features = false, features = ["parse"] }
+xml-rs = "0.8.25"
