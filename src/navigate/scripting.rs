@@ -76,7 +76,9 @@ pub fn main_loop(mut nav: Navigate) {
     let mut scope = Scope::new();
     engine
         .eval_ast_with_scope::<()>(scope.push("api", Api::new(nav)), &ast)
-        .unwrap();
+        .expect(
+            "somethin about user script not valid runtime, 'cause defaults.rhai should be valid",
+        );
     scope
         .get_value_mut::<Api>("api")
         .unwrap()
@@ -98,6 +100,8 @@ pub fn main_loop(mut nav: Navigate) {
         )
         .unwrap();
 }
+
+type ApiResult<T> = Result<T, Box<EvalAltResult>>;
 
 fn host_path(path: &Array) -> Result<Vec<usize>, &'static str> {
     path.iter()
@@ -137,7 +141,7 @@ mod api {
 
             fn_ptr
                 .call::<()>(cc.engine(), &ast, (api.clone(),))
-                .unwrap();
+                .expect("TODO");
 
             let mut nav = api.m();
             nav.scripting.sourced[ast_ref] = Some(ast);
@@ -145,7 +149,8 @@ mod api {
         }
     }
 
-    pub fn source_text(cc: NativeCallContext, api: &mut Api, text: &str) -> Dynamic {
+    #[rhai_fn(return_raw)]
+    pub fn source_text(cc: NativeCallContext, api: &mut Api, text: &str) -> ApiResult<Dynamic> {
         let p_current_sourced = api.current_sourced;
         api.current_sourced = api.nav.borrow().scripting.sourced.len();
 
@@ -153,16 +158,16 @@ mod api {
         let mut scope = Scope::new();
         let r = cc
             .engine()
-            .eval_ast_with_scope(scope.push("api", api.clone()), &ast)
-            .unwrap();
+            .eval_ast_with_scope(scope.push("api", api.clone()), &ast)?;
 
         api.current_sourced = p_current_sourced;
         api.m().scripting.sourced.push(Some(ast));
 
-        r
+        Ok(r)
     }
 
-    pub fn source(cc: NativeCallContext, api: &mut Api, file: &str) -> Dynamic {
+    #[rhai_fn(return_raw)]
+    pub fn source(cc: NativeCallContext, api: &mut Api, file: &str) -> ApiResult<Dynamic> {
         let p_current_sourced = api.current_sourced;
         api.current_sourced = api.nav.borrow().scripting.sourced.len();
 
@@ -170,13 +175,12 @@ mod api {
         let mut scope = Scope::new();
         let r = cc
             .engine()
-            .eval_ast_with_scope(scope.push("api", api.clone()), &ast)
-            .unwrap();
+            .eval_ast_with_scope(scope.push("api", api.clone()), &ast)?;
 
         api.current_sourced = p_current_sourced;
         api.m().scripting.sourced.push(Some(ast));
 
-        r
+        Ok(r)
     }
 
     pub fn register(api: &mut Api, seq: &str, cb: FnPtr) {
@@ -215,7 +219,7 @@ mod api {
     pub fn keytrans(text: &str) -> Dynamic {
         terminal::keytrans(text)
             .map(Dynamic::from_blob)
-            .unwrap_or(Dynamic::UNIT)
+            .unwrap_or_default()
     }
 
     #[rhai_fn(global)]
@@ -223,15 +227,61 @@ mod api {
         terminal::keyseqstr(&seq)
     }
 
-    #[rhai_fn(pure, index_get)]
-    pub fn get_option(api: &mut Api, name: &str) -> Dynamic {
-        api.m().options.get(name)
+    // values (options and registers) {{{
+
+    #[rhai_fn(pure, index_get, name = "value")]
+    pub fn get_value(api: &mut Api, name: &str) -> Dynamic {
+        if b'&' == name.as_bytes()[0] {
+            api.nav.borrow().options.get(&name[1..])
+        } else {
+            api.nav
+                .borrow()
+                .registers
+                .get(name)
+                .and_then(|v| v.last().cloned())
+                .map(Dynamic::from)
+                .unwrap_or_default()
+        }
+    }
+
+    #[rhai_fn(pure, name = "value")]
+    pub fn get_value_hist(api: &mut Api, name: &str, history: &str) -> Dynamic {
+        if "hist" != history {
+            return get_value(api, name);
+        }
+        if b'&' == name.as_bytes()[0] {
+            let r = api.nav.borrow().options.get(&name[1..]);
+            if !r.is_unit() {
+                vec![r].into()
+            } else {
+                r
+            }
+        } else {
+            api.nav
+                .borrow()
+                .registers
+                .get(name)
+                .cloned()
+                .map(Dynamic::from)
+                .unwrap_or_default()
+        }
     }
 
     #[rhai_fn(return_raw, index_set)]
-    pub fn set_option(api: &mut Api, name: &str, value: Dynamic) -> Result<(), Box<EvalAltResult>> {
-        Ok(api.m().options.set(name, value)?)
+    pub fn set_value(api: &mut Api, name: &str, value: Dynamic) -> ApiResult<()> {
+        if b'&' == name.as_bytes()[0] {
+            api.m().options.set(&name[1..], value)?;
+        } else {
+            api.m()
+                .registers
+                .entry(name.into())
+                .or_default()
+                .push(value.into_string()?);
+        }
+        Ok(())
     }
+
+    // }}}
 
     #[rhai_fn(pure)]
     pub fn provider_name(api: &mut Api) -> String {
@@ -285,34 +335,40 @@ mod api {
         prompt::split(line, 0).0
     }
 
-    pub fn fold(api: &mut Api, is: bool, path: Array) {
-        let path = host_path(&path).unwrap();
+    #[rhai_fn(return_raw)]
+    pub fn fold(api: &mut Api, is: bool, path: Array) -> ApiResult<()> {
+        let path = host_path(&path)?;
         api.m().set_folded(Target::Path(&path), is);
+        Ok(())
     }
     #[rhai_fn(name = "fold")]
     pub fn fold_cursor(api: &mut Api, is: bool) {
         api.m().set_folded(Target::Cursor, is);
     }
-    pub fn folded(api: &mut Api, path: Array) -> bool {
-        let path = host_path(&path).unwrap();
-        api.m().get_folded(Target::Path(&path))
+    #[rhai_fn(return_raw)]
+    pub fn folded(api: &mut Api, path: Array) -> ApiResult<bool> {
+        let path = host_path(&path)?;
+        Ok(api.m().get_folded(Target::Path(&path)))
     }
     #[rhai_fn(name = "folded")]
     pub fn folded_cursor(api: &mut Api) -> bool {
         api.m().get_folded(Target::Cursor)
     }
 
-    pub fn mark(api: &mut Api, is: bool, path: Array) {
-        let path = host_path(&path).unwrap();
+    #[rhai_fn(return_raw)]
+    pub fn mark(api: &mut Api, is: bool, path: Array) -> ApiResult<()> {
+        let path = host_path(&path)?;
         api.m().set_marked(Target::Path(&path), is);
+        Ok(())
     }
     #[rhai_fn(name = "mark")]
     pub fn mark_cursor(api: &mut Api, is: bool) {
         api.m().set_marked(Target::Cursor, is);
     }
-    pub fn marked(api: &mut Api, path: Array) -> bool {
-        let path = host_path(&path).unwrap();
-        api.m().get_marked(Target::Path(&path))
+    #[rhai_fn(return_raw)]
+    pub fn marked(api: &mut Api, path: Array) -> ApiResult<bool> {
+        let path = host_path(&path)?;
+        Ok(api.m().get_marked(Target::Path(&path)))
     }
     #[rhai_fn(name = "marked")]
     pub fn marked_cursor(api: &mut Api) -> bool {
@@ -346,14 +402,16 @@ mod api {
         api.m().prev(false);
     }
 
-    pub fn jumpto(api: &mut Api, path: Array) {
+    #[rhai_fn(return_raw)]
+    pub fn jumpto(api: &mut Api, path: Array) -> ApiResult<()> {
         // TODO: check validity before assigning, unfolding and cropping as needed
-        let path = host_path(&path).unwrap();
+        let path = host_path(&path)?;
         api.m().cursor = (path.len(), path);
+        Ok(())
     }
     #[rhai_fn(pure)]
     pub fn cursor(api: &mut Api) -> Array {
-        script_path(&api.m().cursor())
+        script_path(api.m().cursor())
     }
 
     pub fn view_down(api: &mut Api, by: &str) {
@@ -381,41 +439,155 @@ mod api {
         api.m().view.borrow_mut().up(ViewJumpBy::Line);
     }
 
-    // XXX: this can only search from cursor...
-    pub fn search_next(api: &mut Api, q: &str) -> Dynamic {
+    // searches {{{
+    // xxx: searches can only search from cursor...
+    // xxx: code dupe / unreadable control flow
+    // TODO/FIXME: bunch of int underflow / bound not checked
+
+    pub fn search_next(api: &mut Api, q: &str, wrapping: &str) -> Dynamic {
         api.m()
             .registers
             .entry("/".into())
             .or_default()
             .push(q.into());
-        search_next_already(api)
+        search_next_already(api, wrapping)
     }
     #[rhai_fn(name = "search_next")]
-    pub fn search_next_already(api: &mut Api) -> Dynamic {
+    pub fn search_next_already(api: &mut Api, wrapping: &str) -> Dynamic {
         let nav = api.nav.borrow();
 
-        let s = nav.registers.get("/").unwrap().last().unwrap();
-
         if nav.is_cursor_root() {
-            return Dynamic::UNIT;
+            return Dynamic::UNIT; // reason: not found
         };
-        let parent_path = nav.cursor_head();
+        let [parent_path @ .., current] = nav.cursor() else {
+            unreachable!();
+        };
+        let search_from = *current + 1;
 
         let parent = nav.tree.resolve(parent_path);
         let chs = parent.last().unwrap().children().unwrap();
-        let Some((found, _)) = chs.into_iter().enumerate().find(|(_, node)| {
+
+        let Some(s) = nav.registers.get("/").and_then(|v| v.last()) else {
+            return Dynamic::UNIT; // reason: no search to repeat
+        };
+
+        match chs[search_from..].iter().position(|node| {
             nav.provider
                 .display(&NodePath {
                     head: &parent,
                     tail: node,
                 })
                 .contains(s)
-        }) else {
-            return Dynamic::UNIT;
+        }) {
+            Some(found) => {
+                let mut r = script_path(parent_path);
+                r.push(((search_from + found) as INT).into());
+                r.into()
+            }
+            None if "wrap" == wrapping => {
+                let search_until = *current - 1;
+                let Some(found) = chs[..=search_until].iter().position(|node| {
+                    nav.provider
+                        .display(&NodePath {
+                            head: &parent,
+                            tail: node,
+                        })
+                        .contains(s)
+                }) else {
+                    return Dynamic::UNIT; // reason: not found
+                };
+                let mut r = script_path(parent_path);
+                r.push((found as INT).into());
+                r.into()
+            }
+            None => Dynamic::UNIT, // reason: not found
+        }
+    }
+    #[rhai_fn(name = "search_next")]
+    pub fn search_next_already_sat(api: &mut Api) -> Dynamic {
+        search_next_already(api, "sat")
+    }
+
+    pub fn search_prev(api: &mut Api, q: &str, wrapping: &str) -> Dynamic {
+        api.m()
+            .registers
+            .entry("/".into())
+            .or_default()
+            .push(q.into());
+        search_prev_already(api, wrapping)
+    }
+    #[rhai_fn(name = "search_prev")]
+    pub fn search_prev_already(api: &mut Api, wrapping: &str) -> Dynamic {
+        let nav = api.nav.borrow();
+
+        if nav.is_cursor_root() {
+            return Dynamic::UNIT; // reason: not found
+        };
+        let [parent_path @ .., current] = nav.cursor() else {
+            unreachable!();
+        };
+        let search_until = *current - 1;
+
+        let parent = nav.tree.resolve(parent_path);
+        let chs = parent.last().unwrap().children().unwrap();
+
+        let Some(s) = nav.registers.get("/").and_then(|v| v.last()) else {
+            return Dynamic::UNIT; // reason: no search to repeat
         };
 
-        let mut r = script_path(parent_path);
-        r.push((found as INT).into());
-        r.into()
+        match chs[..=search_until].iter().rev().position(|node| {
+            nav.provider
+                .display(&NodePath {
+                    head: &parent,
+                    tail: node,
+                })
+                .contains(s)
+        }) {
+            Some(found) => {
+                let mut r = script_path(parent_path);
+                r.push(((search_until - found) as INT).into());
+                r.into()
+            }
+            None if "wrap" == wrapping => {
+                let search_from = *current + 1;
+                let Some(found) = chs[search_from..].iter().rev().position(|node| {
+                    nav.provider
+                        .display(&NodePath {
+                            head: &parent,
+                            tail: node,
+                        })
+                        .contains(s)
+                }) else {
+                    return Dynamic::UNIT; // reason: not found
+                };
+                let mut r = script_path(parent_path);
+                r.push(((chs.len() - 1 - found) as INT).into());
+                r.into()
+            }
+            None => Dynamic::UNIT, // reason: not found
+        }
     }
+    #[rhai_fn(name = "search_prev")]
+    pub fn search_prev_already_sat(api: &mut Api) -> Dynamic {
+        search_prev_already(api, "sat")
+    }
+
+    pub fn search_deep(api: &mut Api, q: &str, wrapping: &str) -> Dynamic {
+        api.m()
+            .registers
+            .entry("/".into())
+            .or_default()
+            .push(q.into());
+        search_deep_already(api, wrapping)
+    }
+    #[rhai_fn(name = "search_deep")]
+    pub fn search_deep_already(api: &mut Api, wrapping: &str) -> Dynamic {
+        Dynamic::UNIT
+    }
+    #[rhai_fn(name = "search_deep")]
+    pub fn search_deep_already_sat(api: &mut Api) -> Dynamic {
+        search_deep_already(api, "sat")
+    }
+
+    // }}}
 }

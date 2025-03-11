@@ -16,14 +16,30 @@ api.register(#{
         // no `let`: search_next already uses the "/" register
         api.prompt("/", |line, point| []) ?? return;
         let found = api.search_next() ?? {
-            api.message("not found: " + "bsdlfb");
+            api.message("not found: " + api["/"]);
+            return;
+        };
+        api.jumpto(found);
+    },
+    "?": |api| {
+        // no `let`: search_next already uses the "/" register
+        api.prompt("/", |line, point| []) ?? return;
+        let found = api.search_deep() ?? {
+            api.message("not found: " + api["/"]);
             return;
         };
         api.jumpto(found);
     },
     "n": |api| {
         let found = api.search_next() ?? {
-            api.message("not found: " + "bsdlfb");
+            api.message("not found: " + api["/"]);
+            return;
+        };
+        api.jumpto(found);
+    },
+    "N": |api| {
+        let found = api.search_prev() ?? {
+            api.message("not found: " + api["/"]);
             return;
         };
         api.jumpto(found);
@@ -49,7 +65,7 @@ api.register(#{
     "H": |api| api.fold(true),
 
     "<Space>": |api| {
-        api.mark(true);
+        api.mark(!api.marked());
         api.next();
     },
 

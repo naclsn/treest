@@ -12,6 +12,7 @@ mod tree;
 use crate::options::Options;
 use crate::terminal::Restore;
 
+// TODO: eventually address this!
 static mut RESTORE: Option<Restore> = None;
 
 fn set_term() {

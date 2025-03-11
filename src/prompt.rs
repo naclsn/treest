@@ -140,7 +140,7 @@ pub fn prompt(
                 if at < s.len() {
                     s.remove(at);
                     write!(output, "\x1b[P").ok()?;
-                } else if s.is_empty() {
+                } else if 0 == at && s.is_empty() {
                     return None;
                 }
             }
@@ -154,7 +154,7 @@ pub fn prompt(
             }
             [.., 0x07] => pend.clear(),
             [0x08 | 127] => {
-                if 0 == at {
+                if 0 == at && s.is_empty() {
                     return None;
                 }
                 at -= 1;
