@@ -1,15 +1,14 @@
-api.register(#{
+api.map(#{
     ":": |api| {
         let ans = api.prompt(":", |line, point| []) ?? return;
-        //api.hi(ans.trim());
-        if ans.starts_with("eval ") {
-            api.source_text(ans[5..]);
+        let com = ans.split()[0];
+        let arg = ans[com.len()+1..];
+        switch com {
+            "eval" | "ev" => api.source_text(arg),
+            "echo" | "ec" => api.message(api.source_text(arg)),
+            "help" | "h" => api.message(help(arg).reduce(|a, b| a+b)),
+            _ => api.message("unknown command: " + com),
         }
-    },
-
-    "=": |api| {
-        let s = api.prompt("=", |line, point| []) ?? return;
-        api.message(api.source_text(s));
     },
 
     "/": |api| {
@@ -19,6 +18,7 @@ api.register(#{
             api.message("not found: " + api["/"]);
             return;
         };
+        api.message(());
         api.jumpto(found);
     },
     "?": |api| {
@@ -28,6 +28,7 @@ api.register(#{
             api.message("not found: " + api["/"]);
             return;
         };
+        api.message(());
         api.jumpto(found);
     },
     "n": |api| {
@@ -35,6 +36,7 @@ api.register(#{
             api.message("not found: " + api["/"]);
             return;
         };
+        api.message(());
         api.jumpto(found);
     },
     "N": |api| {
@@ -42,6 +44,7 @@ api.register(#{
             api.message("not found: " + api["/"]);
             return;
         };
+        api.message(());
         api.jumpto(found);
     },
 

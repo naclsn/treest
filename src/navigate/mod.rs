@@ -225,4 +225,12 @@ impl Navigate {
         }
         self.cursor.1.truncate(self.cursor.0);
     }
+
+    /// Push a new value, that is nothing happens if the old value was equal.
+    pub fn register_push(&mut self, name: String, new: String) {
+        let v = self.registers.entry(name).or_default();
+        if v.last().is_none_or(|old| *old != new) {
+            v.push(new);
+        }
+    }
 }

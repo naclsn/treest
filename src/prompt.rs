@@ -14,11 +14,10 @@ pub fn split(line: &str, point: usize) -> (Vec<String>, usize) {
     }
     use State::*;
 
-    let mut chars = line.chars().enumerate();
-
-    let word = chars.next().is_none_or(|(_, c)| !c.is_whitespace());
+    let word = !line.chars().next().is_some_and(char::is_whitespace);
     let mut state = if word { Word } else { Blank };
 
+    let mut chars = line.chars().enumerate();
     while let Some((k, c)) = chars.next() {
         match state {
             Word | Blank if '\'' == c => state = SingleQuote,

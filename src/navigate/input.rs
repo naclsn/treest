@@ -22,29 +22,21 @@ pub struct PendingMouseInfo {
 
 struct Mapping(Vec<u8>, ScriptFnRef);
 
+impl Debug for Mapping {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", terminal::keyseqstr(&self.0))
+    }
+}
+
 impl Debug for Input {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        #[allow(dead_code)]
-        #[derive(Debug)]
-        struct Input<'a> {
-            recycle: Option<String>,
-            pending: String,
-            pending_mouse_info: &'a PendingMouseInfo,
-            mappings: Vec<String>,
-            pending_reachable: &'a Vec<usize>,
-        }
-        Input {
-            recycle: self.recycle.map(|b| terminal::keyseqstr(&[b])),
-            pending: terminal::keyseqstr(&self.pending),
-            pending_mouse_info: &self.pending_mouse_info,
-            mappings: self
-                .mappings
-                .iter()
-                .map(|m| terminal::keyseqstr(&m.0))
-                .collect(),
-            pending_reachable: &self.pending_reachable,
-        }
-        .fmt(f)
+        f.debug_struct("Input")
+            .field("recycle", &self.recycle.map(|b| terminal::keyseqstr(&[b])))
+            .field("pending", &terminal::keyseqstr(&self.pending))
+            .field("pending_mouse_info", &self.pending_mouse_info)
+            .field("mappings", &self.mappings)
+            .field("pending_reachable", &self.pending_reachable)
+            .finish()
     }
 }
 
