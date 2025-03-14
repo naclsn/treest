@@ -1,4 +1,8 @@
-api.map(#{
+const defaults_keys = #{
+    "q": Fn("quit"),
+    "ZQ": Fn("quit"),
+    "<C-Z>": Fn("suspend"),
+
     ":": |api| {
         let ans = api.prompt(":", |line, point| []) ?? return;
         let com = ans.split()[0];
@@ -7,6 +11,9 @@ api.map(#{
             "eval" | "ev" => api.source_text(arg),
             "echo" | "ec" => api.message(api.source_text(arg)),
             "help" | "h" => api.message(help(arg).reduce(|a, b| a+b)),
+            "quit" | "q" => api.quit(),
+            "cquit" | "cq" => api.cquit(if "" == arg { "cquit" } else { arg }),
+            "suspend" | "sus" | "st" | "stop" => api.suspend(),
             _ => api.message("unknown command: " + com),
         }
     },
@@ -48,7 +55,6 @@ api.map(#{
         api.jumpto(found);
     },
 
-
     "<C-E>": Fn("view_down"),
     "<C-Y>": Fn("view_up"),
     "<BackwardWheel>": |api| api.view_down("mouse"),
@@ -62,7 +68,6 @@ api.map(#{
     "h": Fn("leave"),
     "j": Fn("next"),
     "k": Fn("prev"),
-    "q": Fn("quit"),
 
     "L": |api| api.fold(false),
     "H": |api| api.fold(true),
@@ -73,4 +78,10 @@ api.map(#{
     },
 
     "<LeftMouse>": |api| api.message(api.mouse_event_pos()),
-});
+};
+
+//fn defaults_init(api) {
+    api.map(defaults_keys);
+    api.fold(false);
+//}
+//defaults_init(api);

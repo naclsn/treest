@@ -65,10 +65,13 @@ pub fn make_engine() -> Engine {
     engine
 }
 
-pub fn main_loop(mut nav: Navigate) {
+pub fn main_loop(mut nav: Navigate) -> Result<(), String> {
     let user_script = nav.scripting.user_script.take();
 
     let engine = make_engine();
+    // TODO: export `defaults_keys` and maybe even `default_init`
+    //       so it's accessible from custom user scripts
+    let mut scope = Scope::new();
 
     let ast = if let Some(file) = user_script {
         engine
@@ -78,7 +81,6 @@ pub fn main_loop(mut nav: Navigate) {
         engine.compile(include_str!("../defaults.rhai")).unwrap()
     };
 
-    let mut scope = Scope::new();
     engine
         .eval_ast_with_scope::<()>(scope.push("api", Api::new(nav)), &ast)
         .expect("somethin about user script not valid runtime");
@@ -91,17 +93,26 @@ pub fn main_loop(mut nav: Navigate) {
         .sourced
         .push(Some(ast));
 
-    engine
-        .eval_with_scope::<()>(
+    terminal::cursor_off();
+    terminal::mouse_on();
+    terminal::altscreen_on();
+
+    let exit = match engine
+        .eval_with_scope::<String>(
             scope.push("uncallable_token", MakeUncallable),
-            r#"
-                api.fold(false);
-                loop {
-                    api._tick(uncallable_token);
-                }
-            "#,
+            "loop { break api._tick(uncallable_token) ?? continue }",
         )
-        .unwrap();
+        .unwrap()
+    {
+        it if it.is_empty() => Ok(()),
+        text => Err(text),
+    };
+
+    terminal::cursor_on();
+    terminal::mouse_off();
+    terminal::altscreen_off();
+
+    exit
 }
 
 // }}}
@@ -110,16 +121,19 @@ pub fn main_loop(mut nav: Navigate) {
 
 type ApiResult<T> = Result<T, Box<EvalAltResult>>;
 
+#[inline]
 fn host_path(path: &Array) -> Result<Vec<usize>, &'static str> {
     path.iter()
         .map(|d| d.as_int().map(|k| k as usize))
         .collect()
 }
 
+#[inline]
 fn script_path(path: &[usize]) -> Array {
     path.iter().map(|k| (*k as INT).into()).collect()
 }
 
+#[inline]
 fn with_opt_unit<T: Clone + 'static>(f: impl FnOnce() -> Option<T>) -> Dynamic {
     f().map(Dynamic::from).unwrap_or_default()
 }
@@ -149,7 +163,7 @@ fn slice_search<T>(
 
 #[export_module]
 mod api {
-    pub fn _tick(cc: NativeCallContext, api: &mut Api, _: MakeUncallable) {
+    pub fn _tick(cc: NativeCallContext, api: &mut Api, _: MakeUncallable) -> Dynamic {
         let mut nav = api.m();
 
         let buf = nav.to_string();
@@ -164,26 +178,29 @@ mod api {
             })
             .count();
 
-        if let Some(action) = nav.input.tick() {
-            let (fn_ptr, ast_ref, ast) = nav.scripting.script_fns[action.0]
-                .take()
-                .and_then(|ScriptFn(fn_ptr, ast_ref)| {
-                    nav.scripting.sourced[ast_ref]
-                        .take()
-                        .map(|ast| (fn_ptr, ast_ref, ast))
-                })
-                .expect("gone fishing (tick likely reached from user script)");
+        let Some(action) = nav.input.tick() else {
+            return Dynamic::UNIT;
+        };
+        let (fn_ptr, ast_ref, ast) = nav.scripting.script_fns[action.0]
+            .take()
+            .and_then(|ScriptFn(fn_ptr, ast_ref)| {
+                nav.scripting.sourced[ast_ref]
+                    .take()
+                    .map(|ast| (fn_ptr, ast_ref, ast))
+            })
+            .expect("gone fishing (tick likely reached from user script)");
 
-            drop(nav);
+        drop(nav);
 
-            _ = fn_ptr
-                .call::<Dynamic>(cc.engine(), &ast, (api.clone(),))
-                .expect("TODO");
+        _ = fn_ptr
+            .call::<Dynamic>(cc.engine(), &ast, (api.clone(),))
+            .expect("TODO");
 
-            let mut nav = api.m();
-            nav.scripting.sourced[ast_ref] = Some(ast);
-            nav.scripting.script_fns[action.0] = Some(ScriptFn(fn_ptr, ast_ref));
-        }
+        let mut nav = api.m();
+        nav.scripting.sourced[ast_ref] = Some(ast);
+        nav.scripting.script_fns[action.0] = Some(ScriptFn(fn_ptr, ast_ref));
+
+        with_opt_unit(|| nav.exit.take())
     }
 
     // source/eval {{{
@@ -264,14 +281,37 @@ mod api {
         api.nav.borrow().provider_name.clone()
     }
 
-    pub fn quit(_: &mut Api) {
-        // TODO: quit
-        panic!("haha");
+    #[rhai_fn(pure)] // not pure but pure enough
+    pub fn suspend(_api: &mut Api) {
+        #[cfg(not(windows))]
+        {
+            terminal::cursor_on();
+            terminal::mouse_off();
+            terminal::altscreen_off();
+
+            let mut nav = _api.m();
+            nav.term.take().map(|t| t.restore());
+            unsafe { libc::raise(libc::SIGTSTP) };
+            nav.term = terminal::raw_with_panic_hook().ok();
+
+            terminal::cursor_off();
+            terminal::mouse_on();
+            terminal::altscreen_on();
+        }
+    }
+
+    pub fn quit(api: &mut Api) {
+        quit_text(api, "")
     }
     #[rhai_fn(name = "quit", name = "cquit")]
-    pub fn quit_code(_: &mut Api, code: INT) {
-        // TODO: quit
-        panic!("hihi {code}");
+    pub fn quit_code(api: &mut Api, code: INT) {
+        quit_text(api, &code.to_string());
+    }
+    #[rhai_fn(name = "quit", name = "cquit")]
+    pub fn quit_text(api: &mut Api, text: &str) {
+        let mut nav = api.m();
+        nav.exit = Some(text.into());
+        nav.term.take().map(|t| t.restore());
     }
 
     #[rhai_fn(pure)]
@@ -393,8 +433,8 @@ mod api {
         let mut nav = api.m();
         let history = nav.registers.entry(ps.into()).or_default();
 
-        terminal::mouse_off();
         terminal::cursor_on();
+        terminal::mouse_off();
         let res = prompt::prompt(
             ps,
             io::stdin().bytes().map_while(Result::ok),
@@ -406,8 +446,8 @@ mod api {
                     .unwrap_or_default()
             },
         );
-        terminal::mouse_on();
         terminal::cursor_off();
+        terminal::mouse_on();
 
         let Some(r) = res else { return Dynamic::UNIT };
         history.push(r.clone());

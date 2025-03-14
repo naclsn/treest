@@ -1,4 +1,6 @@
+use std::env;
 use std::path::PathBuf;
+use std::process;
 
 use anyhow::Result;
 use thiserror::Error;
@@ -8,20 +10,6 @@ use crate::providers;
 
 #[derive(Error, Debug)]
 pub enum OptionsError {
-    #[error(
-        r#"Usage: {0} [arg [name]]
-
-    Navigate a tree-like space dynamically.
-
-    `arg` is passed to the provider `name`; if `name` is not given
-    it's guessed from `arg`. See '--list' for a list of providers.
-    Note: if `arg` is not given, it defaults to ".", so "fs" name.
-    Use '--user' to provide a user config script sourced at start.
-"#
-    )]
-    Help(String),
-    #[error("{0}")]
-    List(String),
     #[error("unexpected extra argument '{0}'")]
     UnexpectedArg(String),
     #[error("the provider to use could not be guessed from the argument (see '--list')")]
@@ -52,7 +40,11 @@ impl Default for Options {
 }
 
 impl Options {
-    pub fn parse(mut args: impl Iterator<Item = String>) -> Result<Options, OptionsError> {
+    pub fn parse_env() -> Result<Self, OptionsError> {
+        Self::parse(env::args())
+    }
+
+    pub fn parse(mut args: impl Iterator<Item = String>) -> Result<Self, OptionsError> {
         let prog = args.next().unwrap();
         let mut r = Options::default();
 
@@ -60,11 +52,32 @@ impl Options {
         while let Some(arg) = args.next() {
             match arg.as_str() {
                 // yea why nat
-                "=" => rhai_interp(),
+                "=" => {
+                    rhai_interp();
+                    process::exit(0);
+                }
 
-                "--list" | "-l" => return Err(OptionsError::List(providers::NAMES.join("\n"))),
+                "--help" | "-h" => {
+                    println!(
+                        r#"Usage: {prog} [arg [name]]
 
-                "--help" | "-h" => return Err(OptionsError::Help(prog)),
+    Navigate a tree-like space dynamically.
+
+    `arg` is passed to the provider `name`; if `name` is not given
+    it's guessed from `arg`. See '--list' for a list of providers.
+    Note: if `arg` is not given, it defaults to ".", so "fs" name.
+    Use '--user' to provide a user config script sourced at start.
+"#
+                    );
+                    process::exit(2);
+                }
+
+                "--list" | "-l" => {
+                    for name in providers::NAMES {
+                        println!("{name}");
+                    }
+                    process::exit(3);
+                }
 
                 "--user" | "-u" => {
                     let user = args.next().ok_or(OptionsError::UserArgMissing)?;
@@ -117,7 +130,6 @@ impl Options {
 
 fn rhai_interp() {
     use std::io::{self, IsTerminal, Read};
-    use std::process;
 
     use rhai::{Dynamic, Scope};
 
@@ -172,6 +184,4 @@ fn rhai_interp() {
             }
         }
     }
-
-    process::exit(0);
 }

@@ -3,6 +3,9 @@ use std::collections::BTreeMap;
 use std::ops::Range;
 use std::path::PathBuf;
 
+use anyhow::Result;
+use thiserror::Error;
+
 mod display;
 mod input;
 mod options;
@@ -12,10 +15,14 @@ use crate::navigate::input::Input;
 use crate::navigate::options::Options;
 use crate::navigate::scripting::Scripting;
 use crate::providers::Provider;
-use crate::terminal;
+use crate::terminal::{self, RestoreWithPanicHook};
 use crate::tree::Node;
 
 pub use scripting::make_engine;
+
+#[derive(Error, Debug)]
+#[error("{0}")]
+pub struct MainLoopExitText(String);
 
 type CursorLikePath = Vec<usize>;
 
@@ -26,7 +33,9 @@ pub struct Navigate {
     provider: Box<dyn Provider>,
     provider_name: String,
 
-    input: input::Input,
+    input: Input,
+    term: Option<RestoreWithPanicHook>,
+    exit: Option<String>,
 
     message: Option<String>,
     view: RefCell<View>, // is mutated during rendering to stay up to date
@@ -128,6 +137,8 @@ impl Navigate {
             provider_name,
 
             input: Input::new(),
+            term: terminal::raw_with_panic_hook().ok(),
+            exit: None,
 
             message: None,
             view: RefCell::default(),
@@ -138,8 +149,8 @@ impl Navigate {
         }
     }
 
-    pub fn main_loop(self) {
-        scripting::main_loop(self);
+    pub fn main_loop(self) -> Result<(), MainLoopExitText> {
+        scripting::main_loop(self).map_err(MainLoopExitText)
     }
 
     pub fn is_cursor_root(&self) -> bool {
