@@ -11,55 +11,90 @@ use crate::prompt;
 use crate::terminal;
 use crate::tree::NodePath;
 
-struct ScriptFn(FnPtr, usize);
-#[derive(Clone, Copy)]
-pub struct ScriptFnRef(usize);
-
 pub struct Scripting {
-    sourced: Vec<Option<AST>>,
-    script_fns: Vec<Option<ScriptFn>>,
     user_script: Option<PathBuf>,
+    global_ast: AST,
+    global_scope: Scope<'static>,
 }
 
 impl Scripting {
     pub fn new(user_script: Option<PathBuf>) -> Self {
         Self {
-            sourced: Vec::new(),
-            script_fns: Vec::new(),
             user_script,
+            global_ast: AST::default(),
+            global_scope: Scope::new(),
         }
     }
 }
 
 #[derive(Clone)]
-struct Api {
-    nav: Rc<RefCell<Navigate>>,
-    current_sourced: usize,
-}
+struct Api(Rc<RefCell<Navigate>>);
 
 impl Api {
     pub fn new(nav: Navigate) -> Self {
-        Self {
-            nav: Rc::new(RefCell::new(nav)),
-            current_sourced: 0, // 0 is user_script or defaults.rhai
-        }
+        Self(Rc::new(RefCell::new(nav)))
     }
 
     #[inline]
     pub fn m(&mut self) -> RefMut<'_, Navigate> {
-        self.nav.borrow_mut()
+        self.0.borrow_mut()
+    }
+
+    fn tick(&mut self, engine: &Engine) -> Option<String> {
+        let mut nav = self.m();
+
+        let buf = nav.to_string();
+        eprint!("{buf}");
+
+        nav.message
+            .iter_mut()
+            .map(|s| {
+                if let Some(n) = s.find('\n') {
+                    s.truncate(n);
+                }
+            })
+            .count();
+
+        let action = nav.input.tick()?;
+
+        let mut global_ast = std::mem::take(&mut nav.scripting.global_ast);
+        drop(nav);
+        _ = action
+            .call::<Dynamic>(engine, &global_ast, (self.clone(),))
+            .expect("TODO");
+
+        let mut nav = self.m();
+
+        std::mem::swap(&mut nav.scripting.global_ast, &mut global_ast);
+        nav.scripting.global_ast.combine(global_ast);
+
+        nav.exit.take()
     }
 }
-
-#[derive(Clone)]
-struct MakeUncallable;
 
 // pub fn {{{
 
 pub fn make_engine() -> Engine {
     let mut engine = Engine::new();
     engine.register_global_module(exported_module!(api).into());
-    // TODO
+
+    engine.register_static_module(
+        "defaults",
+        Module::eval_ast_as_new(
+            Scope::new(),
+            &engine.compile(include_str!("../defaults.rhai")).unwrap(),
+            &engine,
+        )
+        .unwrap()
+        .into(),
+    );
+
+    //let mut module = Module::new();
+    //module.set_native_fn("init", || Ok(panic!("YEEEEEEEE")));
+    //engine.register_static_module("defaults", module.into());
+    //engine.eval::<()>(r#"import "defaults"; defaults::init()"#).unwrap();
+
+    // TODO: maybe
     //engine.on_print();
     //engine.on_debug();
     engine
@@ -69,8 +104,6 @@ pub fn main_loop(mut nav: Navigate) -> Result<(), String> {
     let user_script = nav.scripting.user_script.take();
 
     let engine = make_engine();
-    // TODO: export `defaults_keys` and maybe even `default_init`
-    //       so it's accessible from custom user scripts
     let mut scope = Scope::new();
 
     let ast = if let Some(file) = user_script {
@@ -78,34 +111,27 @@ pub fn main_loop(mut nav: Navigate) -> Result<(), String> {
             .compile_file(file)
             .expect("somethin about user script not valid")
     } else {
-        engine.compile(include_str!("../defaults.rhai")).unwrap()
+        engine
+            .compile("defaults::init(api)")
+            .unwrap()
     };
 
+    let mut api = Api::new(nav);
+
     engine
-        .eval_ast_with_scope::<()>(scope.push("api", Api::new(nav)), &ast)
+        .eval_ast_with_scope::<()>(scope.push("api", api.clone()), &ast)
         .expect("somethin about user script not valid runtime");
-    scope
-        .get_value_mut::<Api>("api")
-        .unwrap()
-        .nav
-        .borrow_mut()
-        .scripting
-        .sourced
-        .push(Some(ast));
 
     terminal::cursor_off();
     terminal::mouse_on();
     terminal::altscreen_on();
 
-    let exit = match engine
-        .eval_with_scope::<String>(
-            scope.push("uncallable_token", MakeUncallable),
-            "loop { break api._tick(uncallable_token) ?? continue }",
-        )
-        .unwrap()
-    {
-        it if it.is_empty() => Ok(()),
-        text => Err(text),
+    let exit = loop {
+        match api.tick(&engine) {
+            Some(it) if it.is_empty() => break Ok(()),
+            Some(text) => break Err(text),
+            _ => (),
+        }
     };
 
     terminal::cursor_on();
@@ -163,78 +189,32 @@ fn slice_search<T>(
 
 #[export_module]
 mod api {
-    pub fn _tick(cc: NativeCallContext, api: &mut Api, _: MakeUncallable) -> Dynamic {
-        let mut nav = api.m();
-
-        let buf = nav.to_string();
-        eprint!("{buf}");
-
-        nav.message
-            .iter_mut()
-            .map(|s| {
-                if let Some(n) = s.find('\n') {
-                    s.truncate(n);
-                }
-            })
-            .count();
-
-        let Some(action) = nav.input.tick() else {
-            return Dynamic::UNIT;
-        };
-        let (fn_ptr, ast_ref, ast) = nav.scripting.script_fns[action.0]
-            .take()
-            .and_then(|ScriptFn(fn_ptr, ast_ref)| {
-                nav.scripting.sourced[ast_ref]
-                    .take()
-                    .map(|ast| (fn_ptr, ast_ref, ast))
-            })
-            .expect("gone fishing (tick likely reached from user script)");
-
-        drop(nav);
-
-        _ = fn_ptr
-            .call::<Dynamic>(cc.engine(), &ast, (api.clone(),))
-            .expect("TODO");
-
-        let mut nav = api.m();
-        nav.scripting.sourced[ast_ref] = Some(ast);
-        nav.scripting.script_fns[action.0] = Some(ScriptFn(fn_ptr, ast_ref));
-
-        with_opt_unit(|| nav.exit.take())
-    }
-
     // source/eval {{{
 
     #[rhai_fn(return_raw)]
     pub fn source_text(cc: NativeCallContext, api: &mut Api, text: &str) -> ApiResult<Dynamic> {
-        let p_current_sourced = api.current_sourced;
-        api.current_sourced = api.nav.borrow().scripting.sourced.len();
-
-        let ast = cc.engine().compile(text).unwrap();
+        let mut ast = cc.engine().compile(text).unwrap();
         let mut scope = Scope::new();
         let r = cc
             .engine()
             .eval_ast_with_scope(scope.push("api", api.clone()), &ast)?;
 
-        api.current_sourced = p_current_sourced;
-        api.m().scripting.sourced.push(Some(ast));
+        ast.clear_statements();
+        api.m().scripting.global_ast.combine(ast);
 
         Ok(r)
     }
 
     #[rhai_fn(return_raw)]
     pub fn source(cc: NativeCallContext, api: &mut Api, file: &str) -> ApiResult<Dynamic> {
-        let p_current_sourced = api.current_sourced;
-        api.current_sourced = api.nav.borrow().scripting.sourced.len();
-
-        let ast = cc.engine().compile_file(file.into()).unwrap();
+        let mut ast = cc.engine().compile_file(file.into()).unwrap();
         let mut scope = Scope::new();
         let r = cc
             .engine()
             .eval_ast_with_scope(scope.push("api", api.clone()), &ast)?;
 
-        api.current_sourced = p_current_sourced;
-        api.m().scripting.sourced.push(Some(ast));
+        ast.clear_statements();
+        api.m().scripting.global_ast.combine(ast);
 
         Ok(r)
     }
@@ -278,7 +258,7 @@ mod api {
 
     #[rhai_fn(pure)]
     pub fn provider_name(api: &mut Api) -> String {
-        api.nav.borrow().provider_name.clone()
+        api.0.borrow().provider_name.clone()
     }
 
     #[rhai_fn(pure)] // not pure but pure enough
@@ -316,7 +296,7 @@ mod api {
 
     #[rhai_fn(pure)]
     pub fn mouse_event_pos(api: &mut Api) -> Map {
-        let info = api.nav.borrow().input.get_pending_mouse_info();
+        let info = api.0.borrow().input.get_pending_mouse_info();
         let mut r = Map::new();
         r.insert("row".into(), (info.row as INT).into());
         r.insert("col".into(), (info.col as INT).into());
@@ -328,33 +308,20 @@ mod api {
     // mapping {{{
 
     pub fn map(api: &mut Api, seq: &str, cb: FnPtr) {
-        let script_fn = ScriptFn(cb, api.current_sourced);
-        let mut nav = api.m();
-
-        let fnref = nav.scripting.script_fns.len();
-        nav.scripting.script_fns.push(Some(script_fn));
-
-        nav.input.add_mapping(
+        api.m().input.add_mapping(
             terminal::keytrans(seq).expect("need valid seq something blbl"),
-            ScriptFnRef(fnref),
+            cb,
         );
     }
 
     #[rhai_fn(name = "map")]
     pub fn map_multiple(api: &mut Api, map: Map) {
-        let current_sourced = api.current_sourced;
         let mut nav = api.m();
-
         for (seq, cb) in map {
             let Some(cb) = cb.try_cast() else { continue };
-            let script_fn = ScriptFn(cb, current_sourced);
-
-            let fnref = nav.scripting.script_fns.len();
-            nav.scripting.script_fns.push(Some(script_fn));
-
             nav.input.add_mapping(
                 terminal::keytrans(&seq).expect("need valid seq something blbl"),
-                ScriptFnRef(fnref),
+                cb,
             );
         }
     }
@@ -376,9 +343,9 @@ mod api {
     #[rhai_fn(pure, index_get, name = "value")]
     pub fn get_value(api: &mut Api, name: &str) -> Dynamic {
         if b'&' == name.as_bytes()[0] {
-            api.nav.borrow().options.get(&name[1..])
+            api.0.borrow().options.get(&name[1..])
         } else {
-            api.nav
+            api.0
                 .borrow()
                 .registers
                 .get(name)
@@ -394,14 +361,14 @@ mod api {
             return get_value(api, name);
         }
         if b'&' == name.as_bytes()[0] {
-            let r = api.nav.borrow().options.get(&name[1..]);
+            let r = api.0.borrow().options.get(&name[1..]);
             if !r.is_unit() {
                 vec![r].into()
             } else {
                 r
             }
         } else {
-            api.nav
+            api.0
                 .borrow()
                 .registers
                 .get(name)
@@ -592,7 +559,7 @@ mod api {
     /// Uses the `api["/"]` register.
     pub fn search_level(api: &mut Api, next_prev: &str, wrapping: &str) -> Dynamic {
         with_opt_unit(|| {
-            let nav = api.nav.borrow();
+            let nav = api.0.borrow();
 
             if nav.is_cursor_root() {
                 return None::<Vec<_>>;

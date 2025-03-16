@@ -1,4 +1,4 @@
-const defaults_keys = #{
+export const keys = #{
     "q": Fn("quit"),
     "ZQ": Fn("quit"),
     "<C-Z>": Fn("suspend"),
@@ -80,8 +80,7 @@ const defaults_keys = #{
     "<LeftMouse>": |api| api.message(api.mouse_event_pos()),
 };
 
-//fn defaults_init(api) {
-    api.map(defaults_keys);
+fn init(api) {
+    api.map(global::keys);
     api.fold(false);
-//}
-//defaults_init(api);
+}

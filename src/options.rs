@@ -163,6 +163,7 @@ fn rhai_interp() {
                             if !ans.is_unit() {
                                 eprintln!(":: {ans:#?}");
                             }
+                            eprintln!("{scope:#?}");
                         }
                         Err(err) => eprintln!("!! {err}"),
                     }

@@ -2,7 +2,8 @@ use std::fmt::Debug;
 use std::fs::File;
 use std::io::{self, Read};
 
-use crate::navigate::scripting::ScriptFnRef;
+use rhai::FnPtr;
+
 use crate::terminal;
 
 pub struct Input {
@@ -20,7 +21,7 @@ pub struct PendingMouseInfo {
     pub row: u8,
 }
 
-struct Mapping(Vec<u8>, ScriptFnRef);
+struct Mapping(Vec<u8>, FnPtr);
 
 impl Debug for Mapping {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -59,7 +60,7 @@ impl Input {
         }
     }
 
-    pub fn tick(&mut self) -> Option<ScriptFnRef> {
+    pub fn tick(&mut self) -> Option<FnPtr> {
         let byte = self
             .recycle
             .take()
@@ -113,7 +114,7 @@ impl Input {
                     .iter()
                     .find(|map| map.0 == self.pending[..self.pending.len() - 1])
                 {
-                    let r = map.1;
+                    let r = map.1.clone();
                     self.pending.clear();
                     self.recycle = Some(byte);
                     Some(r)
@@ -125,7 +126,7 @@ impl Input {
 
             [single] if self.mappings[single].0.len() == self.pending.len() => {
                 self.pending.clear();
-                Some(self.mappings[single].1)
+                Some(self.mappings[single].1.clone())
             }
 
             _ => None,
@@ -140,7 +141,7 @@ impl Input {
         self.pending_mouse_info.clone()
     }
 
-    pub fn add_mapping(&mut self, sequence: Vec<u8>, action: ScriptFnRef) {
+    pub fn add_mapping(&mut self, sequence: Vec<u8>, action: FnPtr) {
         if sequence.is_empty() {
             return;
         }
