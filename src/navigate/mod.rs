@@ -1,9 +1,11 @@
 use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::ops::Range;
+use std::path::Path;
 use std::path::PathBuf;
 
 use anyhow::Result;
+use mlua::{AnyUserData, AsChunk, Lua, Result as LuaResult, UserData};
 use thiserror::Error;
 
 mod display;
@@ -18,8 +20,6 @@ use crate::providers::Provider;
 use crate::terminal::{self, RestoreWithPanicHook};
 use crate::tree::Node;
 
-pub use scripting::make_engine;
-
 #[derive(Error, Debug)]
 #[error("{0}")]
 pub struct MainLoopExitText(String);
@@ -30,6 +30,7 @@ pub struct Navigate {
     tree: Node,
     cursor: (usize, CursorLikePath),
 
+    user_script: Option<PathBuf>,
     provider: Box<dyn Provider>,
     provider_name: String,
 
@@ -40,7 +41,7 @@ pub struct Navigate {
     message: Option<String>,
     view: RefCell<View>, // is mutated during rendering to stay up to date
 
-    scripting: Scripting,
+    //scripting: Scripting,
     options: Options,
     registers: BTreeMap<String, Vec<String>>,
 }
@@ -133,6 +134,7 @@ impl Navigate {
             tree: Node::new(),
             cursor: (0, vec![]),
 
+            user_script,
             provider,
             provider_name,
 
@@ -143,14 +145,40 @@ impl Navigate {
             message: None,
             view: RefCell::default(),
 
-            scripting: Scripting::new(user_script),
+            //scripting: Scripting::new(user_script),
             options: Options::default(),
             registers: BTreeMap::new(),
         }
     }
 
-    pub fn main_loop(self) -> Result<(), MainLoopExitText> {
-        scripting::main_loop(self).map_err(MainLoopExitText)
+    pub fn main_loop<'a>(self) -> Result<(), MainLoopExitText> {
+        let user_script = self.user_script.clone();
+
+        let lua = Lua::new();
+        lua.globals().set("treest", self).unwrap();
+        lua.load(include_str!("../defaults.lua")).exec().unwrap();
+
+        if let Some(path) = user_script {
+            lua.load(path)
+        } else {
+            lua.load("require('defaults').init()")
+        }
+        .exec()
+        .unwrap();
+
+        let exit: String = lua
+            .load(r#"
+                repeat
+                    local action = treest:_tick()
+                    if action then action() end
+                until treest.exit
+                return treest.exit"#)
+            .call(())
+            .unwrap();
+        match exit {
+            it if it.is_empty() => Ok(()),
+            exit => Err(MainLoopExitText(exit)),
+        }
     }
 
     pub fn is_cursor_root(&self) -> bool {

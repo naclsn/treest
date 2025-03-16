@@ -2,7 +2,7 @@ use std::fmt::Debug;
 use std::fs::File;
 use std::io::{self, Read};
 
-use rhai::FnPtr;
+use mlua::Function;
 
 use crate::terminal;
 
@@ -21,7 +21,7 @@ pub struct PendingMouseInfo {
     pub row: u8,
 }
 
-struct Mapping(Vec<u8>, FnPtr);
+struct Mapping(Vec<u8>, Function);
 
 impl Debug for Mapping {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -60,7 +60,7 @@ impl Input {
         }
     }
 
-    pub fn tick(&mut self) -> Option<FnPtr> {
+    pub fn tick(&mut self) -> Option<&Function> {
         let byte = self
             .recycle
             .take()
@@ -114,7 +114,7 @@ impl Input {
                     .iter()
                     .find(|map| map.0 == self.pending[..self.pending.len() - 1])
                 {
-                    let r = map.1.clone();
+                    let r = &map.1;
                     self.pending.clear();
                     self.recycle = Some(byte);
                     Some(r)
@@ -126,7 +126,7 @@ impl Input {
 
             [single] if self.mappings[single].0.len() == self.pending.len() => {
                 self.pending.clear();
-                Some(self.mappings[single].1.clone())
+                Some(&self.mappings[single].1)
             }
 
             _ => None,
@@ -141,7 +141,7 @@ impl Input {
         self.pending_mouse_info.clone()
     }
 
-    pub fn add_mapping(&mut self, sequence: Vec<u8>, action: FnPtr) {
+    pub fn add_mapping(&mut self, sequence: Vec<u8>, action: Function) {
         if sequence.is_empty() {
             return;
         }

@@ -1,10 +1,12 @@
 use std::cell::{RefCell, RefMut};
 use std::io::{self, Read};
+use std::ops::{Deref, DerefMut};
 use std::path::PathBuf;
+use std::pin::Pin;
 use std::rc::Rc;
+use std::sync::Arc;
 
-use rhai::plugin::*;
-use rhai::{Array, Blob, Engine, FnPtr, Map, NativeCallContext, Scope, AST, INT};
+use mlua::{Function, Lua, UserData, UserDataFields, UserDataMethods};
 
 use crate::navigate::{Navigate, Target, ViewJumpBy};
 use crate::prompt;
@@ -13,67 +15,122 @@ use crate::tree::NodePath;
 
 pub struct Scripting {
     user_script: Option<PathBuf>,
-    global_ast: AST,
-    global_scope: Scope<'static>,
+    //pub lua: Lua,
 }
 
 impl Scripting {
     pub fn new(user_script: Option<PathBuf>) -> Self {
         Self {
             user_script,
-            global_ast: AST::default(),
-            global_scope: Scope::new(),
+            //lua: Lua::new(),
         }
     }
 }
 
-#[derive(Clone)]
-struct Api(Rc<RefCell<Navigate>>);
-
-impl Api {
-    pub fn new(nav: Navigate) -> Self {
-        Self(Rc::new(RefCell::new(nav)))
+impl UserData for Navigate {
+    fn add_fields<F: UserDataFields<Self>>(fields: &mut F) {
+        fields.add_field_method_get("exit", |_, nav| Ok(nav.exit.as_ref().cloned()))
     }
 
-    #[inline]
-    pub fn m(&mut self) -> RefMut<'_, Navigate> {
-        self.0.borrow_mut()
-    }
+    fn add_methods<M: UserDataMethods<Self>>(methods: &mut M) {
+        //methods.add_method_mut("_init", |lua, nav, ()| {
+        //    lua.load("require('defaults').init()").exec().unwrap();
+        //    Ok(())
+        //});
 
-    fn tick(&mut self, engine: &Engine) -> Option<String> {
-        let mut nav = self.m();
+        methods.add_method_mut("_tick", |lua, nav, ()| {
+            // TODO: don't use Display, it will also remove the view: RefCell
+            let buf = nav.to_string();
+            eprint!("{buf}");
 
-        let buf = nav.to_string();
-        eprint!("{buf}");
-
-        nav.message
-            .iter_mut()
-            .map(|s| {
+            if let Some(ref mut s) = nav.message {
                 if let Some(n) = s.find('\n') {
                     s.truncate(n);
                 }
-            })
-            .count();
+            }
 
-        let action = nav.input.tick()?;
+            Ok(nav.input.tick().cloned())
 
-        let mut global_ast = std::mem::take(&mut nav.scripting.global_ast);
-        drop(nav);
-        _ = action
-            .call::<Dynamic>(engine, &global_ast, (self.clone(),))
-            .expect("TODO");
+            ////let mut global_ast = std::mem::take(&mut nav.scripting.global_ast);
+            //drop(nav);
+            //_ = fnptr
+            //    .call::<Dynamic>(engine, &ast, (self.clone(),))
+            //    .expect("TODO");
 
-        let mut nav = self.m();
+            //let mut nav = self.m();
 
-        std::mem::swap(&mut nav.scripting.global_ast, &mut global_ast);
-        nav.scripting.global_ast.combine(global_ast);
+            //std::mem::swap(&mut nav.scripting.global_ast, &mut global_ast);
+            //nav.scripting.global_ast.combine(global_ast);
 
-        nav.exit.take()
+            //panic!("{:?}", nav.exit.take());
+            //Ok(nav.exit.take())
+        });
+
+        methods.add_method_mut("map", |_, nav, (seq, cb): (String, Function)| {
+            let seq = terminal::keytrans(seq.as_str()).expect("need valid seq something blbl");
+            nav.input.add_mapping(seq, cb);
+            Ok(())
+        });
+
+        methods.add_method_mut("unfold", |_, nav, (/*target*/)| {
+            nav.set_folded(Target::Cursor, false);
+            Ok(())
+        });
+
+        methods.add_method_mut("quit", |_, nav, text: Option<String>| {
+            nav.exit = text;
+            Ok(())
+        });
     }
 }
 
+//impl Api {
+//    pub fn new(nav: Navigate) -> Self {
+//        Self(Rc::new(RefCell::new(nav)))
+//    }
+//
+//    #[inline]
+//    pub fn m(&mut self) -> RefMut<'_, Navigate> {
+//        self.0.borrow_mut()
+//    }
+//
+//    fn tick(&mut self, engine: &Engine) -> Option<String> {
+//        let mut nav = self.m();
+//
+// TODO: don't use Display, it will also remove the view: RefCell
+//        let buf = nav.to_string();
+//        eprint!("{buf}");
+//
+//        nav.message
+//            .iter_mut()
+//            .map(|s| {
+//                if let Some(n) = s.find('\n') {
+//                    s.truncate(n);
+//                }
+//            })
+//            .count();
+//
+//        let (fnptr, ast) = nav.input.tick()?;
+//        let fnptr = fnptr.clone();
+//
+//        //let mut global_ast = std::mem::take(&mut nav.scripting.global_ast);
+//        drop(nav);
+//        _ = fnptr
+//            .call::<Dynamic>(engine, &ast, (self.clone(),))
+//            .expect("TODO");
+//
+//        let mut nav = self.m();
+//
+//        //std::mem::swap(&mut nav.scripting.global_ast, &mut global_ast);
+//        //nav.scripting.global_ast.combine(global_ast);
+//
+//        nav.exit.take()
+//    }
+//}
+
 // pub fn {{{
 
+/*
 pub fn make_engine() -> Engine {
     let mut engine = Engine::new();
     engine.register_global_module(exported_module!(api).into());
@@ -111,9 +168,7 @@ pub fn main_loop(mut nav: Navigate) -> Result<(), String> {
             .compile_file(file)
             .expect("somethin about user script not valid")
     } else {
-        engine
-            .compile("defaults::init(api)")
-            .unwrap()
+        engine.compile("defaults::init(api)").unwrap()
     };
 
     let mut api = Api::new(nav);
@@ -163,6 +218,7 @@ fn script_path(path: &[usize]) -> Array {
 fn with_opt_unit<T: Clone + 'static>(f: impl FnOnce() -> Option<T>) -> Dynamic {
     f().map(Dynamic::from).unwrap_or_default()
 }
+*/
 
 fn slice_search<T>(
     slice: &[T],
@@ -187,36 +243,35 @@ fn slice_search<T>(
 
 // }}}
 
+/*
 #[export_module]
 mod api {
     // source/eval {{{
 
     #[rhai_fn(return_raw)]
     pub fn source_text(cc: NativeCallContext, api: &mut Api, text: &str) -> ApiResult<Dynamic> {
-        let mut ast = cc.engine().compile(text).unwrap();
-        let mut scope = Scope::new();
-        let r = cc
-            .engine()
-            .eval_ast_with_scope(scope.push("api", api.clone()), &ast)?;
+        let ast = cc.engine().compile(text).unwrap();
+        api.m()
+            .scripting
+            .current_ast
+            .replace(ast.clone_functions_only().into())
+            .expect("already was one, meaning `source` was reached from within an other `source`");
 
-        ast.clear_statements();
-        api.m().scripting.global_ast.combine(ast);
-
-        Ok(r)
+        cc.engine()
+            .eval_ast_with_scope(Scope::new().push_constant("api", api.clone()), &ast)
     }
 
     #[rhai_fn(return_raw)]
     pub fn source(cc: NativeCallContext, api: &mut Api, file: &str) -> ApiResult<Dynamic> {
-        let mut ast = cc.engine().compile_file(file.into()).unwrap();
-        let mut scope = Scope::new();
-        let r = cc
-            .engine()
-            .eval_ast_with_scope(scope.push("api", api.clone()), &ast)?;
+        let ast = cc.engine().compile_file(file.into()).unwrap();
+        api.m()
+            .scripting
+            .current_ast
+            .replace(ast.clone_functions_only().into())
+            .expect("already was one, meaning `source` was reached from within an other `source`");
 
-        ast.clear_statements();
-        api.m().scripting.global_ast.combine(ast);
-
-        Ok(r)
+        cc.engine()
+            .eval_ast_with_scope(Scope::new().push_constant("api", api.clone()), &ast)
     }
 
     // }}}
@@ -307,22 +362,21 @@ mod api {
 
     // mapping {{{
 
-    pub fn map(api: &mut Api, seq: &str, cb: FnPtr) {
-        api.m().input.add_mapping(
-            terminal::keytrans(seq).expect("need valid seq something blbl"),
-            cb,
-        );
+    pub fn map(cc: NativeCallContext, api: &mut Api, seq: &str, cb: FnPtr) {
+        let seq = terminal::keytrans(seq).expect("need valid seq something blbl");
+        let mut nav = api.m();
+        let ast = nav.scripting.current_ast.clone().expect("`map` called with no current ast");
+        nav.input.add_mapping(seq, cb, ast);
     }
 
     #[rhai_fn(name = "map")]
     pub fn map_multiple(api: &mut Api, map: Map) {
         let mut nav = api.m();
+        let ast = nav.scripting.current_ast.clone().expect("`map` called with no current ast");
         for (seq, cb) in map {
+            let seq = terminal::keytrans(&seq).expect("need valid seq something blbl");
             let Some(cb) = cb.try_cast() else { continue };
-            nav.input.add_mapping(
-                terminal::keytrans(&seq).expect("need valid seq something blbl"),
-                cb,
-            );
+            nav.input.add_mapping(seq, cb, ast.clone());
         }
     }
 
@@ -633,6 +687,7 @@ mod api {
 
     // }}}
 }
+*/
 
 #[cfg(test)]
 mod test {

@@ -51,12 +51,6 @@ impl Options {
         let mut pos_count = 0;
         while let Some(arg) = args.next() {
             match arg.as_str() {
-                // yea why nat
-                "=" => {
-                    rhai_interp();
-                    process::exit(0);
-                }
-
                 "--help" | "-h" => {
                     println!(
                         r#"Usage: {prog} [arg [name]]
@@ -125,64 +119,5 @@ impl Options {
     pub fn instanciate(self) -> Result<Navigate> {
         providers::select(&self.provider_arg, &self.provider_name)
             .map(|prov| Navigate::new(self.user_script, prov, self.provider_name))
-    }
-}
-
-fn rhai_interp() {
-    use std::io::{self, IsTerminal, Read};
-
-    use rhai::{Dynamic, Scope};
-
-    use crate::navigate;
-    use crate::prompt;
-    use crate::terminal;
-
-    let mut input = io::stdin();
-    let output = io::stderr();
-    let mut history = Vec::new();
-    let engine = navigate::make_engine();
-    let mut scope = Scope::new();
-
-    if input.is_terminal() {
-        let mut restore = terminal::raw().unwrap();
-
-        let mut input = input.bytes().map_while(Result::ok);
-        while let Some(line) =
-            prompt::prompt("?? ", &mut input, &output, history.clone(), |_, _| {
-                Vec::new()
-            })
-        {
-            restore.restore();
-            eprintln!();
-
-            match engine.compile(&line) {
-                Ok(ast) => {
-                    eprintln!("{ast:#?}");
-                    match engine.eval_ast_with_scope::<Dynamic>(&mut scope, &ast) {
-                        Ok(ans) => {
-                            if !ans.is_unit() {
-                                eprintln!(":: {ans:#?}");
-                            }
-                            eprintln!("{scope:#?}");
-                        }
-                        Err(err) => eprintln!("!! {err}"),
-                    }
-                }
-                Err(err) => eprintln!("!! {err}"),
-            }
-            history.push(line);
-
-            restore = terminal::raw().unwrap();
-        }
-
-        restore.restore();
-    } else {
-        let mut s = String::new();
-        if input.read_to_string(&mut s).is_ok() {
-            match engine.eval::<Dynamic>(&s) {
-                Ok(ans) => eprintln!("{ans:#?}"),
-                Err(err) => eprintln!("!! {err}"),
-            }
-        }
     }
 }
