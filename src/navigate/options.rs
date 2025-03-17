@@ -1,5 +1,4 @@
-use mlua::Value;
-use mlua::IntoLua;
+use mlua::{Value, Lua, IntoLua};
 
 pub struct Options {
     pub appearance: String,
@@ -14,9 +13,9 @@ impl Default for Options {
 }
 
 impl Options {
-    pub fn get(&self, name: &str) -> Value {
+    pub fn get(&self, name: &str, lua: &Lua) -> Value {
         match name {
-            "appearance" | "appea" => self.appearance.clone().into_lua(todo!()).unwrap(),
+            "appearance" | "appea" => self.appearance.clone().into_lua(lua).unwrap(),
             _ => Value::Nil,
         }
     }

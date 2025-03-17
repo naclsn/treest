@@ -1,11 +1,10 @@
 use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::ops::Range;
-use std::path::Path;
 use std::path::PathBuf;
 
 use anyhow::Result;
-use mlua::{AnyUserData, AsChunk, Lua, Result as LuaResult, UserData};
+use mlua::Lua;
 use thiserror::Error;
 
 mod display;
@@ -15,7 +14,6 @@ mod scripting;
 
 use crate::navigate::input::Input;
 use crate::navigate::options::Options;
-use crate::navigate::scripting::Scripting;
 use crate::providers::Provider;
 use crate::terminal::{self, RestoreWithPanicHook};
 use crate::tree::Node;
@@ -39,9 +37,8 @@ pub struct Navigate {
     exit: Option<String>,
 
     message: Option<String>,
-    view: RefCell<View>, // is mutated during rendering to stay up to date
+    view: RefCell<View>, // is mutated during rendering to stay up to date TODO: don't use Display
 
-    //scripting: Scripting,
     options: Options,
     registers: BTreeMap<String, Vec<String>>,
 }
@@ -145,7 +142,6 @@ impl Navigate {
             message: None,
             view: RefCell::default(),
 
-            //scripting: Scripting::new(user_script),
             options: Options::default(),
             registers: BTreeMap::new(),
         }
@@ -166,15 +162,25 @@ impl Navigate {
         .exec()
         .unwrap();
 
+        terminal::cursor_off();
+        terminal::mouse_on();
+        terminal::altscreen_on();
+
         let exit: String = lua
-            .load(r#"
-                repeat
+            .load(
+                r#"repeat
                     local action = treest:_tick()
                     if action then action() end
-                until treest.exit
-                return treest.exit"#)
+                until treest.quitting
+                return treest:_atexit()"#,
+            )
             .call(())
             .unwrap();
+
+        terminal::cursor_on();
+        terminal::mouse_off();
+        terminal::altscreen_off();
+
         match exit {
             it if it.is_empty() => Ok(()),
             exit => Err(MainLoopExitText(exit)),

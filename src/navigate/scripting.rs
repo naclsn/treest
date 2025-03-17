@@ -1,12 +1,6 @@
-use std::cell::{RefCell, RefMut};
-use std::io::{self, Read};
-use std::ops::{Deref, DerefMut};
 use std::path::PathBuf;
-use std::pin::Pin;
-use std::rc::Rc;
-use std::sync::Arc;
 
-use mlua::{Function, Lua, UserData, UserDataFields, UserDataMethods};
+use mlua::{Function, Result, UserData, UserDataFields, UserDataMethods};
 
 use crate::navigate::{Navigate, Target, ViewJumpBy};
 use crate::prompt;
@@ -29,58 +23,60 @@ impl Scripting {
 
 impl UserData for Navigate {
     fn add_fields<F: UserDataFields<Self>>(fields: &mut F) {
-        fields.add_field_method_get("exit", |_, nav| Ok(nav.exit.as_ref().cloned()))
+        fields.add_field_method_get("quitting", |_, nav| Ok(nav.exit.is_some()))
     }
 
     fn add_methods<M: UserDataMethods<Self>>(methods: &mut M) {
-        //methods.add_method_mut("_init", |lua, nav, ()| {
-        //    lua.load("require('defaults').init()").exec().unwrap();
-        //    Ok(())
-        //});
+        methods.add_method_mut("_atexit", |_, nav, ()| nav._atexit());
+        methods.add_method_mut("_tick", |_, nav, ()| nav._tick());
+        methods.add_method_mut("map", |_, nav, (seq, cb)| nav.map(seq, cb));
+        methods.add_method_mut("quit", |_, nav, text| nav.quit(text));
+        methods.add_method_mut("unfold", |_, nav, target| nav.unfold(target));
+    }
+}
 
-        methods.add_method_mut("_tick", |lua, nav, ()| {
-            // TODO: don't use Display, it will also remove the view: RefCell
-            let buf = nav.to_string();
-            eprint!("{buf}");
+impl Navigate {
+    fn _atexit(&mut self) -> Result<String> {
+        let exit = self.exit.take().expect("_atexit called too early (no exit text set)");
+        self.term.take().map(|t| t.restore());
+        Ok(exit)
+    }
 
-            if let Some(ref mut s) = nav.message {
-                if let Some(n) = s.find('\n') {
-                    s.truncate(n);
-                }
+    fn _tick(&mut self) -> Result<Option<Function>> {
+        // TODO: don't use Display, it will also remove the view: RefCell
+        let buf = self.to_string();
+        eprint!("{buf}");
+
+        if let Some(ref mut s) = self.message {
+            // TODO(maybe): --MORE-- prompt or something
+            if let Some(n) = s.find('\n') {
+                s.truncate(n);
             }
+        }
 
-            Ok(nav.input.tick().cloned())
+        Ok(self.input.tick().cloned())
+    }
 
-            ////let mut global_ast = std::mem::take(&mut nav.scripting.global_ast);
-            //drop(nav);
-            //_ = fnptr
-            //    .call::<Dynamic>(engine, &ast, (self.clone(),))
-            //    .expect("TODO");
+    fn map(&mut self, seq: String, cb: Function) -> Result<()> {
+        let seq = terminal::keytrans(seq.as_str()).expect("need valid seq something blbl TODO");
+        self.input.add_mapping(seq, cb);
+        Ok(())
+    }
 
-            //let mut nav = self.m();
+    fn quit(&mut self, text: Option<String>) -> Result<()> {
+        self.exit = text;
+        Ok(())
+    }
 
-            //std::mem::swap(&mut nav.scripting.global_ast, &mut global_ast);
-            //nav.scripting.global_ast.combine(global_ast);
-
-            //panic!("{:?}", nav.exit.take());
-            //Ok(nav.exit.take())
-        });
-
-        methods.add_method_mut("map", |_, nav, (seq, cb): (String, Function)| {
-            let seq = terminal::keytrans(seq.as_str()).expect("need valid seq something blbl");
-            nav.input.add_mapping(seq, cb);
-            Ok(())
-        });
-
-        methods.add_method_mut("unfold", |_, nav, (/*target*/)| {
-            nav.set_folded(Target::Cursor, false);
-            Ok(())
-        });
-
-        methods.add_method_mut("quit", |_, nav, text: Option<String>| {
-            nav.exit = text;
-            Ok(())
-        });
+    fn unfold(&mut self, target: Option<Vec<usize>>) -> Result<()> {
+        self.set_folded(
+            target
+                .as_deref()
+                .map(Target::Path)
+                .unwrap_or(Target::Cursor),
+            false,
+        );
+        Ok(())
     }
 }
 
