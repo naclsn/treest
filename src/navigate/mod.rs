@@ -151,7 +151,8 @@ impl Navigate {
         let user_script = self.user_script.clone();
 
         let lua = Lua::new();
-        lua.globals().set("treest", self).unwrap();
+        lua.globals().raw_set("treest", self).unwrap();
+        scripting::other_exports(&lua).unwrap();
         lua.load(include_str!("../defaults.lua")).exec().unwrap();
 
         if let Some(path) = user_script {

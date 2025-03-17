@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use mlua::{Function, Result, UserData, UserDataFields, UserDataMethods};
+use mlua::{Function, Result, Lua, UserData, UserDataFields, UserDataMethods};
 
 use crate::navigate::{Navigate, Target, ViewJumpBy};
 use crate::prompt;
@@ -33,6 +33,12 @@ impl UserData for Navigate {
         methods.add_method_mut("quit", |_, nav, text| nav.quit(text));
         methods.add_method_mut("unfold", |_, nav, target| nav.unfold(target));
     }
+}
+
+pub fn other_exports(lua: &Lua) -> Result<()> {
+    let g = lua.globals();
+    g.raw_set("help", lua.create_function(|_, subj| help(subj))?)?;
+    Ok(())
 }
 
 impl Navigate {
@@ -80,141 +86,9 @@ impl Navigate {
     }
 }
 
-//impl Api {
-//    pub fn new(nav: Navigate) -> Self {
-//        Self(Rc::new(RefCell::new(nav)))
-//    }
-//
-//    #[inline]
-//    pub fn m(&mut self) -> RefMut<'_, Navigate> {
-//        self.0.borrow_mut()
-//    }
-//
-//    fn tick(&mut self, engine: &Engine) -> Option<String> {
-//        let mut nav = self.m();
-//
-// TODO: don't use Display, it will also remove the view: RefCell
-//        let buf = nav.to_string();
-//        eprint!("{buf}");
-//
-//        nav.message
-//            .iter_mut()
-//            .map(|s| {
-//                if let Some(n) = s.find('\n') {
-//                    s.truncate(n);
-//                }
-//            })
-//            .count();
-//
-//        let (fnptr, ast) = nav.input.tick()?;
-//        let fnptr = fnptr.clone();
-//
-//        //let mut global_ast = std::mem::take(&mut nav.scripting.global_ast);
-//        drop(nav);
-//        _ = fnptr
-//            .call::<Dynamic>(engine, &ast, (self.clone(),))
-//            .expect("TODO");
-//
-//        let mut nav = self.m();
-//
-//        //std::mem::swap(&mut nav.scripting.global_ast, &mut global_ast);
-//        //nav.scripting.global_ast.combine(global_ast);
-//
-//        nav.exit.take()
-//    }
-//}
-
-// pub fn {{{
-
-/*
-pub fn make_engine() -> Engine {
-    let mut engine = Engine::new();
-    engine.register_global_module(exported_module!(api).into());
-
-    engine.register_static_module(
-        "defaults",
-        Module::eval_ast_as_new(
-            Scope::new(),
-            &engine.compile(include_str!("../defaults.rhai")).unwrap(),
-            &engine,
-        )
-        .unwrap()
-        .into(),
-    );
-
-    //let mut module = Module::new();
-    //module.set_native_fn("init", || Ok(panic!("YEEEEEEEE")));
-    //engine.register_static_module("defaults", module.into());
-    //engine.eval::<()>(r#"import "defaults"; defaults::init()"#).unwrap();
-
-    // TODO: maybe
-    //engine.on_print();
-    //engine.on_debug();
-    engine
+fn help(subj: String) -> Result<Option<String>> {
+    Ok("idk".to_string().into()) // TODO ofc
 }
-
-pub fn main_loop(mut nav: Navigate) -> Result<(), String> {
-    let user_script = nav.scripting.user_script.take();
-
-    let engine = make_engine();
-    let mut scope = Scope::new();
-
-    let ast = if let Some(file) = user_script {
-        engine
-            .compile_file(file)
-            .expect("somethin about user script not valid")
-    } else {
-        engine.compile("defaults::init(api)").unwrap()
-    };
-
-    let mut api = Api::new(nav);
-
-    engine
-        .eval_ast_with_scope::<()>(scope.push("api", api.clone()), &ast)
-        .expect("somethin about user script not valid runtime");
-
-    terminal::cursor_off();
-    terminal::mouse_on();
-    terminal::altscreen_on();
-
-    let exit = loop {
-        match api.tick(&engine) {
-            Some(it) if it.is_empty() => break Ok(()),
-            Some(text) => break Err(text),
-            _ => (),
-        }
-    };
-
-    terminal::cursor_on();
-    terminal::mouse_off();
-    terminal::altscreen_off();
-
-    exit
-}
-
-// }}}
-
-// priv helpers {{{
-
-type ApiResult<T> = Result<T, Box<EvalAltResult>>;
-
-#[inline]
-fn host_path(path: &Array) -> Result<Vec<usize>, &'static str> {
-    path.iter()
-        .map(|d| d.as_int().map(|k| k as usize))
-        .collect()
-}
-
-#[inline]
-fn script_path(path: &[usize]) -> Array {
-    path.iter().map(|k| (*k as INT).into()).collect()
-}
-
-#[inline]
-fn with_opt_unit<T: Clone + 'static>(f: impl FnOnce() -> Option<T>) -> Dynamic {
-    f().map(Dynamic::from).unwrap_or_default()
-}
-*/
 
 fn slice_search<T>(
     slice: &[T],
@@ -237,38 +111,10 @@ fn slice_search<T>(
     .find(|n| predicate(&slice[*n]))
 }
 
-// }}}
-
 /*
 #[export_module]
 mod api {
     // source/eval {{{
-
-    #[rhai_fn(return_raw)]
-    pub fn source_text(cc: NativeCallContext, api: &mut Api, text: &str) -> ApiResult<Dynamic> {
-        let ast = cc.engine().compile(text).unwrap();
-        api.m()
-            .scripting
-            .current_ast
-            .replace(ast.clone_functions_only().into())
-            .expect("already was one, meaning `source` was reached from within an other `source`");
-
-        cc.engine()
-            .eval_ast_with_scope(Scope::new().push_constant("api", api.clone()), &ast)
-    }
-
-    #[rhai_fn(return_raw)]
-    pub fn source(cc: NativeCallContext, api: &mut Api, file: &str) -> ApiResult<Dynamic> {
-        let ast = cc.engine().compile_file(file.into()).unwrap();
-        api.m()
-            .scripting
-            .current_ast
-            .replace(ast.clone_functions_only().into())
-            .expect("already was one, meaning `source` was reached from within an other `source`");
-
-        cc.engine()
-            .eval_ast_with_scope(Scope::new().push_constant("api", api.clone()), &ast)
-    }
 
     // }}}
 
