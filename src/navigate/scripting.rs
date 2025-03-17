@@ -64,7 +64,7 @@ impl Navigate {
     }
 
     fn quit(&mut self, text: Option<String>) -> Result<()> {
-        self.exit = text;
+        self.exit = text.or(Some(String::new()));
         Ok(())
     }
 
