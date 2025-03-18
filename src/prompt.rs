@@ -1,7 +1,15 @@
 use std::io::Write;
 use std::mem;
 
-pub fn split(line: &str, point: usize) -> (Vec<String>, usize) {
+use mlua::{Error as LuaError, FromLua, Function, IntoLua, Lua, Result as LuaResult, Value};
+
+pub struct PromptSplitInfo {
+    args: Vec<String>,
+    in_arg: usize,
+}
+crate::impl_lua_conversion!(PromptSplitInfo { args, in_arg });
+
+pub fn split(line: &str, point: usize) -> PromptSplitInfo {
     let mut args = Vec::new();
     let mut curr = String::new();
     let mut in_arg = 0;
@@ -61,7 +69,7 @@ pub fn split(line: &str, point: usize) -> (Vec<String>, usize) {
         args.push(curr);
     }
 
-    (args, in_arg)
+    PromptSplitInfo { args, in_arg }
 }
 
 pub fn prompt(

@@ -1,54 +1,48 @@
+use std::io::{self, Read};
 use std::path::PathBuf;
 
-use mlua::{Function, Result, Lua, UserData, UserDataFields, UserDataMethods};
+use mlua::{Function, Lua, Result as LuaResult, UserData, UserDataFields, UserDataMethods, Value};
 
 use crate::navigate::{Navigate, Target, ViewJumpBy};
-use crate::prompt;
+use crate::prompt::{self, PromptSplitInfo};
 use crate::terminal;
 use crate::tree::NodePath;
 
-pub struct Scripting {
-    user_script: Option<PathBuf>,
-    //pub lua: Lua,
-}
-
-impl Scripting {
-    pub fn new(user_script: Option<PathBuf>) -> Self {
-        Self {
-            user_script,
-            //lua: Lua::new(),
-        }
-    }
-}
-
 impl UserData for Navigate {
     fn add_fields<F: UserDataFields<Self>>(fields: &mut F) {
-        fields.add_field_method_get("quitting", |_, nav| Ok(nav.exit.is_some()))
+        fields.add_field_method_get("quitting", |_, nav| Ok(nav.exit.is_some()));
+        fields.add_field_method_get("mouse_event_pos", |_, nav| {
+            Ok(nav.input.get_pending_mouse_info())
+        });
     }
 
     fn add_methods<M: UserDataMethods<Self>>(methods: &mut M) {
         methods.add_method_mut("_atexit", |_, nav, ()| nav._atexit());
         methods.add_method_mut("_tick", |_, nav, ()| nav._tick());
         methods.add_method_mut("map", |_, nav, (seq, cb)| nav.map(seq, cb));
+        methods.add_method_mut("message", |_, nav, text| nav.message(text));
         methods.add_method_mut("quit", |_, nav, text| nav.quit(text));
         methods.add_method_mut("unfold", |_, nav, target| nav.unfold(target));
     }
 }
 
-pub fn other_exports(lua: &Lua) -> Result<()> {
+pub fn other_exports(lua: &Lua) -> LuaResult<()> {
     let g = lua.globals();
     g.raw_set("help", lua.create_function(|_, subj| help(subj))?)?;
     Ok(())
 }
 
 impl Navigate {
-    fn _atexit(&mut self) -> Result<String> {
-        let exit = self.exit.take().expect("_atexit called too early (no exit text set)");
+    fn _atexit(&mut self) -> LuaResult<String> {
+        let exit = self
+            .exit
+            .take()
+            .expect("_atexit called too early (no exit text set)");
         self.term.take().map(|t| t.restore());
         Ok(exit)
     }
 
-    fn _tick(&mut self) -> Result<Option<Function>> {
+    fn _tick(&mut self) -> LuaResult<Option<Function>> {
         // TODO: don't use Display, it will also remove the view: RefCell
         let buf = self.to_string();
         eprint!("{buf}");
@@ -60,21 +54,92 @@ impl Navigate {
             }
         }
 
+        // rem: cannot call here beacause `self` is borrowed mut
+        // (would cause a BadArgument: UserDataBorrowMutError)
         Ok(self.input.tick().cloned())
     }
 
-    fn map(&mut self, seq: String, cb: Function) -> Result<()> {
+    fn get_option(&mut self, lua: &Lua, name: String) -> LuaResult<Value> {
+        Ok(self.options.get(&name, lua))
+    }
+
+    // TODO: remove the Option<>
+    fn get_register(&mut self, name: String) -> LuaResult<Option<String>> {
+        Ok(self.registers.get(&name).and_then(|h| h.last()).cloned())
+    }
+
+    // TODO: remove the Option<>
+    fn get_register_hist(&mut self, name: String) -> LuaResult<Option<&[String]>> {
+        Ok(self.registers.get(&name).map(|h| &h[..]))
+    }
+
+    fn map(&mut self, seq: String, cb: Function) -> LuaResult<()> {
         let seq = terminal::keytrans(seq.as_str()).expect("need valid seq something blbl TODO");
         self.input.add_mapping(seq, cb);
         Ok(())
     }
 
-    fn quit(&mut self, text: Option<String>) -> Result<()> {
+    fn message(&mut self, text: Option<String>) -> LuaResult<()> {
+        self.message = text.map(|w| w.replace("\n", "\r\n")); // TODO: somewhat of a temp hack
+        Ok(())
+    }
+
+    fn prompt(&mut self, ps: String, completion: Function) -> LuaResult<Option<String>> {
+        let history = self.registers.entry(ps.clone()).or_default();
+
+        terminal::cursor_on();
+        terminal::mouse_off();
+        let ans = prompt::prompt(
+            &ps,
+            io::stdin().bytes().map_while(Result::ok),
+            io::stderr(),
+            history.clone(),
+            |line, point| completion.call((line, point)).unwrap_or_default(),
+        );
+        terminal::cursor_off();
+        terminal::mouse_on();
+
+        ans.as_ref().inspect(|r| history.push(r.to_string()));
+        Ok(ans)
+    }
+
+    fn provider_name(&self) -> LuaResult<String> {
+        Ok(self.provider_name.clone())
+    }
+
+    fn quit(&mut self, text: Option<String>) -> LuaResult<()> {
         self.exit = text.or(Some(String::new()));
         Ok(())
     }
 
-    fn unfold(&mut self, target: Option<Vec<usize>>) -> Result<()> {
+    fn set_option(&mut self, name: String, value: Value) -> LuaResult<()> {
+        self.options.set(&name, value);
+        Ok(())
+    }
+
+    fn set_register(&mut self, name: String) -> LuaResult<Option<String>> {
+        Ok(self.registers.get(&name).and_then(|h| h.last()).cloned())
+    }
+
+    fn suspend(&mut self) -> LuaResult<()> {
+        #[cfg(not(windows))]
+        {
+            terminal::cursor_on();
+            terminal::mouse_off();
+            terminal::altscreen_off();
+
+            self.term.take().map(|t| t.restore());
+            unsafe { libc::raise(libc::SIGTSTP) };
+            self.term = terminal::raw_with_panic_hook().ok();
+
+            terminal::cursor_off();
+            terminal::mouse_on();
+            terminal::altscreen_on();
+        }
+        Ok(())
+    }
+
+    fn unfold(&mut self, target: Option<Vec<usize>>) -> LuaResult<()> {
         self.set_folded(
             target
                 .as_deref()
@@ -86,8 +151,36 @@ impl Navigate {
     }
 }
 
-fn help(subj: String) -> Result<Option<String>> {
+fn help(subj: String) -> LuaResult<Option<String>> {
     Ok("idk".to_string().into()) // TODO ofc
+}
+
+fn keyseqstr(seq: Vec<u8>) -> LuaResult<String> {
+    Ok(terminal::keyseqstr(&seq))
+}
+
+fn keytrans(text: &str) -> LuaResult<Option<Vec<u8>>> {
+    Ok(terminal::keytrans(text))
+}
+
+fn prompt(ps: String, history: Vec<String>, completion: Function) -> LuaResult<Option<String>> {
+    terminal::cursor_on();
+    terminal::mouse_off();
+    let ans = prompt::prompt(
+        &ps,
+        io::stdin().bytes().map_while(Result::ok),
+        io::stderr(),
+        history.clone(),
+        |line, point| completion.call((line, point)).unwrap_or_default(),
+    );
+    terminal::cursor_off();
+    terminal::mouse_on();
+    Ok(ans)
+}
+
+// TODO: maybe attach to string table
+fn prompt_split(line: String, point: Option<usize>) -> LuaResult<PromptSplitInfo> {
+    Ok(prompt::split(&line, point.unwrap_or_default()))
 }
 
 fn slice_search<T>(
@@ -114,224 +207,6 @@ fn slice_search<T>(
 /*
 #[export_module]
 mod api {
-    // source/eval {{{
-
-    // }}}
-
-    // misc. {{{
-
-    pub fn help(cc: NativeCallContext, fname: &str) -> Array {
-        cc.engine().collect_fn_metadata(
-            Some(&cc),
-            |info| {
-                let matches = match fname.as_bytes() {
-                    [.., b'*'] => info.metadata.name.starts_with(&fname[..fname.len() - 1]),
-                    [b'*', ..] => info.metadata.name.ends_with(&fname[1..]),
-                    _ => info.metadata.name == fname,
-                };
-                if matches {
-                    let mut r = info
-                        .metadata
-                        .gen_signature(|s| cc.engine().map_type_name(s).into());
-                    r.push('\n');
-                    if !matches!(fname.as_bytes(), [.., b'*'] | [b'*', ..]) {
-                        for line in &info.metadata.comments {
-                            r.push_str(&line.replace("///", "   "));
-                        }
-                        r.push('\n');
-                    }
-                    Some(r.into())
-                } else {
-                    None
-                }
-            },
-            true,
-        )
-    }
-
-    pub fn message(api: &mut Api, w: Dynamic) {
-        api.m().message = Some(w.to_string().replace("\n", "\r\n"));
-    }
-
-    #[rhai_fn(pure)]
-    pub fn provider_name(api: &mut Api) -> String {
-        api.0.borrow().provider_name.clone()
-    }
-
-    #[rhai_fn(pure)] // not pure but pure enough
-    pub fn suspend(_api: &mut Api) {
-        #[cfg(not(windows))]
-        {
-            terminal::cursor_on();
-            terminal::mouse_off();
-            terminal::altscreen_off();
-
-            let mut nav = _api.m();
-            nav.term.take().map(|t| t.restore());
-            unsafe { libc::raise(libc::SIGTSTP) };
-            nav.term = terminal::raw_with_panic_hook().ok();
-
-            terminal::cursor_off();
-            terminal::mouse_on();
-            terminal::altscreen_on();
-        }
-    }
-
-    pub fn quit(api: &mut Api) {
-        quit_text(api, "")
-    }
-    #[rhai_fn(name = "quit", name = "cquit")]
-    pub fn quit_code(api: &mut Api, code: INT) {
-        quit_text(api, &code.to_string());
-    }
-    #[rhai_fn(name = "quit", name = "cquit")]
-    pub fn quit_text(api: &mut Api, text: &str) {
-        let mut nav = api.m();
-        nav.exit = Some(text.into());
-        nav.term.take().map(|t| t.restore());
-    }
-
-    #[rhai_fn(pure)]
-    pub fn mouse_event_pos(api: &mut Api) -> Map {
-        let info = api.0.borrow().input.get_pending_mouse_info();
-        let mut r = Map::new();
-        r.insert("row".into(), (info.row as INT).into());
-        r.insert("col".into(), (info.col as INT).into());
-        r
-    }
-
-    // }}}
-
-    // mapping {{{
-
-    pub fn map(cc: NativeCallContext, api: &mut Api, seq: &str, cb: FnPtr) {
-        let seq = terminal::keytrans(seq).expect("need valid seq something blbl");
-        let mut nav = api.m();
-        let ast = nav.scripting.current_ast.clone().expect("`map` called with no current ast");
-        nav.input.add_mapping(seq, cb, ast);
-    }
-
-    #[rhai_fn(name = "map")]
-    pub fn map_multiple(api: &mut Api, map: Map) {
-        let mut nav = api.m();
-        let ast = nav.scripting.current_ast.clone().expect("`map` called with no current ast");
-        for (seq, cb) in map {
-            let seq = terminal::keytrans(&seq).expect("need valid seq something blbl");
-            let Some(cb) = cb.try_cast() else { continue };
-            nav.input.add_mapping(seq, cb, ast.clone());
-        }
-    }
-
-    #[rhai_fn(global)]
-    pub fn keytrans(text: &str) -> Dynamic {
-        with_opt_unit(|| terminal::keytrans(text))
-    }
-
-    #[rhai_fn(global)]
-    pub fn keyseqstr(seq: Blob) -> String {
-        terminal::keyseqstr(&seq)
-    }
-
-    // }}}
-
-    // values (options and registers) {{{
-
-    #[rhai_fn(pure, index_get, name = "value")]
-    pub fn get_value(api: &mut Api, name: &str) -> Dynamic {
-        if b'&' == name.as_bytes()[0] {
-            api.0.borrow().options.get(&name[1..])
-        } else {
-            api.0
-                .borrow()
-                .registers
-                .get(name)
-                .and_then(|v| v.last().cloned())
-                .map(Dynamic::from)
-                .unwrap_or_default()
-        }
-    }
-
-    #[rhai_fn(pure, name = "value")]
-    pub fn get_value_hist(api: &mut Api, name: &str, history: &str) -> Dynamic {
-        if "hist" != history {
-            return get_value(api, name);
-        }
-        if b'&' == name.as_bytes()[0] {
-            let r = api.0.borrow().options.get(&name[1..]);
-            if !r.is_unit() {
-                vec![r].into()
-            } else {
-                r
-            }
-        } else {
-            api.0
-                .borrow()
-                .registers
-                .get(name)
-                .cloned()
-                .map(Dynamic::from)
-                .unwrap_or_default()
-        }
-    }
-
-    #[rhai_fn(return_raw, index_set)]
-    pub fn set_value(api: &mut Api, name: &str, value: Dynamic) -> ApiResult<()> {
-        if b'&' == name.as_bytes()[0] {
-            api.m().options.set(&name[1..], value)?;
-        } else {
-            api.m()
-                .registers
-                .entry(name.into())
-                .or_default()
-                .push(value.into_string()?);
-        }
-        Ok(())
-    }
-
-    // }}}
-
-    // user textual input {{{
-
-    pub fn prompt(cc: NativeCallContext, api: &mut Api, ps: &str, completion: FnPtr) -> Dynamic {
-        let mut nav = api.m();
-        let history = nav.registers.entry(ps.into()).or_default();
-
-        terminal::cursor_on();
-        terminal::mouse_off();
-        let res = prompt::prompt(
-            ps,
-            io::stdin().bytes().map_while(Result::ok),
-            io::stderr(),
-            history.clone(),
-            |line, point| {
-                completion
-                    .call_within_context(&cc, (line.to_string(), point))
-                    .unwrap_or_default()
-            },
-        );
-        terminal::cursor_off();
-        terminal::mouse_on();
-
-        let Some(r) = res else { return Dynamic::UNIT };
-        history.push(r.clone());
-        r.into()
-    }
-
-    #[rhai_fn(global)]
-    pub fn prompt_split(line: &str, point: INT) -> Map {
-        let (args, in_arg) = prompt::split(line, point as usize);
-        let mut r = Map::new();
-        r.insert("args".into(), args.into());
-        r.insert("in_arg".into(), (in_arg as INT).into());
-        r
-    }
-    #[rhai_fn(global, name = "prompt_split")]
-    pub fn prompt_split_vec(line: &str) -> Vec<String> {
-        prompt::split(line, 0).0
-    }
-
-    // }}}
-
     // node actions {{{
 
     #[rhai_fn(return_raw)]

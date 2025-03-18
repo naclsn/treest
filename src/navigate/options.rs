@@ -20,11 +20,11 @@ impl Options {
         }
     }
 
-    pub fn set(&mut self, name: &str, value: Value) -> Result<(), &str> {
+    // TODO: return a LuaResult<()>
+    pub fn set(&mut self, name: &str, value: Value) {
         match name {
             "appearance" | "appea" => self.appearance = value.as_string().unwrap().to_string_lossy(),
             _ => (),
         }
-        Ok(())
     }
 }

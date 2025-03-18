@@ -2,7 +2,7 @@ use std::fmt::Debug;
 use std::fs::File;
 use std::io::{self, Read};
 
-use mlua::Function;
+use mlua::{Error as LuaError, FromLua, Function, IntoLua, Lua, Result as LuaResult, Value};
 
 use crate::terminal;
 
@@ -20,6 +20,7 @@ pub struct PendingMouseInfo {
     pub col: u8,
     pub row: u8,
 }
+crate::impl_lua_conversion!(PendingMouseInfo { col, row });
 
 struct Mapping(Vec<u8>, Function);
 

@@ -4,7 +4,7 @@ use std::ops::Range;
 use std::path::PathBuf;
 
 use anyhow::Result;
-use mlua::Lua;
+use mlua::{Lua, Value};
 use thiserror::Error;
 
 mod display;
@@ -121,6 +121,35 @@ macro_rules! as_path {
     };
 }
 
+#[macro_export]
+macro_rules! impl_lua_conversion {
+    ($ty:ty { $($field:ident),*$(,)? }) => {
+        impl IntoLua for $ty {
+            fn into_lua(self, lua: &Lua) -> LuaResult<Value> {
+                let t = lua.create_table()?;
+                $(t.set(stringify!($field), self.$field)?;)*
+                Ok(Value::Table(t))
+            }
+        }
+
+        impl FromLua for $ty {
+            fn from_lua(value: Value, _: &Lua) -> LuaResult<Self> {
+                if let Value::Table(table) = value {
+                    Ok(Self {
+                        $($field: table.get(stringify!($field))?,)*
+                    })
+                } else {
+                    Err(LuaError::FromLuaConversionError {
+                        from: value.type_name(),
+                        to: stringify!($ty).to_string(),
+                        message: Some("expected table".to_string()),
+                    })
+                }
+            }
+        }
+    };
+}
+
 impl Navigate {
     pub fn new(
         user_script: Option<PathBuf>,
@@ -150,10 +179,19 @@ impl Navigate {
     pub fn main_loop<'a>(self) -> Result<(), MainLoopExitText> {
         let user_script = self.user_script.clone();
 
-        let lua = Lua::new();
+        let lua = unsafe { Lua::unsafe_new() };
+
         lua.globals().raw_set("treest", self).unwrap();
         scripting::other_exports(&lua).unwrap();
-        lua.load(include_str!("../defaults.lua")).exec().unwrap();
+
+        lua.load_from_function::<Value>(
+            "defaults",
+            lua.load(include_str!("../defaults.lua"))
+                .set_name("@defaults.lua")
+                .into_function()
+                .unwrap(),
+        )
+        .unwrap();
 
         if let Some(path) = user_script {
             lua.load(path)
@@ -170,11 +208,17 @@ impl Navigate {
         let exit: String = lua
             .load(
                 r#"repeat
-                    local action = treest:_tick()
-                    if action then action() end
-                until treest.quitting
-                return treest:_atexit()"#,
+    local action = treest:_tick()
+    if action
+      then
+        ok, err = xpcall(action, debug.traceback)
+        if not ok then treest:message(err) end
+    end
+until treest.quitting
+return treest:_atexit()
+"#,
             )
+            .set_name("=_heartbeat")
             .call(())
             .unwrap();
 
