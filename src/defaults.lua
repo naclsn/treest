@@ -2,18 +2,37 @@ local m = {}
 
 m.commands = {
     cquit= function(arg) treest:quit(arg) end,
-    echo= function(arg) treest:message(load('return '..arg)()) end,
-    eval= function(arg) load(arg)() end,
+    echo= function(arg)
+        local ok, err = load('return '..arg)
+        if ok
+          then
+            _ = ok()
+            treest:message(debug.pretty(_))
+            return
+        end
+        treest:message(err)
+    end,
+    eval= function(arg)
+        local ok, err = load(arg)
+        if ok then ok() return end
+        treest:message(err)
+    end,
     help= function(arg) treest:message(help(arg) or ("no help for "..arg)) end,
     quit= function() treest:quit() end,
     suspend= function() treest:suspend() end,
 }
-m.commands.cq = m.commands.cquit
-m.commands.ec = m.commands.echo
-m.commands.ev = m.commands.eval
-m.commands.h = m.commands.help
-m.commands.q = m.commands.quit
-m.commands.sus = m.commands.suspend m.commands.stop = m.commands.suspend m.commands.st = m.commands.stop
+
+local function alias(com, ...)
+    for _, al in pairs({...})
+      do m.commands[al] = m.commands[com]
+    end
+end
+alias('cquit', 'cq')
+alias('echo', 'ec')
+alias('eval', 'ev', 'let', 'call', 'cal')
+alias('help', 'h')
+alias('quit', 'q')
+alias('suspend', 'sus', 'stop', 'st')
 
 local function search(q, flags)
     if not q then return end
@@ -39,7 +58,7 @@ m.keys = {
         if not st then return end
         local com = m.commands[ans:sub(st, ed)]
         if com
-          then com(ans:sub(ed or #ans+1))
+          then com(ans:sub((ed or #ans)+1))
           else treest:message("unknown command: "..ans:sub(st, ed))
         end
     end,

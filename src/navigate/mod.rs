@@ -4,7 +4,7 @@ use std::ops::Range;
 use std::path::PathBuf;
 
 use anyhow::Result;
-use mlua::{Lua, Value};
+use mlua::{Function, Lua, Table};
 use thiserror::Error;
 
 mod display;
@@ -124,22 +124,22 @@ macro_rules! as_path {
 #[macro_export]
 macro_rules! impl_lua_conversion {
     ($ty:ty { $($field:ident),*$(,)? }) => {
-        impl IntoLua for $ty {
-            fn into_lua(self, lua: &Lua) -> LuaResult<Value> {
+        impl ::mlua::IntoLua for $ty {
+            fn into_lua(self, lua: &::mlua::Lua) -> ::mlua::Result<::mlua::Value> {
                 let t = lua.create_table()?;
                 $(t.set(stringify!($field), self.$field)?;)*
-                Ok(Value::Table(t))
+                Ok(::mlua::Value::Table(t))
             }
         }
 
-        impl FromLua for $ty {
-            fn from_lua(value: Value, _: &Lua) -> LuaResult<Self> {
-                if let Value::Table(table) = value {
+        impl ::mlua::FromLua for $ty {
+            fn from_lua(value: ::mlua::Value, _: &Lua) -> ::mlua::Result<Self> {
+                if let ::mlua::Value::Table(table) = value {
                     Ok(Self {
                         $($field: table.get(stringify!($field))?,)*
                     })
                 } else {
-                    Err(LuaError::FromLuaConversionError {
+                    Err(::mlua::Error::FromLuaConversionError {
                         from: value.type_name(),
                         to: stringify!($ty).to_string(),
                         message: Some("expected table".to_string()),
@@ -180,26 +180,28 @@ impl Navigate {
         let user_script = self.user_script.clone();
 
         let lua = unsafe { Lua::unsafe_new() };
-
-        lua.globals().raw_set("treest", self).unwrap();
-        scripting::other_exports(&lua).unwrap();
-
-        lua.load_from_function::<Value>(
-            "defaults",
-            lua.load(include_str!("../defaults.lua"))
-                .set_name("@defaults.lua")
-                .into_function()
-                .unwrap(),
-        )
-        .unwrap();
+        let g = lua.globals();
+        g.raw_set("treest", self).unwrap();
+        scripting::global_exports(&g, &lua).unwrap();
+        let defaults: Table = lua
+            .load_from_function(
+                "defaults",
+                lua.load(include_str!("../defaults.lua"))
+                    .set_name("@defaults.lua")
+                    .into_function()
+                    .unwrap(),
+            )
+            .unwrap();
 
         if let Some(path) = user_script {
-            lua.load(path)
+            lua.load(path).exec().unwrap();
         } else {
-            lua.load("require('defaults').init()")
+            defaults
+                .get::<Function>("init")
+                .unwrap()
+                .call::<()>(())
+                .unwrap();
         }
-        .exec()
-        .unwrap();
 
         terminal::cursor_off();
         terminal::mouse_on();

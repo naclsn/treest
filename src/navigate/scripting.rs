@@ -1,12 +1,43 @@
 use std::io::{self, Read};
 use std::path::PathBuf;
+use std::result::Result as StdResult;
 
-use mlua::{Function, Lua, Result as LuaResult, UserData, UserDataFields, UserDataMethods, Value};
+use mlua::{Function, Table, Lua, Result, UserData, UserDataFields, UserDataMethods, Value};
 
 use crate::navigate::{Navigate, Target, ViewJumpBy};
 use crate::prompt::{self, PromptSplitInfo};
 use crate::terminal;
 use crate::tree::NodePath;
+
+macro_rules! make_exports {
+    ($t:expr, $lua:ident; $(pub $name:ident($($param:ident),*);)*) => {
+        {
+            let _t: &::mlua::Table = &$t;
+            $(_t.raw_set(
+                stringify!($name),
+                $lua.create_function(|_, ($($param,)*)| $name($($param),*))?,
+            )?;)*
+        }
+    };
+}
+
+macro_rules! make_methods {
+    ($methods:ident; $($fn_mut:tt $name:ident($($param:ident),*);)*) => {
+        $(make_methods!(@ $methods; $fn_mut $name($($param),*));)*
+    };
+    (@ $methods:ident; fn $name:ident(lua, $($param:ident),*)) => {
+        $methods.add_method(stringify!($name), |lua, this, ($($param,)*)| this.$name(lua, $($param),*))
+    };
+    (@ $methods:ident; mut $name:ident(lua, $($param:ident),*)) => {
+        $methods.add_method_mut(stringify!($name), |lua, this, ($($param,)*)| this.$name(lua, $($param),*))
+    };
+    (@ $methods:ident; fn $name:ident($($param:ident),*)) => {
+        $methods.add_method(stringify!($name), |_, this, ($($param,)*)| this.$name($($param),*))
+    };
+    (@ $methods:ident; mut $name:ident($($param:ident),*)) => {
+        $methods.add_method_mut(stringify!($name), |_, this, ($($param,)*)| this.$name($($param),*))
+    };
+}
 
 impl UserData for Navigate {
     fn add_fields<F: UserDataFields<Self>>(fields: &mut F) {
@@ -17,32 +48,52 @@ impl UserData for Navigate {
     }
 
     fn add_methods<M: UserDataMethods<Self>>(methods: &mut M) {
-        methods.add_method_mut("_atexit", |_, nav, ()| nav._atexit());
-        methods.add_method_mut("_tick", |_, nav, ()| nav._tick());
-        methods.add_method_mut("map", |_, nav, (seq, cb)| nav.map(seq, cb));
-        methods.add_method_mut("message", |_, nav, text| nav.message(text));
-        methods.add_method_mut("quit", |_, nav, text| nav.quit(text));
-        methods.add_method_mut("unfold", |_, nav, target| nav.unfold(target));
+        make_methods! { methods;
+            mut _atexit();
+            mut _tick();
+            fn get_option(lua, name); // TODO: remove this 'lua' special case
+            fn get_register(name);
+            fn get_register_hist(name);
+            mut map(seq, cb);
+            mut message(text);
+            mut prompt(ps, completion);
+            fn provider_name();
+            mut quit(text);
+            mut set_option(name, value);
+            mut set_register(name, value);
+            mut suspend();
+            mut unfold(target);
+        }
     }
 }
 
-pub fn other_exports(lua: &Lua) -> LuaResult<()> {
-    let g = lua.globals();
-    g.raw_set("help", lua.create_function(|_, subj| help(subj))?)?;
+pub fn global_exports(g: &Table, lua: &Lua) -> Result<()> {
+    make_exports! { g, lua;
+        pub help(subj);
+        pub keyseqstr(seq);
+        pub keytrans(text);
+        pub prompt(ps, history, completion);
+    }
+    make_exports! { g.get("string").unwrap(), lua;
+        pub prompt_split(line, point);
+    }
+    make_exports! { g.get("debug").unwrap(), lua;
+        pub pretty(obj);
+    }
     Ok(())
 }
 
 impl Navigate {
-    fn _atexit(&mut self) -> LuaResult<String> {
+    fn _atexit(&mut self) -> Result<String> {
         let exit = self
             .exit
             .take()
-            .expect("_atexit called too early (no exit text set)");
+            .unwrap_or("_atexit called too early (no exit text set)".into());
         self.term.take().map(|t| t.restore());
         Ok(exit)
     }
 
-    fn _tick(&mut self) -> LuaResult<Option<Function>> {
+    fn _tick(&mut self) -> Result<Option<Function>> {
         // TODO: don't use Display, it will also remove the view: RefCell
         let buf = self.to_string();
         eprint!("{buf}");
@@ -59,39 +110,39 @@ impl Navigate {
         Ok(self.input.tick().cloned())
     }
 
-    fn get_option(&mut self, lua: &Lua, name: String) -> LuaResult<Value> {
+    fn get_option(&self, lua: &Lua, name: String) -> Result<Value> {
         Ok(self.options.get(&name, lua))
     }
 
     // TODO: remove the Option<>
-    fn get_register(&mut self, name: String) -> LuaResult<Option<String>> {
+    fn get_register(&self, name: String) -> Result<Option<String>> {
         Ok(self.registers.get(&name).and_then(|h| h.last()).cloned())
     }
 
     // TODO: remove the Option<>
-    fn get_register_hist(&mut self, name: String) -> LuaResult<Option<&[String]>> {
-        Ok(self.registers.get(&name).map(|h| &h[..]))
+    fn get_register_hist(&self, name: String) -> Result<Option<Vec<String>>> {
+        Ok(self.registers.get(&name).cloned())
     }
 
-    fn map(&mut self, seq: String, cb: Function) -> LuaResult<()> {
+    fn map(&mut self, seq: String, cb: Function) -> Result<()> {
         let seq = terminal::keytrans(seq.as_str()).expect("need valid seq something blbl TODO");
         self.input.add_mapping(seq, cb);
         Ok(())
     }
 
-    fn message(&mut self, text: Option<String>) -> LuaResult<()> {
+    fn message(&mut self, text: Option<String>) -> Result<()> {
         self.message = text.map(|w| w.replace("\n", "\r\n")); // TODO: somewhat of a temp hack
         Ok(())
     }
 
-    fn prompt(&mut self, ps: String, completion: Function) -> LuaResult<Option<String>> {
+    fn prompt(&mut self, ps: String, completion: Function) -> Result<Option<String>> {
         let history = self.registers.entry(ps.clone()).or_default();
 
         terminal::cursor_on();
         terminal::mouse_off();
         let ans = prompt::prompt(
             &ps,
-            io::stdin().bytes().map_while(Result::ok),
+            io::stdin().bytes().map_while(StdResult::ok),
             io::stderr(),
             history.clone(),
             |line, point| completion.call((line, point)).unwrap_or_default(),
@@ -103,25 +154,26 @@ impl Navigate {
         Ok(ans)
     }
 
-    fn provider_name(&self) -> LuaResult<String> {
+    fn provider_name(&self) -> Result<String> {
         Ok(self.provider_name.clone())
     }
 
-    fn quit(&mut self, text: Option<String>) -> LuaResult<()> {
+    fn quit(&mut self, text: Option<String>) -> Result<()> {
         self.exit = text.or(Some(String::new()));
         Ok(())
     }
 
-    fn set_option(&mut self, name: String, value: Value) -> LuaResult<()> {
+    fn set_option(&mut self, name: String, value: Value) -> Result<()> {
         self.options.set(&name, value);
         Ok(())
     }
 
-    fn set_register(&mut self, name: String) -> LuaResult<Option<String>> {
-        Ok(self.registers.get(&name).and_then(|h| h.last()).cloned())
+    fn set_register(&mut self, name: String, value: String) -> Result<()> {
+        self.register_push(name, value);
+        Ok(())
     }
 
-    fn suspend(&mut self) -> LuaResult<()> {
+    fn suspend(&mut self) -> Result<()> {
         #[cfg(not(windows))]
         {
             terminal::cursor_on();
@@ -139,7 +191,7 @@ impl Navigate {
         Ok(())
     }
 
-    fn unfold(&mut self, target: Option<Vec<usize>>) -> LuaResult<()> {
+    fn unfold(&mut self, target: Option<Vec<usize>>) -> Result<()> {
         self.set_folded(
             target
                 .as_deref()
@@ -151,24 +203,28 @@ impl Navigate {
     }
 }
 
-fn help(subj: String) -> LuaResult<Option<String>> {
+fn help(subj: String) -> Result<Option<String>> {
     Ok("idk".to_string().into()) // TODO ofc
 }
 
-fn keyseqstr(seq: Vec<u8>) -> LuaResult<String> {
+fn keyseqstr(seq: Vec<u8>) -> Result<String> {
     Ok(terminal::keyseqstr(&seq))
 }
 
-fn keytrans(text: &str) -> LuaResult<Option<Vec<u8>>> {
-    Ok(terminal::keytrans(text))
+fn keytrans(text: String) -> Result<Option<Vec<u8>>> {
+    Ok(terminal::keytrans(&text))
 }
 
-fn prompt(ps: String, history: Vec<String>, completion: Function) -> LuaResult<Option<String>> {
+fn pretty(obj: Value) -> Result<String> {
+    Ok(format!("{obj:#?}"))
+}
+
+fn prompt(ps: String, history: Vec<String>, completion: Function) -> Result<Option<String>> {
     terminal::cursor_on();
     terminal::mouse_off();
     let ans = prompt::prompt(
         &ps,
-        io::stdin().bytes().map_while(Result::ok),
+        io::stdin().bytes().map_while(StdResult::ok),
         io::stderr(),
         history.clone(),
         |line, point| completion.call((line, point)).unwrap_or_default(),
@@ -178,8 +234,7 @@ fn prompt(ps: String, history: Vec<String>, completion: Function) -> LuaResult<O
     Ok(ans)
 }
 
-// TODO: maybe attach to string table
-fn prompt_split(line: String, point: Option<usize>) -> LuaResult<PromptSplitInfo> {
+fn prompt_split(line: String, point: Option<usize>) -> Result<PromptSplitInfo> {
     Ok(prompt::split(&line, point.unwrap_or_default()))
 }
 
