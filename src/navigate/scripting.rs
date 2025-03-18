@@ -2,7 +2,7 @@ use std::io::{self, Read};
 use std::path::PathBuf;
 use std::result::Result as StdResult;
 
-use mlua::{Function, Table, Lua, Result, UserData, UserDataFields, UserDataMethods, Value};
+use mlua::{Function, Lua, Result, Table, UserData, UserDataFields, UserDataMethods, Value};
 
 use crate::navigate::{Navigate, Target, ViewJumpBy};
 use crate::prompt::{self, PromptSplitInfo};
@@ -51,13 +51,22 @@ impl UserData for Navigate {
         make_methods! { methods;
             mut _atexit();
             mut _tick();
-            fn get_option(lua, name); // TODO: remove this 'lua' special case
-            fn get_register(name);
-            fn get_register_hist(name);
+            mut enter();
+            mut fold(target);
+            fn  folded(target);
+            fn  get_option(lua, name); // TODO: remove this 'lua' special case
+            fn  get_register(name);
+            fn  get_register_hist(name);
+            mut leave();
             mut map(seq, cb);
+            mut mark(target);
+            fn  marked(target);
             mut message(text);
+            mut next(flags);
+            mut unmark(target);
+            mut prev(flags);
             mut prompt(ps, completion);
-            fn provider_name();
+            fn  provider_name();
             mut quit(text);
             mut set_option(name, value);
             mut set_register(name, value);
@@ -82,6 +91,14 @@ pub fn global_exports(g: &Table, lua: &Lua) -> Result<()> {
     }
     Ok(())
 }
+
+crate::flags_lua_conversion!(MoveFlags {
+    wrapping: "wrap" | "sat",
+});
+crate::flags_lua_conversion!(SearchFlags {
+    wrapping: "wrap" | "sat",
+    direction: "next" | "prev",
+});
 
 impl Navigate {
     fn _atexit(&mut self) -> Result<String> {
@@ -110,6 +127,19 @@ impl Navigate {
         Ok(self.input.tick().cloned())
     }
 
+    fn enter(&mut self) -> Result<()> {
+        Ok(self.cursor_enter())
+    }
+
+    fn fold(&mut self, target: Target) -> Result<()> {
+        self.set_folded(target, true);
+        Ok(())
+    }
+
+    fn folded(&self, target: Target) -> Result<bool> {
+        Ok(self.get_folded(target))
+    }
+
     fn get_option(&self, lua: &Lua, name: String) -> Result<Value> {
         Ok(self.options.get(&name, lua))
     }
@@ -124,15 +154,41 @@ impl Navigate {
         Ok(self.registers.get(&name).cloned())
     }
 
+    fn leave(&mut self) -> Result<()> {
+        Ok(self.cursor_leave())
+    }
+
     fn map(&mut self, seq: String, cb: Function) -> Result<()> {
         let seq = terminal::keytrans(seq.as_str()).expect("need valid seq something blbl TODO");
         self.input.add_mapping(seq, cb);
         Ok(())
     }
 
+    fn mark(&mut self, target: Target) -> Result<()> {
+        self.set_marked(target, true);
+        Ok(())
+    }
+
+    fn marked(&self, target: Target) -> Result<bool> {
+        Ok(self.get_marked(target))
+    }
+
+    fn next(&mut self, flags: MoveFlags) -> Result<()> {
+        Ok(self.cursor_next("wrap" == flags.wrapping))
+    }
+
+    fn unmark(&mut self, target: Target) -> Result<()> {
+        self.set_marked(target, false);
+        Ok(())
+    }
+
     fn message(&mut self, text: Option<String>) -> Result<()> {
         self.message = text.map(|w| w.replace("\n", "\r\n")); // TODO: somewhat of a temp hack
         Ok(())
+    }
+
+    fn prev(&mut self, flags: MoveFlags) -> Result<()> {
+        Ok(self.cursor_prev("wrap" == flags.wrapping))
     }
 
     fn prompt(&mut self, ps: String, completion: Function) -> Result<Option<String>> {
@@ -191,14 +247,8 @@ impl Navigate {
         Ok(())
     }
 
-    fn unfold(&mut self, target: Option<Vec<usize>>) -> Result<()> {
-        self.set_folded(
-            target
-                .as_deref()
-                .map(Target::Path)
-                .unwrap_or(Target::Cursor),
-            false,
-        );
+    fn unfold(&mut self, target: Target) -> Result<()> {
+        self.set_folded(target, false);
         Ok(())
     }
 }
@@ -262,73 +312,7 @@ fn slice_search<T>(
 /*
 #[export_module]
 mod api {
-    // node actions {{{
-
-    #[rhai_fn(return_raw)]
-    pub fn fold(api: &mut Api, is: bool, path: Array) -> ApiResult<()> {
-        let path = host_path(&path)?;
-        api.m().set_folded(Target::Path(&path), is);
-        Ok(())
-    }
-    #[rhai_fn(name = "fold")]
-    pub fn fold_cursor(api: &mut Api, is: bool) {
-        api.m().set_folded(Target::Cursor, is);
-    }
-    #[rhai_fn(return_raw)]
-    pub fn folded(api: &mut Api, path: Array) -> ApiResult<bool> {
-        let path = host_path(&path)?;
-        Ok(api.m().get_folded(Target::Path(&path)))
-    }
-    #[rhai_fn(name = "folded")]
-    pub fn folded_cursor(api: &mut Api) -> bool {
-        api.m().get_folded(Target::Cursor)
-    }
-
-    #[rhai_fn(return_raw)]
-    pub fn mark(api: &mut Api, is: bool, path: Array) -> ApiResult<()> {
-        let path = host_path(&path)?;
-        api.m().set_marked(Target::Path(&path), is);
-        Ok(())
-    }
-    #[rhai_fn(name = "mark")]
-    pub fn mark_cursor(api: &mut Api, is: bool) {
-        api.m().set_marked(Target::Cursor, is);
-    }
-    #[rhai_fn(return_raw)]
-    pub fn marked(api: &mut Api, path: Array) -> ApiResult<bool> {
-        let path = host_path(&path)?;
-        Ok(api.m().get_marked(Target::Path(&path)))
-    }
-    #[rhai_fn(name = "marked")]
-    pub fn marked_cursor(api: &mut Api) -> bool {
-        api.m().get_marked(Target::Cursor)
-    }
-
-    // }}}
-
     // cursor movement {{{
-
-    pub fn enter(api: &mut Api) {
-        api.m().enter();
-    }
-    pub fn leave(api: &mut Api) {
-        api.m().leave();
-    }
-
-    pub fn next(api: &mut Api, wrapping: &str) {
-        api.m().next("wrap" == wrapping);
-    }
-    pub fn prev(api: &mut Api, wrapping: &str) {
-        api.m().prev("wrap" == wrapping);
-    }
-    #[rhai_fn(name = "next")]
-    pub fn next_sat(api: &mut Api) {
-        api.m().next(false);
-    }
-    #[rhai_fn(name = "prev")]
-    pub fn prev_sat(api: &mut Api) {
-        api.m().prev(false);
-    }
 
     #[rhai_fn(return_raw)]
     pub fn jumpto(api: &mut Api, path: Array) -> ApiResult<()> {

@@ -63,8 +63,8 @@ m.keys = {
         end
     end,
 
-    ['/']= function() search(treest:prompt('/'), {'next', 'sat'}) end,
-    ['?']= function() search(treest:prompt('/'), {'prev', 'sat'}) end,
+    ['/']= function() search(treest:prompt('/', function() end), {'next', 'sat'}) end,
+    ['?']= function() search(treest:prompt('/', function() end), {'prev', 'sat'}) end,
     ['n']= function() search(treest:get_register('/'), {'next', 'sat'}) end,
     ['N']= function() search(treest:get_register('/'), {'prev', 'sat'}) end,
 
@@ -79,11 +79,11 @@ m.keys = {
 
     ['l']= function() treest:enter() end,
     ['h']= function() treest:leave() end,
-    ['j']= function() treest:next() end,
-    ['k']= function() treest:prev() end,
+    ['j']= function() treest:next('sat') end,
+    ['k']= function() treest:prev('sat') end,
 
-    ['L']= function() treest:fold(false) end,
-    ['H']= function() treest:fold(true) end,
+    ['L']= function() treest:unfold() end,
+    ['H']= function() treest:fold() end,
 
     ['<Space>']= function()
         treest:mark(not treest:marked())
@@ -97,7 +97,7 @@ m.init = function()
     for seq, cb in pairs(m.keys)
       do treest:map(seq, cb)
     end
-    treest:unfold(--[[treest.cursor]])
+    treest:unfold()
 end
 
 return m

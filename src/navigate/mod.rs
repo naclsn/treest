@@ -4,7 +4,7 @@ use std::ops::Range;
 use std::path::PathBuf;
 
 use anyhow::Result;
-use mlua::{Function, Lua, Table};
+use mlua::{Function, Lua, Table, FromLua, Value, Result as LuaResult};
 use thiserror::Error;
 
 mod display;
@@ -43,10 +43,19 @@ pub struct Navigate {
     registers: BTreeMap<String, Vec<String>>,
 }
 
-#[derive(Debug, Clone, Copy)]
-pub enum Target<'a> {
+#[derive(Debug, Clone)]
+pub enum Target {
     Cursor,
-    Path(&'a [usize]),
+    Path(Vec<usize>),
+}
+
+impl FromLua for Target {
+    fn from_lua(value: Value, lua: &Lua) -> LuaResult<Self> {
+        match value {
+            Value::Nil => Ok(Target::Cursor),
+            _ => Ok(Target::Path(Vec::from_lua(value, lua)?)),
+        }
+    }
 }
 
 struct View {
@@ -114,38 +123,9 @@ impl View {
 
 macro_rules! as_path {
     ($self:ident, $at:expr) => {
-        match $at {
+        match &$at {
             Target::Cursor => &$self.cursor.1[..$self.cursor.0],
             Target::Path(path) => path,
-        }
-    };
-}
-
-#[macro_export]
-macro_rules! impl_lua_conversion {
-    ($ty:ty { $($field:ident),*$(,)? }) => {
-        impl ::mlua::IntoLua for $ty {
-            fn into_lua(self, lua: &::mlua::Lua) -> ::mlua::Result<::mlua::Value> {
-                let t = lua.create_table()?;
-                $(t.set(stringify!($field), self.$field)?;)*
-                Ok(::mlua::Value::Table(t))
-            }
-        }
-
-        impl ::mlua::FromLua for $ty {
-            fn from_lua(value: ::mlua::Value, _: &Lua) -> ::mlua::Result<Self> {
-                if let ::mlua::Value::Table(table) = value {
-                    Ok(Self {
-                        $($field: table.get(stringify!($field))?,)*
-                    })
-                } else {
-                    Err(::mlua::Error::FromLuaConversionError {
-                        from: value.type_name(),
-                        to: stringify!($ty).to_string(),
-                        message: Some("expected table".to_string()),
-                    })
-                }
-            }
         }
     };
 }
@@ -214,7 +194,7 @@ impl Navigate {
     if action
       then
         ok, err = xpcall(action, debug.traceback)
-        if not ok then treest:message(err) end
+        if not ok then treest:message(tostring(err)) end
     end
 until treest.quitting
 return treest:_atexit()
@@ -267,7 +247,7 @@ return treest:_atexit()
         self.tree.resolve_node(as_path!(self, at)).is_marked()
     }
 
-    pub fn enter(&mut self) {
+    pub fn cursor_enter(&mut self) {
         let child_count = self.set_folded(Target::Cursor, false);
         if 0 == child_count {
             return;
@@ -278,11 +258,11 @@ return treest:_atexit()
         self.cursor.0 += 1;
     }
 
-    pub fn leave(&mut self) {
+    pub fn cursor_leave(&mut self) {
         self.cursor.0 = self.cursor.0.saturating_sub(1);
     }
 
-    pub fn next(&mut self, wrapping: bool) {
+    pub fn cursor_next(&mut self, wrapping: bool) {
         if 0 == self.cursor.0 {
             return;
         }
@@ -300,7 +280,7 @@ return treest:_atexit()
         self.cursor.1.truncate(self.cursor.0);
     }
 
-    pub fn prev(&mut self, wrapping: bool) {
+    pub fn cursor_prev(&mut self, wrapping: bool) {
         if 0 == self.cursor.0 {
             return;
         }
