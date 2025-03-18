@@ -36,12 +36,13 @@ alias('suspend', 'sus', 'stop', 'st')
 
 local function search(q, flags)
     if not q then return end
-    local found = treest:search(q, flags)
+    local found = treest:search_level(q, flags)
     if not found
       then treest:message("not found: "..treest:get_register('/'))
       else
         treest:message(nil)
-        treest:jumpto(found)
+        treest:set_cursor(found)
+        return found
     end
 end
 

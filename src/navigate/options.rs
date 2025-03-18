@@ -1,4 +1,4 @@
-use mlua::{Value, Lua, IntoLua};
+use mlua::{IntoLua, Lua, Value};
 
 pub struct Options {
     pub appearance: String,
@@ -23,7 +23,9 @@ impl Options {
     // TODO: return a LuaResult<()>
     pub fn set(&mut self, name: &str, value: Value) {
         match name {
-            "appearance" | "appea" => self.appearance = value.as_string().unwrap().to_string_lossy(),
+            "appearance" | "appea" => {
+                self.appearance = value.as_string().unwrap().to_string_lossy()
+            }
             _ => (),
         }
     }

@@ -1,7 +1,7 @@
 use std::io::Write;
 use std::mem;
 
-use mlua::{Error as LuaError, FromLua, Function, IntoLua, Lua, Result as LuaResult, Value};
+use mlua::Lua;
 
 pub struct PromptSplitInfo {
     args: Vec<String>,

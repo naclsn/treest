@@ -2,7 +2,7 @@ use std::fmt::Debug;
 use std::fs::File;
 use std::io::{self, Read};
 
-use mlua::{Error as LuaError, FromLua, Function, IntoLua, Lua, Result as LuaResult, Value};
+use mlua::{Function, Lua};
 
 use crate::terminal;
 

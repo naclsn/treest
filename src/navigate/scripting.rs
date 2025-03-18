@@ -1,5 +1,4 @@
 use std::io::{self, Read};
-use std::path::PathBuf;
 use std::result::Result as StdResult;
 
 use mlua::{Function, Lua, Result, Table, UserData, UserDataFields, UserDataMethods, Value};
@@ -54,6 +53,7 @@ impl UserData for Navigate {
             mut enter();
             mut fold(target);
             fn  folded(target);
+            fn  get_cursor();
             fn  get_option(lua, name); // TODO: remove this 'lua' special case
             fn  get_register(name);
             fn  get_register_hist(name);
@@ -68,10 +68,15 @@ impl UserData for Navigate {
             mut prompt(ps, completion);
             fn  provider_name();
             mut quit(text);
+            fn  search_deep(q, flags);
+            fn  search_level(q, flags);
+            mut set_cursor(target);
             mut set_option(name, value);
             mut set_register(name, value);
             mut suspend();
             mut unfold(target);
+            mut view_down(by);
+            mut view_up(by);
         }
     }
 }
@@ -98,6 +103,9 @@ crate::flags_lua_conversion!(MoveFlags {
 crate::flags_lua_conversion!(SearchFlags {
     wrapping: "wrap" | "sat",
     direction: "next" | "prev",
+});
+crate::flags_lua_conversion!(ScrollFlags {
+    amount: "line" | "win" | "halfwin" | "mouse",
 });
 
 impl Navigate {
@@ -138,6 +146,10 @@ impl Navigate {
 
     fn folded(&self, target: Target) -> Result<bool> {
         Ok(self.get_folded(target))
+    }
+
+    fn get_cursor(&self) -> Result<Vec<usize>> {
+        Ok(self.cursor().to_vec())
     }
 
     fn get_option(&self, lua: &Lua, name: String) -> Result<Value> {
@@ -219,6 +231,50 @@ impl Navigate {
         Ok(())
     }
 
+    fn search_deep(&self, q: String, flags: SearchFlags) -> Result<Option<Vec<usize>>> {
+        todo!()
+    }
+
+    fn search_level(&self, q: String, flags: SearchFlags) -> Result<Option<Vec<usize>>> {
+        if self.is_cursor_root() {
+            return Ok(None);
+        };
+        let [parent_path @ .., current] = self.cursor() else {
+            unreachable!();
+        };
+        let parent = self.tree.resolve(parent_path);
+        let chs = parent.last().unwrap().children().unwrap();
+
+        let Some(found) = slice_search(
+            &chs,
+            *current,
+            |node| {
+                self.provider
+                    .display(&NodePath {
+                        head: &parent,
+                        tail: node,
+                    })
+                    .contains(&q)
+            },
+            "next" == flags.direction,
+            "wrap" == flags.wrapping,
+        ) else {
+            return Ok(None);
+        };
+
+        let mut r = parent_path.to_vec();
+        r.push(found);
+        Ok(Some(r))
+    }
+
+    fn set_cursor(&mut self, target: Target) -> Result<()> {
+        // TODO: check validity before assigning, unfolding and cropping as needed
+        if let Target::Path(path) = target {
+            self.cursor = (path.len(), path);
+        }
+        Ok(())
+    }
+
     fn set_option(&mut self, name: String, value: Value) -> Result<()> {
         self.options.set(&name, value);
         Ok(())
@@ -251,16 +307,42 @@ impl Navigate {
         self.set_folded(target, false);
         Ok(())
     }
+
+    fn view_down(&mut self, by: ScrollFlags) -> Result<()> {
+        self.view.borrow_mut().down(match by.amount {
+            "line" => ViewJumpBy::Line,
+            "win" => ViewJumpBy::Win,
+            "halfwin" => ViewJumpBy::HalfWin,
+            "mouse" => ViewJumpBy::Mouse,
+            _ => unreachable!(),
+        });
+        Ok(())
+    }
+
+    fn view_up(&mut self, by: ScrollFlags) -> Result<()> {
+        self.view.borrow_mut().up(match by.amount {
+            "line" => ViewJumpBy::Line,
+            "win" => ViewJumpBy::Win,
+            "halfwin" => ViewJumpBy::HalfWin,
+            "mouse" => ViewJumpBy::Mouse,
+            _ => unreachable!(),
+        });
+        Ok(())
+    }
 }
 
+/// Get a help text about a subject.
+/// `help('help')` would return this text if it was actually implemented.
 fn help(subj: String) -> Result<Option<String>> {
     Ok("idk".to_string().into()) // TODO ofc
 }
 
+// TODO: maybe use (non-utf8) lua string
 fn keyseqstr(seq: Vec<u8>) -> Result<String> {
     Ok(terminal::keyseqstr(&seq))
 }
 
+// TODO: maybe use (non-utf8) lua string
 fn keytrans(text: String) -> Result<Option<Vec<u8>>> {
     Ok(terminal::keytrans(&text))
 }
@@ -308,142 +390,6 @@ fn slice_search<T>(
     .map(|k| (from + k * dir) % slice.len())
     .find(|n| predicate(&slice[*n]))
 }
-
-/*
-#[export_module]
-mod api {
-    // cursor movement {{{
-
-    #[rhai_fn(return_raw)]
-    pub fn jumpto(api: &mut Api, path: Array) -> ApiResult<()> {
-        // TODO: check validity before assigning, unfolding and cropping as needed
-        let path = host_path(&path)?;
-        api.m().cursor = (path.len(), path);
-        Ok(())
-    }
-    #[rhai_fn(pure)]
-    pub fn cursor(api: &mut Api) -> Array {
-        script_path(api.m().cursor())
-    }
-
-    // }}}
-
-    // view {{{
-
-    pub fn view_down(api: &mut Api, by: &str) {
-        api.m().view.borrow_mut().down(match by {
-            "win" => ViewJumpBy::Win,
-            "halfwin" => ViewJumpBy::HalfWin,
-            "mouse" => ViewJumpBy::Mouse,
-            _ => ViewJumpBy::Line,
-        });
-    }
-    pub fn view_up(api: &mut Api, by: &str) {
-        api.m().view.borrow_mut().up(match by {
-            "win" => ViewJumpBy::Win,
-            "halfwin" => ViewJumpBy::HalfWin,
-            "mouse" => ViewJumpBy::Mouse,
-            _ => ViewJumpBy::Line,
-        });
-    }
-    #[rhai_fn(name = "view_down")]
-    pub fn view_down_line(api: &mut Api) {
-        api.m().view.borrow_mut().down(ViewJumpBy::Line);
-    }
-    #[rhai_fn(name = "view_up")]
-    pub fn view_up_line(api: &mut Api) {
-        api.m().view.borrow_mut().up(ViewJumpBy::Line);
-    }
-
-    // }}}
-
-    // searches {{{
-    // xxx: searches are cursor-centered...
-
-    /// Search for a matching node at the cursor level (ie. siblings).
-    ///
-    /// Search starts at cursor index, `next_prev` should be `"next"` or `"prev"`
-    /// to search forward or backward respectively. `wrapping` should be `"wrap"`
-    /// or `"sat"` to indicate whether search should wrap around.
-    ///
-    /// Uses the `api["/"]` register.
-    pub fn search_level(api: &mut Api, next_prev: &str, wrapping: &str) -> Dynamic {
-        with_opt_unit(|| {
-            let nav = api.0.borrow();
-
-            if nav.is_cursor_root() {
-                return None::<Vec<_>>;
-            };
-            let s = nav.registers.get("/").and_then(|v| v.last())?;
-            let [parent_path @ .., current] = nav.cursor() else {
-                unreachable!();
-            };
-            let parent = nav.tree.resolve(parent_path);
-            let chs = parent.last().unwrap().children().unwrap();
-
-            let found = slice_search(
-                &chs,
-                *current,
-                |node| {
-                    nav.provider
-                        .display(&NodePath {
-                            head: &parent,
-                            tail: node,
-                        })
-                        .contains(s)
-                },
-                "next" == next_prev,
-                "wrap" == wrapping,
-            )?;
-
-            let mut r = script_path(parent_path);
-            r.push((found as INT).into());
-            Some(r)
-        })
-    }
-
-    pub fn search_next(api: &mut Api, q: &str, wrapping: &str) -> Dynamic {
-        api.m().register_push("/".into(), q.into());
-        search_next_already(api, wrapping)
-    }
-    #[rhai_fn(name = "search_next")]
-    pub fn search_next_already(api: &mut Api, wrapping: &str) -> Dynamic {
-        search_level(api, "next", wrapping)
-    }
-    #[rhai_fn(name = "search_next")]
-    pub fn search_next_already_sat(api: &mut Api) -> Dynamic {
-        search_next_already(api, "sat")
-    }
-
-    pub fn search_prev(api: &mut Api, q: &str, wrapping: &str) -> Dynamic {
-        api.m().register_push("/".into(), q.into());
-        search_prev_already(api, wrapping)
-    }
-    #[rhai_fn(name = "search_prev")]
-    pub fn search_prev_already(api: &mut Api, wrapping: &str) -> Dynamic {
-        search_level(api, "prev", wrapping)
-    }
-    #[rhai_fn(name = "search_prev")]
-    pub fn search_prev_already_sat(api: &mut Api) -> Dynamic {
-        search_prev_already(api, "sat")
-    }
-
-    pub fn search_deep(api: &mut Api, q: &str, wrapping: &str) -> Dynamic {
-        api.m().register_push("/".into(), q.into());
-        search_deep_already(api, wrapping)
-    }
-    #[rhai_fn(name = "search_deep")]
-    pub fn search_deep_already(api: &mut Api, wrapping: &str) -> Dynamic {
-        with_opt_unit(|| None::<Vec<Dynamic>>)
-    }
-    #[rhai_fn(name = "search_deep")]
-    pub fn search_deep_already_sat(api: &mut Api) -> Dynamic {
-        search_deep_already(api, "sat")
-    }
-
-    // }}}
-}
-*/
 
 #[cfg(test)]
 mod test {

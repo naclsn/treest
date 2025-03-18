@@ -4,7 +4,7 @@ use std::ops::Range;
 use std::path::PathBuf;
 
 use anyhow::Result;
-use mlua::{Function, Lua, Table, FromLua, Value, Result as LuaResult};
+use mlua::{FromLua, Function, Lua, Result as LuaResult, Table, Value};
 use thiserror::Error;
 
 mod display;
