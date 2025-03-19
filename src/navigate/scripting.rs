@@ -1,4 +1,4 @@
-use std::io::{self, Read, Write, Result as IoResult};
+use std::io::{self, Read, Result as IoResult, Write};
 use std::result::Result as StdResult;
 
 use mlua::{Function, Lua, Result, Table, UserData, UserDataFields, UserDataMethods, Value};
@@ -194,6 +194,9 @@ impl Navigate {
         Ok(())
     }
 
+    /// (TODO: fix this) Exported in treest.
+    /// Set the message text. If it spans on multiple lines,
+    /// it will trigger the -- More -- prompt.
     fn message(&mut self, text: Option<String>) -> Result<()> {
         self.message = text.map(|w| w.replace("\n", "\r\n")); // TODO: somewhat of a temp hack
         Ok(())
@@ -335,26 +338,47 @@ impl Navigate {
 /// Get a help text about a subject.
 /// `help('help')` would return this text if it was actually implemented.
 fn help(subj: String) -> Result<Option<String>> {
-    Ok(help::HELP
-        .iter()
-        .find(|ex| ex.name.contains(&subj))
-        .map(|ex| format!("{}", (ex.doc)().join("\n"))))
+    if subj.is_empty() {
+        Ok(Some(format!(
+            "API items: {}",
+            help::HELP
+                .iter()
+                .map(|ex| if let Some(table) = ex.table {
+                    format!("{table}.{}", ex.name)
+                } else {
+                    format!("{}", ex.name)
+                })
+                .collect::<Vec<_>>()
+                .join(", ")
+        )))
+    } else {
+        Ok(help::HELP
+            .iter()
+            .find(|ex| ex.name.ends_with(&subj))
+            .map(|ex| format!("{}", (ex.doc)().join("\n"))))
+    }
 }
 
-// TODO: maybe use (non-utf8) lua string
+// TODO: BString
 fn keyseqstr(seq: Vec<u8>) -> Result<String> {
     Ok(terminal::keyseqstr(&seq))
 }
 
-// TODO: maybe use (non-utf8) lua string
+// TODO: BString
 fn keytrans(text: String) -> Result<Option<Vec<u8>>> {
     Ok(terminal::keytrans(&text))
 }
 
+/// Exported globally.
+/// Pretty-print a value to string.
 fn pretty(obj: Value) -> Result<String> {
     Ok(format!("{obj:#?}"))
 }
 
+/// Exported globally.
+/// Prompt the user for a line of input.
+/// Same as `treest:prompt` except the history must be managed manually
+/// (the argument `history` isn't mutated).
 fn prompt(ps: String, history: Vec<String>, completion: Function) -> Result<Option<String>> {
     terminal::cursor_on();
     terminal::mouse_off();
@@ -370,15 +394,47 @@ fn prompt(ps: String, history: Vec<String>, completion: Function) -> Result<Opti
     Ok(ans)
 }
 
+/// Exported in string.
+/// Split a line of input in a shell-like manner.
 fn prompt_split(line: String, point: Option<usize>) -> Result<PromptSplitInfo> {
     Ok(prompt::split(&line, point.unwrap_or_default()))
 }
 
 mod help {
+    use super::*;
     include!(concat!(env!("OUT_DIR"), "/help.rs"));
 }
 
-pub fn gen_lua_meta(f: impl Write) -> IoResult<()> {
+pub fn gen_lua_meta(f: &mut impl Write) -> IoResult<()> {
+    writeln!(f, "---@meta treest")?;
+    writeln!(f)?;
+
+    writeln!(f, "---@class treestlib")?;
+    writeln!(f, "---@field quitting boolean")?;
+    writeln!(
+        f,
+        "---@field mouse_event_pos {{ col: integer, row: integer }}"
+    )?;
+    writeln!(f, "treest = {{}}")?;
+
+    for ex in help::HELP {
+        writeln!(f)?;
+        for line in (ex.doc)() {
+            writeln!(f, "---{line}")?;
+        }
+        write!(f, "function ")?;
+        if let Some(table) = ex.table {
+            write!(f, "{table}.")?;
+        }
+        write!(f, "{}(", ex.name)?;
+        let mut sep = "";
+        for (name, typ) in (ex.params)() {
+            write!(f, "{sep}{name}")?;
+            sep = ", ";
+        }
+        writeln!(f, ") end")?;
+    }
+
     Ok(())
 }
 

@@ -18,6 +18,8 @@ use crate::providers::Provider;
 use crate::terminal::{self, RestoreWithPanicHook};
 use crate::tree::Node;
 
+pub use scripting::gen_lua_meta;
+
 #[derive(Error, Debug)]
 #[error("{0}")]
 pub struct MainLoopExitText(String);

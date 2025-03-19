@@ -5,9 +5,11 @@ use std::io::{Result as IoResult, Write};
 use std::path::Path;
 
 const PREL: &str = r##"pub struct Export {
+    pub doc: fn() -> Vec<String>,
     pub table: Option<&'static str>,
     pub name: &'static str,
-    pub doc: fn() -> Vec<String>,
+    pub params: fn() -> Vec<(&'static str, String)>,
+    pub ret: Option<fn() -> String>,
 }
 
 trait LuaTypeDoc {
@@ -210,8 +212,6 @@ impl Display for Export<'_> {
     fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
         const INDE: &str = "    ";
         writeln!(f, "{INDE}Export {{")?;
-        writeln!(f, "{INDE}    table: {:?},", self.table)?;
-        writeln!(f, "{INDE}    name: {:?},", self.name)?;
         writeln!(f, "{INDE}    doc: || vec![")?;
         for line in &self.doc {
             writeln!(f, "{INDE}        {line:?}.to_string(),")?;
@@ -231,6 +231,22 @@ impl Display for Export<'_> {
             )?;
         }
         writeln!(f, "{INDE}    ],")?;
+        writeln!(f, "{INDE}    table: {:?},", self.table)?;
+        writeln!(f, "{INDE}    name: {:?},", self.name)?;
+        writeln!(f, "{INDE}    params: || vec![")?;
+        for (name, typ) in &self.params {
+            writeln!(f, r#"{INDE}        ({name:?}, <{typ}>::lua_type_doc()),"#)?;
+        }
+        writeln!(f, "{INDE}    ],")?;
+        if "()" != self.ret {
+            writeln!(
+                f,
+                r#"{INDE}    ret: Some(|| <{}>::lua_type_doc()),"#,
+                self.ret
+            )?;
+        } else {
+            writeln!(f, "{INDE}    ret: None,")?;
+        }
         write!(f, "{INDE}}}")
     }
 }
