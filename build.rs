@@ -1,9 +1,15 @@
 use std::env;
 use std::fmt::{Display, Formatter, Result as FmtResult};
-use std::fs;
+use std::fs::{self, File};
+use std::io::{Result as IoResult, Write};
 use std::path::Path;
 
-const PREL: &str = r##"
+const PREL: &str = r##"pub struct Export {
+    pub table: Option<&'static str>,
+    pub name: &'static str,
+    pub doc: fn() -> Vec<String>,
+}
+
 trait LuaTypeDoc {
     fn lua_type_doc() -> String;
 }
@@ -76,15 +82,15 @@ impl_lua_type_doc! { "nil" for
 impl_lua_type_doc! { "number" for
     f32, f64,
 }
-impl_lua_type_doc! { "userdata" for
-    mlua::UserData,
-}
+//impl_lua_type_doc! { "userdata" for
+//    <T: mlua::UserData> T,
+//}
 impl_lua_type_doc! { "string" for
     str, Box<str>, String, std::borrow::Cow<'_, str>,
     std::path::Path, std::path::PathBuf,
     std::ffi::CStr, std::ffi::CString, std::borrow::Cow<'_, std::ffi::CStr>,
     std::ffi::OsStr, std::ffi::OsString,
-    bstr::BStr,
+    //bstr::BStr,
     mlua::String,
     mlua::BString,
 }
@@ -112,11 +118,11 @@ impl_lua_type_doc! { "{{ [{}]: boolean }}" for
     <T; S> std::collections::HashSet<T, S>,
     <T> std::collections::BTreeSet<T>,
 }
-impl_lua_type_doc! { any for
-    <T: mlua::UserData> T,
-    <T: mlua::IntoLua> T,
-    <T: mlua::FromLua> T,
-}
+//impl_lua_type_doc! { any for
+//    <T: mlua::UserData> T,
+//    <T: mlua::IntoLua> T,
+//    <T: mlua::FromLua> T,
+//}
 impl<T: LuaTypeDoc + ?Sized> LuaTypeDoc for &T {
     fn lua_type_doc() -> String {
         T::lua_type_doc()
@@ -165,34 +171,50 @@ impl<'a> Export<'a> {
             }
         }
 
-        while let Some((st, _)) = chars.peek().cloned().filter(|(_, c)| ')' != *c) {
-            let ed = chars.find(|(_, c)| ':' == *c)?.0;
-            let name = &proto_line[st..ed];
+        while let Some((st, _)) = chars
+            .peek()
+            .cloned()
+            .filter(|(_, c)| ')' != *c && '-' != *c)
+        {
+            let name = &proto_line[st..chars.find(|(_, c)| ':' == *c)?.0];
 
-            let st = chars.nth(2)?.0; // ' '
-            let ed = chars.find()?.0;
+            let st = chars.nth(1)?.0; // ' '
+            let mut stack = Vec::new();
+            let ed = chars
+                .find(|(_, c)| {
+                    match c {
+                        '(' => stack.push(')'),
+                        '[' => stack.push(']'),
+                        '<' | '-' => stack.push('>'),
+                        ',' | ')' if stack.is_empty() => return true,
+                        _ => (),
+                    }
+                    false
+                })?
+                .0;
             let typ = &proto_line[st..ed];
 
             r.params.push((name, typ));
-            if ',' == chars.peek()?.1 {
-                chars.nth(2)?; // ', '
-            }
+            chars.next();
         }
 
+        let l = proto_line.len();
+        r.ret = &proto_line[chars.next()?.0 + 10..l - 3]; //  '-> Result<' and '> {'
+
         let consumed = unsafe { proto_line.as_ptr().offset_from(text.as_ptr()) } as usize;
-        Some((r, &text[consumed + proto_line.len() + 1..]))
+        Some((r, &text[consumed + l + 1..]))
     }
 }
 
 impl Display for Export<'_> {
     fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
-        const INDE: &str = "";
+        const INDE: &str = "    ";
         writeln!(f, "{INDE}Export {{")?;
         writeln!(f, "{INDE}    table: {:?},", self.table)?;
         writeln!(f, "{INDE}    name: {:?},", self.name)?;
-        writeln!(f, "{INDE}    doc: &[")?;
+        writeln!(f, "{INDE}    doc: || vec![")?;
         for line in &self.doc {
-            writeln!(f, "{INDE}        {line:?}.to_string()")?;
+            writeln!(f, "{INDE}        {line:?}.to_string(),")?;
         }
         writeln!(f, "{INDE}        String::new(),")?;
         for (name, typ) in &self.params {
@@ -246,41 +268,38 @@ stuff after
 
     assert_eq!(
         ex.to_string(),
-        r##"Export {
-    table: None,
-    name: "help",
-    doc: &[
-        "Get a help text about a subject.".to_string()
-        "`help('help')` would return this text if it was actually implemented.".to_string()
-        String::new(),
-        format!("@param subj {}", <String>::lua_type_doc()),
-        format!("@return {}", <Option<String>>::lua_type_doc()),
-    ],
-}"##
+        r#"    Export {
+        table: None,
+        name: "help",
+        doc: || vec![
+            "Get a help text about a subject.".to_string(),
+            "`help('help')` would return this text if it was actually implemented.".to_string(),
+            String::new(),
+            format!("@param subj {}", <String>::lua_type_doc()),
+            format!("@return {}", <Option<String>>::lua_type_doc()),
+        ],
+    }"#
     );
 }
 
-fn main() {
-    //println!("{ex}");
-    println!("cargo::error=stop");
-}
-
-fn main0() {
+fn main() -> IoResult<()> {
     println!("cargo::rerun-if-changed=build.rs");
     println!("cargo::rerun-if-changed=src/navigate/scripting.rs");
 
-    let out_dir = env::var_os("OUT_DIR").unwrap();
-    let dest_path = Path::new(&out_dir).join("help.rs");
-    fs::write(
-        &dest_path,
-        r####"const HELP: &[(&str, &str)] = &[
-    ("help", r###"Get a help text about a subject.
-`help('help')` would return this text if it was actually implemented.
+    let out_dir = env::var_os("OUT_DIR").unwrap_or(".".into());
 
-@param subj string
-@return string?
-"###),
-];"####,
-    )
-    .unwrap();
+    let scripting = fs::read_to_string("src/navigate/scripting.rs")?;
+    let mut helprs = File::create(Path::new(&out_dir).join("help.rs"))?;
+
+    writeln!(helprs, "{PREL}")?;
+
+    let mut head = scripting.as_str();
+    writeln!(helprs, "pub const HELP: &[Export] = &[")?;
+    while let Some((ex, ahead)) = Export::parse(head) {
+        writeln!(helprs, "{ex},")?;
+        head = ahead;
+    }
+    writeln!(helprs, "];")?;
+
+    Ok(())
 }

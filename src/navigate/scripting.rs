@@ -1,4 +1,4 @@
-use std::io::{self, Read};
+use std::io::{self, Read, Write, Result as IoResult};
 use std::result::Result as StdResult;
 
 use mlua::{Function, Lua, Result, Table, UserData, UserDataFields, UserDataMethods, Value};
@@ -331,10 +331,14 @@ impl Navigate {
     }
 }
 
+/// Exported globally.
 /// Get a help text about a subject.
 /// `help('help')` would return this text if it was actually implemented.
 fn help(subj: String) -> Result<Option<String>> {
-    Ok("idk".to_string().into()) // TODO ofc
+    Ok(help::HELP
+        .iter()
+        .find(|ex| ex.name.contains(&subj))
+        .map(|ex| format!("{}", (ex.doc)().join("\n"))))
 }
 
 // TODO: maybe use (non-utf8) lua string
@@ -368,6 +372,14 @@ fn prompt(ps: String, history: Vec<String>, completion: Function) -> Result<Opti
 
 fn prompt_split(line: String, point: Option<usize>) -> Result<PromptSplitInfo> {
     Ok(prompt::split(&line, point.unwrap_or_default()))
+}
+
+mod help {
+    include!(concat!(env!("OUT_DIR"), "/help.rs"));
+}
+
+pub fn gen_lua_meta(f: impl Write) -> IoResult<()> {
+    Ok(())
 }
 
 fn slice_search<T>(
