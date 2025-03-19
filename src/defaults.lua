@@ -23,9 +23,7 @@ m.commands = {
 }
 
 local function alias(com, ...)
-    for _, al in pairs({...})
-      do m.commands[al] = m.commands[com]
-    end
+    for _, al in pairs({...}) do m.commands[al] = m.commands[com] end
 end
 alias('cquit', 'cq')
 alias('echo', 'ec')
@@ -55,12 +53,12 @@ m.keys = {
         --- @type string
         local ans = treest:prompt(':', function() return {} end)
         if not ans then return end
-        local st, ed = ans:find('%w+')
-        if not st then return end
-        local com = m.commands[ans:sub(st, ed)]
-        if com
-          then com(ans:sub((ed or #ans)+1))
-          else treest:message("unknown command: "..ans:sub(st, ed))
+        local com, arg = ans:match('(%w+)%s*(.*)')
+        if not com then return end
+        local fn = m.commands[com]
+        if fn
+            then fn(arg)
+            else treest:message("unknown command: "..com)
         end
     end,
 
@@ -91,13 +89,11 @@ m.keys = {
         treest:next()
     end,
 
-    ['<LeftMouse>']= function() treest:message(treest.mouse_event_pos) end,
+    ['<LeftMouse>']= function() treest:message(treest.mouse_event_pos.col..'/'..treest.mouse_event_pos.row) end,
 }
 
 m.init = function()
-    for seq, cb in pairs(m.keys)
-      do treest:map(seq, cb)
-    end
+    for seq, cb in pairs(m.keys) do treest:map(seq, cb) end
     treest:unfold()
 end
 

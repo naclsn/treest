@@ -95,7 +95,7 @@ macro_rules! flags_lua_conversion {
                         message: Some(format!(
                             "missing value for {}; one of these flag should be present: {}",
                             stringify!($flag),
-                            vec![$($val),*].join(", "),
+                            [$($val),*].join(", "),
                         )),
                     });
                 })*
