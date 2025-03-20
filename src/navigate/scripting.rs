@@ -1,7 +1,8 @@
 use std::io::{self, Read};
 use std::result::Result as StdResult;
 
-use mlua::{Function, Lua, Result, Table, UserData, UserDataFields, UserDataMethods, Value};
+use mlua::{Either, Function, Lua, Result, Table, Value};
+use mlua::{UserData, UserDataFields, UserDataMethods};
 
 use crate::lua::help;
 use crate::navigate::{Navigate, Target, ViewJumpBy};
@@ -138,16 +139,23 @@ impl Navigate {
         Ok(self.input.tick().cloned())
     }
 
+    /// Exported in treest.
+    /// Try to enter the node at cursor, unfolding it as needed.
+    /// Nothing happens if it cannot be unfolded.
     fn enter(&mut self) -> Result<()> {
         self.cursor_enter();
         Ok(())
     }
 
+    /// Exported in treest.
+    /// Fold the node at target (cursor if nil).
     fn fold(&mut self, target: Target) -> Result<()> {
         self.set_folded(target, true);
         Ok(())
     }
 
+    /// Exported in treest.
+    /// Check if the node at target (cursor if nil) is folded.
     fn folded(&self, target: Target) -> Result<bool> {
         Ok(self.get_folded(target))
     }
@@ -200,11 +208,17 @@ impl Navigate {
         Ok(())
     }
 
-    /// (TODO: fix this) Exported in treest.
+    /// Exported in treest.
     /// Set the message text. If it spans on multiple lines,
     /// it will trigger the -- More -- prompt.
-    fn message(&mut self, text: Option<String>) -> Result<()> {
-        self.message = text.map(|w| w.replace("\n", "\r\n")); // TODO: somewhat of a temp hack
+    fn message(&mut self, text: Option<Either<String, Vec<String>>>) -> Result<()> {
+        self.message = text.map(|w| {
+            match w {
+                Either::Left(s) => s.split("\n").map(String::from).collect(),
+                Either::Right(l) => l,
+            }
+            .join("\r\n") // TODO: temp hack until -- More --
+        });
         Ok(())
     }
 

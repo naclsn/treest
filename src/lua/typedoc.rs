@@ -2,12 +2,29 @@ pub trait LuaTypeDoc {
     fn lua_type_doc() -> String;
 }
 
+pub trait LuaTypeAliasDoc {
+    fn lua_type_doc_alias_to() -> String;
+}
+
 macro_rules! impl_lua_type_doc {
     ($str:literal for $(< $($T:ident),* $(;$($W:ident),*)? $(;;$(const $N:ident: $nty:ty),*)? > $ty:ty),*$(,)*) => {
         $(impl<$($T: LuaTypeDoc),*$($(,$W)*)?$($(,const $N:$nty)*)?> LuaTypeDoc for $ty {
             #[inline]
             fn lua_type_doc() -> String {
                 format!($str, $($T::lua_type_doc()),*)
+            }
+        })*
+    };
+    (($str:literal | $strwrap:literal) for $(< $T:ident $(;$($W:ident),*)? $(;;$(const $N:ident: $nty:ty),*)? > $ty:ty),*$(,)*) => {
+        $(impl<$T: LuaTypeDoc$($(,$W)*)?$($(,const $N:$nty)*)?> LuaTypeDoc for $ty {
+            #[inline]
+            fn lua_type_doc() -> String {
+                let ar = $T::lua_type_doc();
+                if std::any::type_name::<$T>().contains("Either") {
+                    format!($strwrap, ar)
+                } else {
+                    format!($str, ar)
+                }
             }
         })*
     };
@@ -19,14 +36,14 @@ macro_rules! impl_lua_type_doc {
             }
         })*
     };
-    (any for $(<$T:ident: $sty:path> $ty:ty),*$(,)*) => {
-        $(impl<$T: $sty> LuaTypeDoc for $ty {
-            #[inline]
-            fn lua_type_doc() -> String {
-                format!("{}", std::any::type_name::<T>())
-            }
-        })*
-    };
+    //(any for $(<$T:ident: $sty:path> $ty:ty),*$(,)*) => {
+    //    $(impl<$T: $sty> LuaTypeDoc for $ty {
+    //        #[inline]
+    //        fn lua_type_doc() -> String {
+    //            format!("{}", std::any::type_name::<T>())
+    //        }
+    //    })*
+    //};
 }
 
 macro_rules! impl_lua_type_doc_tuples {
@@ -88,10 +105,10 @@ impl_lua_type_doc! { "table" for
 impl_lua_type_doc! { "{} | {}" for
     <L, R> mlua::Either<L, R>,
 }
-impl_lua_type_doc! { "{}?" for
+impl_lua_type_doc! { ("{}?" | "({})?") for // means: add () when T is Either
     <T> Option<T>,
 }
-impl_lua_type_doc! { "{}[]" for
+impl_lua_type_doc! { ("{}[]" | "({})[]") for // means: add () when T is Either
     <T> &[T],
     <T;; const N: usize> [T; N],
     <T> Box<[T]>,

@@ -2,11 +2,12 @@
 
 use std::io::{Result as IoResult, Write};
 
-use mlua::{Function, Value};
+use mlua::{Either, Function, Value};
 
-use crate::lua::typedoc::LuaTypeDoc;
+use crate::lua::typedoc::{LuaTypeAliasDoc, LuaTypeDoc};
 use crate::navigate::input::PendingMouseInfo;
 use crate::navigate::scripting::{MoveFlags, ScrollFlags, SearchFlags};
+use crate::navigate::Target;
 use crate::prompt::PromptSplitInfo;
 
 type ExportParamNameAndType = (&'static str, fn() -> String);
@@ -18,8 +19,7 @@ pub struct Export {
     pub ret: fn() -> String,
 }
 
-include!(concat!(env!("OUT_DIR"), "/help.rs"));
-// -> pub const HELP: &[Export];
+pub const HELP: &[Export] = &include!(concat!(env!("OUT_DIR"), "/help.rs"));
 
 impl Export {
     pub fn gen_lua_meta(&self, f: &mut impl Write) -> IoResult<()> {
@@ -35,7 +35,7 @@ impl Export {
 
         write!(f, "function ")?;
         if let Some(table) = self.table {
-            write!(f, "{table}.")?;
+            write!(f, "{table}{}", if "treest" == table { ":" } else { "." })?;
         }
         write!(f, "{}(", self.name)?;
         let mut sep = "";
@@ -49,12 +49,11 @@ impl Export {
 
 macro_rules! top_aliases {
     ($f:ident; $($ty:ty),*$(,)?) => {
-        $(writeln!(
-            $f,
-            "---@alias {} {}",
-            <$ty>::lua_type_doc(),
-            <$ty>::lua_type_doc_alias_to(),
-        )?;)*
+        $({
+            let alias = <$ty>::lua_type_doc();
+            let expand = <$ty>::lua_type_doc_alias_to();
+            writeln!($f, "---@alias {alias} {expand}")?;
+        })*
     };
 }
 

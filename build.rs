@@ -30,40 +30,40 @@ impl<'a> Export<'a> {
 
         let mut lines = text
             .lines()
-            //.inspect(|l| println!("{l:?}"))
+            //.inspect(|l| eprintln!("{l:?}"))
             .map(str::trim_start)
             .peekable();
-        println!("-- find '/// Exported'");
+        eprintln!("-- find '/// Exported '");
 
         let export_line = lines.find(|line| line.starts_with("/// Exported "))?;
         r.table = export_line
             .strip_prefix("/// Exported in ")
             .map(|s| &s[..s.len() - 1]); // remove trailing '.'
-        println!("-- ok");
+        eprintln!("-- ok");
 
         while let Some(more) = lines.next_if(|line| line.starts_with("/// ")) {
             r.doc.push(&more[4..]);
         }
         let proto_line = lines.peek().and_then(|line| line.strip_prefix("fn "))?;
-        println!("-- ^ proto_line ^");
+        eprintln!("-- proto_line: {proto_line:?}");
 
         let mut chars = proto_line.char_indices().peekable();
 
         r.name = &proto_line[chars.next()?.0..chars.find(|(_, c)| '(' == *c)?.0];
-        println!("   name: {:?}", r.name);
+        eprintln!("   name: {:?}", r.name);
 
         if chars.next_if(|(_, c)| '&' == *c).is_some() {
             r.table = Some("treest");
             let mutable = 'm' == chars.peek()?.1;
             if mutable {
-                chars.nth(8)?; // 'mut self'
+                chars.nth(7)?; // 'mut self'
             } else {
-                chars.nth(4)?; // 'self'
+                chars.nth(3)?; // 'self'
             }
             if ',' == chars.peek()?.1 {
-                chars.nth(2)?; // ', '
+                chars.nth(1)?; // ', '
             }
-            println!("   {}mutable self", if mutable { "" } else { "im" });
+            eprintln!("   < {}mutable self", if mutable { "" } else { "im" });
         }
 
         while let Some((st, _)) = chars
@@ -72,7 +72,7 @@ impl<'a> Export<'a> {
             .filter(|(_, c)| ')' != *c && '-' != *c)
         {
             let name = &proto_line[st..chars.find(|(_, c)| ':' == *c)?.0];
-            println!("   / name: {name:?}");
+            eprintln!("   / name: {name:?}");
 
             let st = chars.nth(1)?.0; // ' '
             let mut stack = Vec::new();
@@ -90,17 +90,20 @@ impl<'a> Export<'a> {
                 })?
                 .0;
             let typ = &proto_line[st..ed];
-            println!("   \\ typ: {typ:?}");
+            eprintln!("   \\ typ: {typ:?}");
 
             r.params.push((name, typ));
             chars.next();
         }
 
+        if ')' == chars.peek()?.1 {
+            chars.nth(1)?;
+        }
         let l = proto_line.len();
         r.ret = &proto_line[chars.next()?.0 + 10..l - 3]; //  '-> Result<' and '> {'
 
         let consumed = unsafe { proto_line.as_ptr().offset_from(text.as_ptr()) } as usize;
-        println!(
+        eprintln!(
             "-- success {:?}.{:?}/{} :: {:?}",
             r.table,
             r.name,
@@ -142,12 +145,12 @@ fn main() -> IoResult<()> {
     let mut helprs = File::create(Path::new(&out_dir).join("help.rs"))?;
 
     let mut head = scripting.as_str();
-    writeln!(helprs, "pub const HELP: &[Export] = &[")?;
+    writeln!(helprs, "[")?;
     while let Some((ex, ahead)) = Export::parse(head) {
         writeln!(helprs, "{ex},")?;
         head = ahead;
     }
-    writeln!(helprs, "];")?;
+    writeln!(helprs, "]")?;
 
     Ok(())
 }

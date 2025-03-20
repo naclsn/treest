@@ -12,6 +12,7 @@ pub mod input;
 pub mod options;
 pub mod scripting;
 
+use crate::lua::typedoc::{LuaTypeAliasDoc, LuaTypeDoc};
 use crate::navigate::input::Input;
 use crate::navigate::options::Options;
 use crate::providers::Provider;
@@ -55,6 +56,18 @@ impl FromLua for Target {
             Value::Nil => Ok(Target::Cursor),
             _ => Ok(Target::Path(Vec::from_lua(value, lua)?)),
         }
+    }
+}
+
+impl LuaTypeDoc for Target {
+    fn lua_type_doc() -> String {
+        "Target".to_string()
+    }
+}
+
+impl LuaTypeAliasDoc for Target {
+    fn lua_type_doc_alias_to() -> String {
+        "integer[]?".to_string()
     }
 }
 
