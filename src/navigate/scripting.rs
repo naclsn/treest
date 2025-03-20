@@ -114,7 +114,9 @@ impl Navigate {
             .exit
             .take()
             .unwrap_or("_atexit called too early (no exit text set)".into());
-        self.term.take().map(|t| t.restore());
+        if let Some(t) = self.term.take() {
+            t.restore();
+        }
         Ok(exit)
     }
 
@@ -136,7 +138,8 @@ impl Navigate {
     }
 
     fn enter(&mut self) -> Result<()> {
-        Ok(self.cursor_enter())
+        self.cursor_enter();
+        Ok(())
     }
 
     fn fold(&mut self, target: Target) -> Result<()> {
@@ -167,7 +170,8 @@ impl Navigate {
     }
 
     fn leave(&mut self) -> Result<()> {
-        Ok(self.cursor_leave())
+        self.cursor_leave();
+        Ok(())
     }
 
     fn map(&mut self, seq: String, cb: Function) -> Result<()> {
@@ -186,7 +190,8 @@ impl Navigate {
     }
 
     fn next(&mut self, flags: MoveFlags) -> Result<()> {
-        Ok(self.cursor_next("wrap" == flags.wrapping))
+        self.cursor_next("wrap" == flags.wrapping);
+        Ok(())
     }
 
     fn unmark(&mut self, target: Target) -> Result<()> {
@@ -203,7 +208,8 @@ impl Navigate {
     }
 
     fn prev(&mut self, flags: MoveFlags) -> Result<()> {
-        Ok(self.cursor_prev("wrap" == flags.wrapping))
+        self.cursor_prev("wrap" == flags.wrapping);
+        Ok(())
     }
 
     fn prompt(&mut self, ps: String, completion: Function) -> Result<Option<String>> {
@@ -295,7 +301,9 @@ impl Navigate {
             terminal::mouse_off();
             terminal::altscreen_off();
 
-            self.term.take().map(|t| t.restore());
+            if let Some(t) = self.term.take() {
+                t.restore();
+            }
             unsafe { libc::raise(libc::SIGTSTP) };
             self.term = terminal::raw_with_panic_hook().ok();
 
@@ -346,7 +354,7 @@ fn help(subj: String) -> Result<Option<String>> {
                 .map(|ex| if let Some(table) = ex.table {
                     format!("{table}.{}", ex.name)
                 } else {
-                    format!("{}", ex.name)
+                    ex.name.to_string()
                 })
                 .collect::<Vec<_>>()
                 .join(", ")
@@ -355,7 +363,7 @@ fn help(subj: String) -> Result<Option<String>> {
         Ok(help::HELP
             .iter()
             .find(|ex| ex.name.ends_with(&subj))
-            .map(|ex| format!("{}", (ex.doc)().join("\n"))))
+            .map(|ex| (ex.doc)().join("\n")))
     }
 }
 
@@ -401,6 +409,7 @@ fn prompt_split(line: String, point: Option<usize>) -> Result<PromptSplitInfo> {
 }
 
 mod help {
+    #![allow(dead_code)]
     use super::*;
     include!(concat!(env!("OUT_DIR"), "/help.rs"));
 }
@@ -428,7 +437,7 @@ pub fn gen_lua_meta(f: &mut impl Write) -> IoResult<()> {
         }
         write!(f, "{}(", ex.name)?;
         let mut sep = "";
-        for (name, typ) in (ex.params)() {
+        for (name, _) in (ex.params)() {
             write!(f, "{sep}{name}")?;
             sep = ", ";
         }

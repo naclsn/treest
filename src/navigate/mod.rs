@@ -158,7 +158,7 @@ impl Navigate {
         }
     }
 
-    pub fn main_loop<'a>(self) -> Result<(), MainLoopExitText> {
+    pub fn main_loop(self) -> Result<(), MainLoopExitText> {
         let user_script = self.user_script.clone();
 
         let lua = unsafe { Lua::unsafe_new() };

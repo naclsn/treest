@@ -239,11 +239,7 @@ impl Display for Export<'_> {
         }
         writeln!(f, "{INDE}    ],")?;
         if "()" != self.ret {
-            writeln!(
-                f,
-                r#"{INDE}    ret: Some(|| <{}>::lua_type_doc()),"#,
-                self.ret
-            )?;
+            writeln!(f, r#"{INDE}    ret: Some(<{}>::lua_type_doc),"#, self.ret)?;
         } else {
             writeln!(f, "{INDE}    ret: None,")?;
         }
