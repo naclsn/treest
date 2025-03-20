@@ -27,7 +27,7 @@ pub trait Provider {
 
 macro_rules! providers {
     ($($nm:ident: $ty:ident if $ft:expr,)+) => {
-        //mod generic;
+        //pub mod generic;
         $(pub mod $nm;)+
 
         pub const NAMES: &'static [&'static str] = &[$(stringify!($nm),)+];

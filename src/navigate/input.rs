@@ -15,12 +15,7 @@ pub struct Input {
     pending_reachable: Vec<usize>,
 }
 
-#[derive(Debug, Clone)]
-pub struct PendingMouseInfo {
-    pub col: u8,
-    pub row: u8,
-}
-crate::impl_lua_conversion!(PendingMouseInfo { col, row });
+crate::struct_lua_conversion!(PendingMouseInfo { col: u8, row: u8 });
 
 struct Mapping(Vec<u8>, Function);
 

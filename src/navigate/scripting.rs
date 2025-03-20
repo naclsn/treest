@@ -1,8 +1,9 @@
-use std::io::{self, Read, Result as IoResult, Write};
+use std::io::{self, Read};
 use std::result::Result as StdResult;
 
 use mlua::{Function, Lua, Result, Table, UserData, UserDataFields, UserDataMethods, Value};
 
+use crate::lua::help;
 use crate::navigate::{Navigate, Target, ViewJumpBy};
 use crate::prompt::{self, PromptSplitInfo};
 use crate::terminal;
@@ -348,22 +349,20 @@ impl Navigate {
 fn help(subj: String) -> Result<Option<String>> {
     if subj.is_empty() {
         Ok(Some(format!(
-            "API items: {}",
+            "API items:{}",
             help::HELP
                 .iter()
                 .map(|ex| if let Some(table) = ex.table {
-                    format!("{table}.{}", ex.name)
+                    format!(" {table}.{}", ex.name)
                 } else {
-                    ex.name.to_string()
+                    format!(" {}", ex.name)
                 })
-                .collect::<Vec<_>>()
-                .join(", ")
+                .collect::<String>()
         )))
+    } else if let Some(ex) = help::HELP.iter().find(|ex| subj == ex.name) {
+        Ok(Some(ex.doc.join("\n")))
     } else {
-        Ok(help::HELP
-            .iter()
-            .find(|ex| ex.name.ends_with(&subj))
-            .map(|ex| (ex.doc)().join("\n")))
+        Ok(None)
     }
 }
 
@@ -406,45 +405,6 @@ fn prompt(ps: String, history: Vec<String>, completion: Function) -> Result<Opti
 /// Split a line of input in a shell-like manner.
 fn prompt_split(line: String, point: Option<usize>) -> Result<PromptSplitInfo> {
     Ok(prompt::split(&line, point.unwrap_or_default()))
-}
-
-mod help {
-    #![allow(dead_code)]
-    use super::*;
-    include!(concat!(env!("OUT_DIR"), "/help.rs"));
-}
-
-pub fn gen_lua_meta(f: &mut impl Write) -> IoResult<()> {
-    writeln!(f, "---@meta treest")?;
-    writeln!(f)?;
-
-    writeln!(f, "---@class treestlib")?;
-    writeln!(f, "---@field quitting boolean")?;
-    writeln!(
-        f,
-        "---@field mouse_event_pos {{ col: integer, row: integer }}"
-    )?;
-    writeln!(f, "treest = {{}}")?;
-
-    for ex in help::HELP {
-        writeln!(f)?;
-        for line in (ex.doc)() {
-            writeln!(f, "---{line}")?;
-        }
-        write!(f, "function ")?;
-        if let Some(table) = ex.table {
-            write!(f, "{table}.")?;
-        }
-        write!(f, "{}(", ex.name)?;
-        let mut sep = "";
-        for (name, _) in (ex.params)() {
-            write!(f, "{sep}{name}")?;
-            sep = ", ";
-        }
-        writeln!(f, ") end")?;
-    }
-
-    Ok(())
 }
 
 fn slice_search<T>(

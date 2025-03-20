@@ -1,6 +1,11 @@
 #[macro_export]
-macro_rules! impl_lua_conversion {
-    ($ty:ty { $($field:ident),*$(,)? }) => {
+macro_rules! struct_lua_conversion {
+    ($ty:ident { $($vis:vis $field:ident: $fty:ty),*$(,)? }) => {
+        #[derive(Clone, Default, Debug)]
+        pub struct $ty {
+            $($vis $field: $fty),*
+        }
+
         impl ::mlua::IntoLua for $ty {
             fn into_lua(self, lua: &::mlua::Lua) -> ::mlua::Result<::mlua::Value> {
                 let t = lua.create_table()?;
@@ -33,15 +38,34 @@ macro_rules! impl_lua_conversion {
                 }
             }
         }
+
+        impl $crate::lua::typedoc::LuaTypeDoc for $ty {
+            fn lua_type_doc() -> String {
+                stringify!($ty).to_string()
+            }
+        }
+
+        impl $ty {
+            pub fn lua_type_doc_alias_to() -> String {
+                format!(
+                    "{{ {} }}",
+                    [$(format!(
+                        "{}: {}",
+                        stringify!($field),
+                        <$fty as $crate::lua::typedoc::LuaTypeDoc>::lua_type_doc(),
+                    )),*].join(", "),
+                )
+            }
+        }
     };
 }
 
 #[macro_export]
 macro_rules! flags_lua_conversion {
-    ($ty:ident { $($flag:ident: $($val:literal)|+),*$(,)? }) => {
+    ($ty:ident { $($vis:vis $flag:ident: $($val:literal)|+),*$(,)? }) => {
         #[derive(Clone, Default, Debug)]
         pub struct $ty {
-            pub $($flag: &'static str),*
+            $($vis $flag: &'static str),*
         }
 
         impl ::mlua::IntoLua for $ty {
@@ -101,6 +125,24 @@ macro_rules! flags_lua_conversion {
                 })*
 
                 Ok(r)
+            }
+        }
+
+        impl $crate::lua::typedoc::LuaTypeDoc for $ty {
+            fn lua_type_doc() -> String {
+                stringify!($ty).to_string()
+            }
+        }
+
+        impl $ty {
+            pub fn lua_type_doc_alias_to() -> String {
+                format!(
+                    "({})[]",
+                    [$(format!(
+                        "{}",
+                        [$(format!("'{}'", $val)),*].join("|")
+                    )),*].join(" | "),
+                )
             }
         }
     };

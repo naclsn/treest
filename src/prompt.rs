@@ -3,11 +3,10 @@ use std::mem;
 
 use mlua::Lua;
 
-pub struct PromptSplitInfo {
+crate::struct_lua_conversion!(PromptSplitInfo {
     args: Vec<String>,
     in_arg: usize,
-}
-crate::impl_lua_conversion!(PromptSplitInfo { args, in_arg });
+});
 
 pub fn split(line: &str, point: usize) -> PromptSplitInfo {
     let mut args = Vec::new();

@@ -7,18 +7,16 @@ use anyhow::Result;
 use mlua::{FromLua, Function, Lua, Result as LuaResult, Table, Value};
 use thiserror::Error;
 
-mod display;
-mod input;
-mod options;
-mod scripting;
+pub mod display;
+pub mod input;
+pub mod options;
+pub mod scripting;
 
 use crate::navigate::input::Input;
 use crate::navigate::options::Options;
 use crate::providers::Provider;
 use crate::terminal::{self, RestoreWithPanicHook};
 use crate::tree::Node;
-
-pub use scripting::gen_lua_meta;
 
 #[derive(Error, Debug)]
 #[error("{0}")]

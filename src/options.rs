@@ -7,7 +7,8 @@ use std::process;
 use anyhow::Result;
 use thiserror::Error;
 
-use crate::navigate::{self, Navigate};
+use crate::lua::help;
+use crate::navigate::Navigate;
 use crate::providers;
 
 #[derive(Error, Debug)]
@@ -87,9 +88,9 @@ impl Options {
                 "--lua-meta" => {
                     let meta = args.next().unwrap_or("-".into());
                     if "-" == meta {
-                        navigate::gen_lua_meta(&mut io::stdout()).unwrap();
+                        help::gen_lua_meta(&mut io::stdout()).unwrap();
                     } else {
-                        navigate::gen_lua_meta(&mut File::create(meta).unwrap()).unwrap();
+                        help::gen_lua_meta(&mut File::create(meta).unwrap()).unwrap();
                     }
                     process::exit(4);
                 }

@@ -1,4 +1,4 @@
-mod macros;
+mod lua;
 mod navigate;
 mod options;
 mod prompt;
