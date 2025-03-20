@@ -69,7 +69,7 @@ impl UserData for Navigate {
             mut prompt(ps, completion);
             fn  provider_name();
             mut quit(text);
-            fn  search_deep(q, flags);
+            mut search_deep(q, flags);
             fn  search_level(q, flags);
             mut set_cursor(target);
             mut set_option(name, value);
@@ -241,7 +241,7 @@ impl Navigate {
         Ok(())
     }
 
-    fn search_deep(&self, q: String, flags: SearchFlags) -> Result<Option<Vec<usize>>> {
+    fn search_deep(&mut self, _q: String, _flags: SearchFlags) -> Result<Option<Vec<usize>>> {
         todo!()
     }
 

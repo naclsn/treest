@@ -1,11 +1,12 @@
 use std::io::Error as IoError;
 use std::panic::{self, PanicHookInfo};
+use std::ptr;
 use std::sync::Mutex;
 
 pub use self::plat::*;
 
 #[cfg(unix)]
-pub mod plat {
+mod plat {
     use libc::{self, termios as Termios, winsize as Winsize};
     use std::io::Error as IoError;
 
@@ -51,7 +52,7 @@ pub mod plat {
 }
 
 #[cfg(windows)]
-pub mod plat {
+mod plat {
     use std::io::Error as IoError;
     use std::ptr;
     use winapi::{
@@ -119,6 +120,7 @@ pub mod plat {
 }
 
 pub struct RestoreWithPanicHook;
+const RESTORE_SIGNAL: *const PanicHookInfo = ptr::null();
 
 pub fn raw_with_panic_hook() -> Result<RestoreWithPanicHook, IoError> {
     let r = Mutex::new(Some(raw()?));
@@ -129,11 +131,9 @@ pub fn raw_with_panic_hook() -> Result<RestoreWithPanicHook, IoError> {
         mouse_off();
         altscreen_off();
 
-        r.lock().ok().map(|mut m| m.take().map(|r| r.restore()));
+        _ = r.lock().map(|mut m| m.take().map(Restore::restore));
 
-        // XXX: transmute (to match restore call)
-        if !(unsafe { std::mem::transmute::<&PanicHookInfo, *const PanicHookInfo>(info) }).is_null()
-        {
+        if !ptr::eq(RESTORE_SIGNAL, info) {
             phook(info);
         }
     }));
@@ -143,8 +143,7 @@ pub fn raw_with_panic_hook() -> Result<RestoreWithPanicHook, IoError> {
 
 impl RestoreWithPanicHook {
     pub fn restore(self) {
-        // XXX: transmute (can't use deref)
-        panic::take_hook()(unsafe { std::mem::transmute(std::ptr::null::<PanicHookInfo>()) });
+        panic::take_hook()(unsafe { &*RESTORE_SIGNAL });
     }
 }
 
