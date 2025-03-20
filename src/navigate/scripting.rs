@@ -1,7 +1,7 @@
 use std::io::{self, Read};
 use std::result::Result as StdResult;
 
-use mlua::{Either, Function, Lua, Result, Table, Value};
+use mlua::{BString, Either, Function, Lua, Result, Table, Value};
 use mlua::{UserData, UserDataFields, UserDataMethods};
 
 use crate::lua::help;
@@ -89,11 +89,11 @@ impl UserData for Navigate {
 pub fn global_exports(g: &Table, lua: &Lua) -> Result<()> {
     make_exports! { g, lua;
         pub help(subj);
-        pub keyseqstr(seq);
-        pub keytrans(text);
         pub prompt(ps, history, completion);
     }
     make_exports! { g.get("string").unwrap(), lua;
+        pub keyseqstr(seq);
+        pub keytrans(text);
         pub prompt_split(line, point);
     }
     make_exports! { g.get("debug").unwrap(), lua;
@@ -485,14 +485,26 @@ fn help(subj: String) -> Result<Option<String>> {
     }
 }
 
-// TODO: BString
-fn keyseqstr(seq: Vec<u8>) -> Result<String> {
+/// Exported in string.
+/// Translate a byte string back to a key sequence: `somestr:keyseqstr():keytrans() == somestr`.
+fn keyseqstr(seq: BString) -> Result<String> {
     Ok(terminal::keyseqstr(&seq))
 }
 
-// TODO: BString
-fn keytrans(text: String) -> Result<Option<Vec<u8>>> {
-    Ok(terminal::keytrans(&text))
+/// Exported in string.
+/// Translate a key sequence into the corresponding byte string.
+/// Note that `treest:map` expects a non-translated string! (Tho the result will be the same.)
+///
+/// Notations are mostly taken from Vim. Here are the recognised forms:
+/// ```text
+/// <Nul> <BS> <Tab> <NL> <CR> <Space> <lt> <gt> <Bslash> <Bar> <CSI>
+/// <Up> <Down> <Right> <Left>
+/// <Home> <End> <Insert> <Delete> <PageUp> <PageDown>
+/// <LeftMouse> <RightMouse> <ForwardWheel> <BackwardWheel> <UpMouse>
+/// <C-..> <M-..> <A-..>
+/// ```
+fn keytrans(text: String) -> Result<Option<BString>> {
+    Ok(terminal::keytrans(&text).map(BString::from))
 }
 
 /// Exported globally.

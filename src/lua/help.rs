@@ -2,7 +2,7 @@
 
 use std::io::{Result as IoResult, Write};
 
-use mlua::{Either, Function, Value};
+use mlua::{BString, Either, Function, Value};
 
 use crate::lua::typedoc::{LuaTypeAliasDoc, LuaTypeDoc};
 use crate::navigate::input::PendingMouseInfo;

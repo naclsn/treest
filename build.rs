@@ -41,8 +41,8 @@ impl<'a> Export<'a> {
             .map(|s| &s[..s.len() - 1]); // remove trailing '.'
         eprintln!("-- ok");
 
-        while let Some(more) = lines.next_if(|line| line.starts_with("/// ")) {
-            r.doc.push(&more[4..]);
+        while let Some(more) = lines.next_if(|line| line.starts_with("///")) {
+            r.doc.push(&more[std::cmp::min(more.len(), 4)..]);
         }
         let proto_line = lines.peek().and_then(|line| line.strip_prefix("fn "))?;
         eprintln!("-- proto_line: {proto_line:?}");
