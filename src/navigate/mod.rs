@@ -263,10 +263,8 @@ return treest:_atexit()
 
     /// Return the target node's child count if valid.
     pub fn set_folded(&mut self, at: Target, is: bool) -> Option<usize> {
-        let Some(node) = self.resolve_node_mut(&at) else {
-            return None;
-        };
-        if !is || node.is_loaded() {
+        let node = self.resolve_node_mut(&at)?;
+        if is || node.is_loaded() {
             node.set_folded(is);
             return Some(node.child_count());
         }

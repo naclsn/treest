@@ -436,7 +436,7 @@ impl Navigate {
     }
 
     /// Exported in treest.
-    /// Move the view down, that is revealing any hidden lines at the top.
+    /// Move the view down, revealing any hidden lines at the bottom.
     fn view_down(&mut self, by: ScrollFlags) -> Result<()> {
         self.view.borrow_mut().down(match by.amount {
             "line" => ViewJumpBy::Line,
@@ -449,7 +449,7 @@ impl Navigate {
     }
 
     /// Exported in treest.
-    /// Move the view up, that is revealing any hidden lines at the bottom.
+    /// Move the view up, revealing any hidden lines at the top.
     fn view_up(&mut self, by: ScrollFlags) -> Result<()> {
         self.view.borrow_mut().up(match by.amount {
             "line" => ViewJumpBy::Line,
