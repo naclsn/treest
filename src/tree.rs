@@ -94,11 +94,21 @@ impl Node {
             .fold(self, |acc, cur| acc.child_mut(*cur).unwrap())
     }
 
+    /// To use over `resolve_node` when the path cannot be trusted.
+    pub fn try_resolve_node(&self, path: &[usize]) -> Option<&Node> {
+        path.iter().try_fold(self, |acc, cur| acc.child(*cur))
+    }
+
+    /// To use over `resolve_node_mut` when the path cannot be trusted.
+    pub fn try_resolve_node_mut(&mut self, path: &[usize]) -> Option<&mut Node> {
+        path.iter().try_fold(self, |acc, cur| acc.child_mut(*cur))
+    }
+
     /// Load the child nodes for the target at path.
     ///
     /// `folded` indicates whether to actually unfold the node.
     ///
-    /// If these where already loaded and `force` is not true,
+    /// If these where already loaded and `reload` is not true,
     /// this is equivalent to `target.set_folded(folded)`.
     ///
     /// The number of (visible) children is always returned.
@@ -106,12 +116,12 @@ impl Node {
         &mut self,
         provider: &mut Box<dyn Provider>,
         path: &[usize],
-        force: bool,
+        reload: bool,
         folded: bool,
     ) -> usize {
         let parents = self.resolve(path);
 
-        if !force {
+        if !reload {
             let target = parents.last().unwrap();
             if target.is_loaded() {
                 if target.is_folded() != folded {

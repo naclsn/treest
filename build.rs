@@ -53,7 +53,6 @@ impl<'a> Export<'a> {
         eprintln!("   name: {:?}", r.name);
 
         if chars.next_if(|(_, c)| '&' == *c).is_some() {
-            r.table = Some("treest");
             let mutable = 'm' == chars.peek()?.1;
             if mutable {
                 chars.nth(7)?; // 'mut self'

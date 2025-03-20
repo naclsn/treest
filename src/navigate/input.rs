@@ -146,4 +146,23 @@ impl Input {
         }
         self.mappings.push(Mapping(sequence, action));
     }
+
+    pub fn get_mapping(&self, sequence: Vec<u8>) -> Option<&Function> {
+        self.mappings
+            .iter()
+            .find(|map| sequence == map.0)
+            .map(|map| &map.1)
+    }
+
+    pub fn pop_mapping(&mut self, sequence: Vec<u8>) -> Option<Function> {
+        let k = self.mappings.iter().position(|map| sequence == map.0)?;
+        if let Some(a) = self
+            .pending_reachable
+            .iter_mut()
+            .find(|a| self.mappings.len() - 1 == **a)
+        {
+            *a = k;
+        }
+        Some(self.mappings.swap_remove(k).1)
+    }
 }

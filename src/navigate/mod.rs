@@ -48,23 +48,24 @@ pub struct Navigate {
 pub enum Target {
     Cursor,
     Path(Vec<usize>),
+    TrustedPath(Vec<usize>),
+    //RelativePath(Vec<usize>),
 }
 
 impl FromLua for Target {
     fn from_lua(value: Value, lua: &Lua) -> LuaResult<Self> {
         match value {
             Value::Nil => Ok(Target::Cursor),
+            // TODO: RelativePath, maybe with negative number as first item
             _ => Ok(Target::Path(Vec::from_lua(value, lua)?)),
         }
     }
 }
-
 impl LuaTypeDoc for Target {
     fn lua_type_doc() -> String {
         "Target".to_string()
     }
 }
-
 impl LuaTypeAliasDoc for Target {
     fn lua_type_doc_alias_to() -> String {
         "integer[]?".to_string()
@@ -132,15 +133,6 @@ impl View {
             self.scroll = 0;
         }
     }
-}
-
-macro_rules! as_path {
-    ($self:ident, $at:expr) => {
-        match &$at {
-            Target::Cursor => &$self.cursor.1[..$self.cursor.0],
-            Target::Path(path) => path,
-        }
-    };
 }
 
 impl Navigate {
@@ -243,25 +235,72 @@ return treest:_atexit()
         &mut self.cursor.1[self.cursor.0 - 1]
     }
 
-    pub fn set_folded(&mut self, at: Target, is: bool) -> usize {
-        self.tree
-            .load(&mut self.provider, as_path!(self, at), false, is)
+    ///// The first (bool) argument to the closure is `true` when the path is "trusted".
+    //fn map_at<R>(&self, at: &Target, f: impl FnOnce(bool, &[usize]) -> R) -> R {
+    //    let (trust, path) = match &at {
+    //        Target::Cursor => (true, &self.cursor.1[..self.cursor.0]),
+    //        Target::Path(path) => (false, &path[..]),
+    //        Target::TrustedPath(path) => (true, &path[..]),
+    //    };
+    //    f(trust, path)
+    //}
+
+    pub fn resolve_node(&self, at: &Target) -> Option<&Node> {
+        match at {
+            Target::Cursor => Some(self.tree.resolve_node(&self.cursor.1[..self.cursor.0])),
+            Target::Path(path) => self.tree.try_resolve_node(path),
+            Target::TrustedPath(path) => Some(self.tree.resolve_node(path)),
+        }
     }
-    pub fn get_folded(&self, at: Target) -> bool {
-        self.tree.resolve_node(as_path!(self, at)).is_folded()
+
+    pub fn resolve_node_mut(&mut self, at: &Target) -> Option<&mut Node> {
+        match at {
+            Target::Cursor => Some(self.tree.resolve_node_mut(&self.cursor.1[..self.cursor.0])),
+            Target::Path(path) => self.tree.try_resolve_node_mut(path),
+            Target::TrustedPath(path) => Some(self.tree.resolve_node_mut(path)),
+        }
+    }
+
+    /// Return the target node's child count if valid.
+    pub fn set_folded(&mut self, at: Target, is: bool) -> Option<usize> {
+        let Some(node) = self.resolve_node_mut(&at) else {
+            return None;
+        };
+        if !is || node.is_loaded() {
+            node.set_folded(is);
+            return Some(node.child_count());
+        }
+        Some(self.tree.load(
+            &mut self.provider,
+            // note: at this point the path can be trusted because resolve_node_mut above
+            match &at {
+                Target::Cursor => &self.cursor.1[..self.cursor.0],
+                Target::Path(path) => &path[..],
+                Target::TrustedPath(path) => &path[..],
+            },
+            // note: already know it isn't loaded, skip the check
+            true,
+            is,
+        ))
+    }
+    pub fn get_folded(&self, at: Target) -> Option<bool> {
+        self.resolve_node(&at).map(Node::is_folded)
     }
 
     pub fn set_marked(&mut self, at: Target, is: bool) {
-        self.tree
-            .resolve_node_mut(as_path!(self, at))
-            .set_marked(is);
+        let Some(node) = self.resolve_node_mut(&at) else {
+            return;
+        };
+        node.set_marked(is);
     }
-    pub fn get_marked(&self, at: Target) -> bool {
-        self.tree.resolve_node(as_path!(self, at)).is_marked()
+    pub fn get_marked(&self, at: Target) -> Option<bool> {
+        self.resolve_node(&at).map(Node::is_marked)
     }
 
     pub fn cursor_enter(&mut self) {
-        let child_count = self.set_folded(Target::Cursor, false);
+        let Some(child_count) = self.set_folded(Target::Cursor, false) else {
+            return;
+        };
         if 0 == child_count {
             return;
         }

@@ -61,11 +61,12 @@ impl UserData for Navigate {
             fn  get_register_hist(name);
             mut leave();
             mut map(seq, cb);
+            fn  mapped(seq);
             mut mark(target);
             fn  marked(target);
             mut message(text);
             mut next(flags);
-            mut unmark(target);
+            //fn  node(target); // TODO: need a proper return type to be added
             mut prev(flags);
             mut prompt(ps, completion);
             fn  provider_name();
@@ -77,6 +78,8 @@ impl UserData for Navigate {
             mut set_register(name, value);
             mut suspend();
             mut unfold(target);
+            mut unmap(seq);
+            mut unmark(target);
             mut view_down(by);
             mut view_up(by);
         }
@@ -140,7 +143,7 @@ impl Navigate {
     }
 
     /// Exported in treest.
-    /// Try to enter the node at cursor, unfolding it as needed.
+    /// Try to enter the node at cursor (ie relative motion), unfolding it as needed.
     /// Nothing happens if it cannot be unfolded.
     fn enter(&mut self) -> Result<()> {
         self.cursor_enter();
@@ -148,61 +151,124 @@ impl Navigate {
     }
 
     /// Exported in treest.
-    /// Fold the node at target (cursor if nil).
+    /// Fold the node at target (cursor if `nil`).
+    /// Nothing happens if the target is not valid.
     fn fold(&mut self, target: Target) -> Result<()> {
         self.set_folded(target, true);
         Ok(())
     }
 
     /// Exported in treest.
-    /// Check if the node at target (cursor if nil) is folded.
-    fn folded(&self, target: Target) -> Result<bool> {
+    /// Check if the node at target (cursor if `nil`) is folded.
+    /// Return `nil` if the target is not valid.
+    fn folded(&self, target: Target) -> Result<Option<bool>> {
         Ok(self.get_folded(target))
     }
 
+    /// Exported in treest.
+    /// Retrieve the cursor path.
+    /// Using this where a `Target` is expected is equivalent to `nil`.
     fn get_cursor(&self) -> Result<Vec<usize>> {
         Ok(self.cursor().to_vec())
     }
 
+    // TODO: need to remove the 'lua'
+    // Exported in treest.
+    /// Get the value of an option.
     fn get_option(&self, lua: &Lua, name: String) -> Result<Value> {
         Ok(self.options.get(&name, lua))
     }
 
     // TODO: remove the Option<>
+    /// Exported in treest.
+    /// Get the value of a register.
     fn get_register(&self, name: String) -> Result<Option<String>> {
         Ok(self.registers.get(&name).and_then(|h| h.last()).cloned())
     }
 
     // TODO: remove the Option<>
+    /// Exported in treest.
+    /// Get the values taken by a register,
+    /// including the current on which will be the last one.
     fn get_register_hist(&self, name: String) -> Result<Option<Vec<String>>> {
         Ok(self.registers.get(&name).cloned())
     }
 
+    /// Exported in treest.
+    /// Try to leave the node at cursor (ie relative motion).
+    /// Nothing happens if the cursor is already at root node.
     fn leave(&mut self) -> Result<()> {
         self.cursor_leave();
         Ok(())
     }
 
+    /// Exported in treest.
+    /// Add a mapping from a key sequence to a callback action.
+    /// See also `treest:unmap`.
     fn map(&mut self, seq: String, cb: Function) -> Result<()> {
         let seq = terminal::keytrans(seq.as_str()).expect("need valid seq something blbl TODO");
         self.input.add_mapping(seq, cb);
         Ok(())
     }
 
+    /// Exported in treest.
+    /// Retrieve a mapping from a key sequence, returning its action callback.
+    /// Result will be `nil` if `seq` wasn't mapped (see `treest:map`).
+    fn mapped(&self, seq: String) -> Result<Option<Function>> {
+        let seq = terminal::keytrans(seq.as_str()).expect("need valid seq something blbl TODO");
+        Ok(self.input.get_mapping(seq).cloned())
+    }
+
+    /// Exported in treest.
+    /// Mark the node at target (cursor if `nil`).
+    /// Nothing happens if the target is not valid.
     fn mark(&mut self, target: Target) -> Result<()> {
         self.set_marked(target, true);
         Ok(())
     }
 
-    fn marked(&self, target: Target) -> Result<bool> {
+    /// Exported in treest.
+    /// Check if the node at target (cursor if `nil`) is marked.
+    /// Return `nil` if the target is not valid.
+    fn marked(&self, target: Target) -> Result<Option<bool>> {
         Ok(self.get_marked(target))
     }
 
+    /// Exported in treest.
+    /// Move cursor to the next sibling node (ie relative motion).
+    /// When flag is 'sat' and it's the last child, nothing happens.
+    /// 'wrap' will instead go back to first child.
     fn next(&mut self, flags: MoveFlags) -> Result<()> {
         self.cursor_next("wrap" == flags.wrapping);
         Ok(())
     }
 
+    /// Exported in treest.
+    /// Retrieve node information at target (cursor if `nil`) or `nil` if the path is not valid.
+    /// TODO: proper return like NodeInfo or something.
+    fn node(&self, target: Target) -> Result<Option<(String, Option<usize>)>> {
+        Ok(self.resolve_node(&target).map(|node| {
+            (
+                "node".to_string(), // TODO: ofc
+                if node.is_loaded() {
+                    Some(node.child_count())
+                } else {
+                    None
+                },
+            )
+        }))
+    }
+
+    /// Exported in treest.
+    /// Remove a mapping from a key sequence, returning its previously associated action callback.
+    /// Result will be `nil` if `seq` wasn't mapped (see `treest:mapped`).
+    fn unmap(&mut self, seq: String) -> Result<Option<Function>> {
+        let seq = terminal::keytrans(seq.as_str()).expect("need valid seq something blbl TODO");
+        Ok(self.input.pop_mapping(seq))
+    }
+
+    /// Exported in treest.
+    /// Unmark the node at target (cursor if `nil`).
     fn unmark(&mut self, target: Target) -> Result<()> {
         self.set_marked(target, false);
         Ok(())
@@ -222,11 +288,20 @@ impl Navigate {
         Ok(())
     }
 
+    /// Exported in treest.
+    /// Move cursor to the previous sibling node (ie relative motion).
+    /// When flag is 'sat' and it's the first child, nothing happens.
+    /// 'wrap' will instead go back to last child.
     fn prev(&mut self, flags: MoveFlags) -> Result<()> {
         self.cursor_prev("wrap" == flags.wrapping);
         Ok(())
     }
 
+    /// Exported in treest.
+    /// Prompt the user for a line of input.
+    /// The result is stored in the register given by `ps`.
+    /// History is also taken from the previous values of the register.
+    /// See also `treest:set_register` for direct access.
     fn prompt(&mut self, ps: String, completion: Function) -> Result<Option<String>> {
         let history = self.registers.entry(ps.clone()).or_default();
 
@@ -246,19 +321,31 @@ impl Navigate {
         Ok(ans)
     }
 
+    /// Exported in treest.
+    /// Retrieve the name of the current provider (eg. 'fs').
     fn provider_name(&self) -> Result<String> {
         Ok(self.provider_name.clone())
     }
 
+    /// Exported in treest.
+    /// Quit the application.
+    /// If the text is non-empty, it is considered an error message to be printed and the exit code will be 1.
+    /// Only `nil` is considered a normal exit situation.
     fn quit(&mut self, text: Option<String>) -> Result<()> {
         self.exit = text.or(Some(String::new()));
         Ok(())
     }
 
+    /// Exported in treest.
+    /// Not implemented yet.
+    /// Search for a node with `q` in its text.
+    /// The search is performed depth-first, greedily unfolding nodes as needed.
     fn search_deep(&mut self, _q: String, _flags: SearchFlags) -> Result<Option<Vec<usize>>> {
         todo!()
     }
 
+    /// Exported in treest.
+    /// Search for a sibling node with `q` in its text.
     fn search_level(&self, q: String, flags: SearchFlags) -> Result<Option<Vec<usize>>> {
         if self.is_cursor_root() {
             return Ok(None);
@@ -291,6 +378,9 @@ impl Navigate {
         Ok(Some(r))
     }
 
+    /// Exported in treest.
+    /// Move the cursor the the given target.
+    /// If the target is not valid, the longest valid path is used (for now we just crash).
     fn set_cursor(&mut self, target: Target) -> Result<()> {
         // TODO: check validity before assigning, unfolding and cropping as needed
         if let Target::Path(path) = target {
@@ -299,16 +389,25 @@ impl Navigate {
         Ok(())
     }
 
+    /// Exported in treest.
+    /// Set the value of an option.
     fn set_option(&mut self, name: String, value: Value) -> Result<()> {
         self.options.set(&name, value);
         Ok(())
     }
 
+    /// Exported in treest.
+    /// Set the value of a register.
+    /// Registers are also set when using `treest:prompt`.
     fn set_register(&mut self, name: String, value: String) -> Result<()> {
         self.register_push(name, value);
         Ok(())
     }
 
+    /// Exported in treest.
+    /// Suspend execution for job control (by raising a SIGTSTP).
+    /// This is like hitting <C-Z> on most terminal programs.
+    /// It is a no-op under Windows.
     fn suspend(&mut self) -> Result<()> {
         #[cfg(not(windows))]
         {
@@ -329,11 +428,15 @@ impl Navigate {
         Ok(())
     }
 
+    /// Exported in treest.
+    /// Unfold the node at target (cursor if `nil`).
     fn unfold(&mut self, target: Target) -> Result<()> {
         self.set_folded(target, false);
         Ok(())
     }
 
+    /// Exported in treest.
+    /// Move the view down, that is revealing any hidden lines at the top.
     fn view_down(&mut self, by: ScrollFlags) -> Result<()> {
         self.view.borrow_mut().down(match by.amount {
             "line" => ViewJumpBy::Line,
@@ -345,6 +448,8 @@ impl Navigate {
         Ok(())
     }
 
+    /// Exported in treest.
+    /// Move the view up, that is revealing any hidden lines at the bottom.
     fn view_up(&mut self, by: ScrollFlags) -> Result<()> {
         self.view.borrow_mut().up(match by.amount {
             "line" => ViewJumpBy::Line,
