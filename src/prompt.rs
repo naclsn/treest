@@ -261,7 +261,7 @@ pub fn prompt(
 #[cfg(test)]
 macro_rules! assert_args {
     ($line:literal, $args:expr) => {
-        let (args, _) = split($line, 0);
+        let args = split($line, 0).args;
         assert_eq!(args, $args, $line);
     };
 }

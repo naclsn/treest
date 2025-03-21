@@ -1,4 +1,4 @@
-use std::fmt::{Display, Formatter, Result as FmtResult};
+use std::io::{Result as IoResult, Write};
 use std::ops::Range;
 
 use crate::navigate::Navigate;
@@ -25,19 +25,17 @@ const PRETTY: Appearance = Appearance {
     indent_last: "    ",
 };
 
-impl Display for Navigate {
-    fn fmt(&self, f: &mut Formatter) -> FmtResult {
+impl Navigate {
+    pub fn render(&mut self, f: &mut impl Write) -> IoResult<()> {
         write!(f, "\x1b[H\x1b[J")?;
 
         let cursor = self.tree.resolve_node(self.cursor());
 
-        let mut view = self.view.borrow_mut();
-
-        let visible = view.visible();
-        view.line_mapping.resize_with(visible.len(), Vec::new);
+        let visible = self.view.visible();
+        self.view.line_mapping.resize_with(visible.len(), Vec::new);
 
         let mut current = 0;
-        self.fmt_at(
+        self.render_at(
             f,
             &mut vec![&self.tree],
             cursor,
@@ -46,7 +44,7 @@ impl Display for Navigate {
             &visible,
             //&mut view.line_mapping,
         )?;
-        view.total.end = current;
+        self.view.total.end = current;
 
         if current < visible.end {
             write!(f, "{}", "\n".repeat(visible.end - current))?;
@@ -67,9 +65,9 @@ impl Display for Navigate {
 }
 
 impl Navigate {
-    fn fmt_at(
+    fn render_at(
         &self,
-        f: &mut Formatter,
+        f: &mut impl Write,
 
         at: &mut Vec<&Node>, // NodePathBuf (?maybe)
         cursor: &Node,
@@ -78,7 +76,7 @@ impl Navigate {
         current: &mut usize,
         visible: &Range<usize>,
         //line_mapping: &mut [Vec<usize>],
-    ) -> FmtResult {
+    ) -> IoResult<()> {
         let node = at.last().unwrap();
         //let frag = &node.fragment;
 
@@ -112,7 +110,7 @@ impl Navigate {
 
         if 1 == children.len() {
             at.push(children[0]);
-            let r = self.fmt_at(
+            let r = self.render_at(
                 f, at, cursor, indent, current, visible, /*line_mapping*/
             );
             at.pop();
@@ -134,7 +132,7 @@ impl Navigate {
                     write!(f, "{indent}{}", appearance.branch)?;
                 }
                 at.push(it);
-                self.fmt_at(
+                self.render_at(
                     f,
                     at,
                     cursor,
@@ -150,7 +148,7 @@ impl Navigate {
                 write!(f, "{indent}{}", appearance.branch_last)?;
             }
             at.push(iter.next().unwrap());
-            let r = self.fmt_at(
+            let r = self.render_at(
                 f,
                 at,
                 cursor,

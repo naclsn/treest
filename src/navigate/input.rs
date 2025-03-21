@@ -37,8 +37,8 @@ impl Debug for Input {
     }
 }
 
-impl Input {
-    pub fn new() -> Self {
+impl Default for Input {
+    fn default() -> Self {
         Self {
             input: Box::new(
                 match File::open("/dev/tty") {
@@ -49,13 +49,15 @@ impl Input {
                 .map_while(Result::ok),
             ),
             recycle: None,
-            pending: Vec::new(),
+            pending: Vec::default(),
             pending_mouse_info: PendingMouseInfo { row: 0, col: 0 },
-            mappings: Vec::new(),
-            pending_reachable: Vec::new(),
+            mappings: Vec::default(),
+            pending_reachable: Vec::default(),
         }
     }
+}
 
+impl Input {
     pub fn tick(&mut self) -> Option<&Function> {
         let byte = self
             .recycle

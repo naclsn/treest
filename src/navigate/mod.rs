@@ -1,4 +1,3 @@
-use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::ops::Range;
 use std::path::PathBuf;
@@ -38,7 +37,7 @@ pub struct Navigate {
     exit: Option<String>,
 
     message: Option<String>,
-    view: RefCell<View>, // is mutated during rendering to stay up to date TODO: don't use Display
+    view: View,
 
     options: Options,
     registers: BTreeMap<String, Vec<String>>,
@@ -49,15 +48,18 @@ pub enum Target {
     Cursor,
     Path(Vec<usize>),
     TrustedPath(Vec<usize>),
-    //RelativePath(Vec<usize>),
 }
 
 impl FromLua for Target {
     fn from_lua(value: Value, lua: &Lua) -> LuaResult<Self> {
         match value {
             Value::Nil => Ok(Target::Cursor),
-            // TODO: RelativePath, maybe with negative number as first item
-            _ => Ok(Target::Path(Vec::from_lua(value, lua)?)),
+            _ => Ok(Target::Path({
+                let mut r = Vec::from_lua(value, lua)?;
+                // rem: lua's are 1-based
+                r.iter_mut().for_each(|k| *k -= 1);
+                r
+            })),
         }
     }
 }
@@ -149,15 +151,15 @@ impl Navigate {
             provider,
             provider_name,
 
-            input: Input::new(),
+            input: Input::default(),
             term: terminal::raw_with_panic_hook().ok(),
             exit: None,
 
             message: None,
-            view: RefCell::default(),
+            view: View::default(),
 
             options: Options::default(),
-            registers: BTreeMap::new(),
+            registers: BTreeMap::default(),
         }
     }
 

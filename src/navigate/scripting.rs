@@ -1,13 +1,13 @@
 use std::io::{self, Read};
 use std::result::Result as StdResult;
 
-use mlua::{BString, Either, Function, Lua, Result, Table, Value};
+use mlua::{BString, Either, Error, Function, Lua, Result, Table, Value};
 use mlua::{UserData, UserDataFields, UserDataMethods};
 
 use crate::lua::help;
 use crate::navigate::{Navigate, Target, ViewJumpBy};
 use crate::prompt::{self, PromptSplitInfo};
-use crate::terminal;
+use crate::terminal::{self, KeyTransError};
 use crate::tree::NodePath;
 
 macro_rules! make_exports {
@@ -126,9 +126,7 @@ impl Navigate {
     }
 
     fn _tick(&mut self) -> Result<Option<Function>> {
-        // TODO: don't use Display, it will also remove the view: RefCell
-        let buf = self.to_string();
-        eprint!("{buf}");
+        self.render(&mut io::stderr()).map_err(Error::external)?; // xxx: should it just explodes?
 
         if let Some(ref mut s) = self.message {
             // TODO(maybe): --MORE-- prompt or something
@@ -206,7 +204,7 @@ impl Navigate {
     /// Add a mapping from a key sequence to a callback action.
     /// See also `treest:unmap`.
     fn map(&mut self, seq: String, cb: Function) -> Result<()> {
-        let seq = terminal::keytrans(seq.as_str()).expect("need valid seq something blbl TODO");
+        let seq = terminal::keytrans(&seq).map_err(|err| transpose_keytranserror(&seq, err))?;
         self.input.add_mapping(seq, cb);
         Ok(())
     }
@@ -215,7 +213,7 @@ impl Navigate {
     /// Retrieve a mapping from a key sequence, returning its action callback.
     /// Result will be `nil` if `seq` wasn't mapped (see `treest:map`).
     fn mapped(&self, seq: String) -> Result<Option<Function>> {
-        let seq = terminal::keytrans(seq.as_str()).expect("need valid seq something blbl TODO");
+        let seq = terminal::keytrans(&seq).map_err(|err| transpose_keytranserror(&seq, err))?;
         Ok(self.input.get_mapping(seq).cloned())
     }
 
@@ -263,7 +261,7 @@ impl Navigate {
     /// Remove a mapping from a key sequence, returning its previously associated action callback.
     /// Result will be `nil` if `seq` wasn't mapped (see `treest:mapped`).
     fn unmap(&mut self, seq: String) -> Result<Option<Function>> {
-        let seq = terminal::keytrans(seq.as_str()).expect("need valid seq something blbl TODO");
+        let seq = terminal::keytrans(&seq).map_err(|err| transpose_keytranserror(&seq, err))?;
         Ok(self.input.pop_mapping(seq))
     }
 
@@ -438,7 +436,7 @@ impl Navigate {
     /// Exported in treest.
     /// Move the view down, revealing any hidden lines at the bottom.
     fn view_down(&mut self, by: ScrollFlags) -> Result<()> {
-        self.view.borrow_mut().down(match by.amount {
+        self.view.down(match by.amount {
             "line" => ViewJumpBy::Line,
             "win" => ViewJumpBy::Win,
             "halfwin" => ViewJumpBy::HalfWin,
@@ -451,7 +449,7 @@ impl Navigate {
     /// Exported in treest.
     /// Move the view up, revealing any hidden lines at the top.
     fn view_up(&mut self, by: ScrollFlags) -> Result<()> {
-        self.view.borrow_mut().up(match by.amount {
+        self.view.up(match by.amount {
             "line" => ViewJumpBy::Line,
             "win" => ViewJumpBy::Win,
             "halfwin" => ViewJumpBy::HalfWin,
@@ -487,8 +485,8 @@ fn help(subj: String) -> Result<Option<String>> {
 
 /// Exported in string.
 /// Translate a byte string back to a key sequence: `somestr:keyseqstr():keytrans() == somestr`.
-fn keyseqstr(seq: BString) -> Result<String> {
-    Ok(terminal::keyseqstr(&seq))
+fn keyseqstr(bytes: BString) -> Result<String> {
+    Ok(terminal::keyseqstr(&bytes))
 }
 
 /// Exported in string.
@@ -503,8 +501,10 @@ fn keyseqstr(seq: BString) -> Result<String> {
 /// <LeftMouse> <RightMouse> <ForwardWheel> <BackwardWheel> <UpMouse>
 /// <C-..> <M-..> <A-..>
 /// ```
-fn keytrans(text: String) -> Result<Option<BString>> {
-    Ok(terminal::keytrans(&text).map(BString::from))
+fn keytrans(seq: String) -> Result<BString> {
+    terminal::keytrans(&seq)
+        .map_err(|err| transpose_keytranserror(&seq, err))
+        .map(BString::from)
 }
 
 /// Exported globally.
@@ -536,6 +536,23 @@ fn prompt(ps: String, history: Vec<String>, completion: Function) -> Result<Opti
 /// Split a line of input in a shell-like manner.
 fn prompt_split(line: String, point: Option<usize>) -> Result<PromptSplitInfo> {
     Ok(prompt::split(&line, point.unwrap_or_default()))
+}
+
+fn transpose_keytranserror(seq: &str, err: KeyTransError) -> Error {
+    match err {
+        KeyTransError::UnfinishedForm(start) => Error::SyntaxError {
+            message: format!(
+                "unfinished key starting at character {start}: {:?}",
+                // xxx: yea this will break some utf8 chars...
+                &seq[std::cmp::max(4, start) - 4..std::cmp::min(seq.len() - 1, start + 4)],
+            ),
+            incomplete_input: true,
+        },
+        KeyTransError::UnknownForm(slice) => Error::SyntaxError {
+            message: format!("unknown key {slice:?} in: {seq:?}"),
+            incomplete_input: false,
+        },
+    }
 }
 
 fn slice_search<T>(

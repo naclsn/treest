@@ -167,8 +167,14 @@ pub fn altscreen_off() {
     eprint!("\x1b[?1049l");
 }
 
-fn keytrans1(slice: &[u8], r: &mut Vec<u8>) -> Option<()> {
-    match slice {
+#[derive(Debug, PartialEq)]
+pub enum KeyTransError {
+    UnfinishedForm(usize),
+    UnknownForm(String),
+}
+
+fn keytrans1(slice: &[u8], r: &mut Vec<u8>) -> Result<(), KeyTransError> {
+    match &slice.to_ascii_uppercase()[..] {
         b"NUL" => r.push(0),
         b"BS" => r.push(0x7f),
         b"TAB" => r.push(b'\t'),
@@ -195,10 +201,14 @@ fn keytrans1(slice: &[u8], r: &mut Vec<u8>) -> Option<()> {
         b"PAGEDOWN" => r.extend(b"\x1b[6~"),
 
         [b'C', b'-', k @ b'@'..=b'_'] => r.push(*k ^ 0b1000000),
-        [b'M' | b'A', b'-', b'M' | b'A', b'-', ..] => return None,
-        [b'M' | b'A', b'-', rest @ ..] => {
+        [b'M' | b'A', b'-', b'M' | b'A', b'-', ..] => {
+            return Err(KeyTransError::UnknownForm(unsafe {
+                String::from_utf8_unchecked(slice.to_vec())
+            }));
+        }
+        [b'M' | b'A', b'-', ..] => {
             r.push(0x1b);
-            keytrans1(rest, r)?;
+            keytrans1(&slice[2..], r)?;
         }
 
         b"LEFTMOUSE" => r.extend([0x1b, b'[', b'M', 32, b' ', b' ']),
@@ -207,12 +217,16 @@ fn keytrans1(slice: &[u8], r: &mut Vec<u8>) -> Option<()> {
         b"SCROLLWHEELDOWN" | b"BACKWARDWHEEL" => r.extend([0x1b, b'[', b'M', 97, b' ', b' ']),
         b"UPMOUSE" => r.extend([0x1b, b'[', b'M', 35, b' ', b' ']),
 
-        _ => return None,
+        _ => {
+            return Err(KeyTransError::UnknownForm(unsafe {
+                String::from_utf8_unchecked(slice.to_vec())
+            }));
+        }
     }
-    Some(())
+    Ok(())
 }
 
-pub fn keytrans(text: &str) -> Option<Vec<u8>> {
+pub fn keytrans(text: &str) -> Result<Vec<u8>, KeyTransError> {
     let mut r = vec![];
 
     let mut iter = text.char_indices();
@@ -220,13 +234,12 @@ pub fn keytrans(text: &str) -> Option<Vec<u8>> {
     loop {
         match iter.find(|(_, chr)| '<' == *chr) {
             Some((start, _)) => {
-                let (end, _) = iter.find(|(_, chr)| '>' == *chr)?;
+                let (end, _) = iter
+                    .find(|(_, chr)| '>' == *chr)
+                    .ok_or(KeyTransError::UnfinishedForm(start))?;
                 r.extend(text[at..start].as_bytes());
                 at = end + 1;
-                keytrans1(
-                    &text[start + 1..end].as_bytes().to_ascii_uppercase()[..],
-                    &mut r,
-                )?;
+                keytrans1(text[start + 1..end].as_bytes(), &mut r)?;
             }
             None => {
                 r.extend(text[at..text.len()].as_bytes());
@@ -235,7 +248,7 @@ pub fn keytrans(text: &str) -> Option<Vec<u8>> {
         }
     }
 
-    Some(r)
+    Ok(r)
 }
 
 macro_rules! extend_match_start {
@@ -361,9 +374,9 @@ pub fn keyseqstr(seq: &[u8]) -> String {
 
 #[cfg(test)]
 macro_rules! assert_trans {
-    ($text:literal => None) => {
+    ($text:literal !> $err:expr) => {
         let trans = keytrans($text);
-        assert_eq!(trans, None, $text);
+        assert_eq!(trans, Err($err), $text);
     };
 
     ($text:literal => $trans:expr) => {
@@ -381,12 +394,12 @@ macro_rules! assert_trans {
 #[test]
 fn test_keytrans() {
     assert_trans!("xlty" => b"xlty");
-    assert_trans!("x<lty" => None);
+    assert_trans!("x<lty" !> KeyTransError::UnfinishedForm(1));
     assert_trans!("x<lt>y" => b"x<y");
     assert_trans!("x<LT>y" => b"x<y");
     assert_trans!("<C-x><C-e>" => &[0x18, 0x05]);
     assert_trans!("<C-X><M-C-e>" => &[0x18, 0x1b, 0x05]);
-    assert_trans!("<C-x><M-A-C-e>" => None);
+    assert_trans!("<C-x><M-A-C-e>" !> KeyTransError::UnknownForm("M-A-C-e".to_string()));
 
     assert_trans!("xlty" <= b"xlty");
     assert_trans!("x<lt>y" <= b"x<y");
