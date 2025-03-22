@@ -2,12 +2,13 @@ local m = {}
 
 m.commands = {
     cquit= function(arg) treest:quit(arg) end,
-    echo= function(arg)
+    echo= function(arg, bang)
         local ok, err = load('return '..arg)
         if ok
           then
             _ = ok()
-            treest:message(debug.pretty(_))
+            if bang and nil == _ then return end
+            treest:message((bang and debug.pretty or tostring)(_))
             return
         end
         treest:message(err)
@@ -53,13 +54,21 @@ m.keys = {
         --- @type string
         local ans = treest:prompt(':', function() return {} end)
         if not ans then return end
-        local com, arg = ans:match('(%w+)%s*(.*)')
+        local com, bang, arg = ans:match('(%w+)(!?)%s*(.*)')
         if not com then return end
         local fn = m.commands[com]
         if fn
-            then fn(arg)
+            then fn(arg, '!' == bang)
             else treest:message("unknown command: "..com)
         end
+    end,
+    ['!']= function()
+        local ans = treest:prompt('!', function() return {} end)
+        if not ans then return end
+        local f = assert(io.popen(ans..' 2>&1', 'r'))
+        local out = assert(f:read('*a'))
+        f:close()
+        treest:message(out)
     end,
 
     ['/']= function() search(treest:prompt('/', function() end), {'next', 'sat'}) end,

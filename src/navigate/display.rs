@@ -1,7 +1,7 @@
 use std::io::{Result as IoResult, Write};
 use std::ops::Range;
 
-use crate::navigate::Navigate;
+use crate::navigate::{Message, Navigate};
 use crate::terminal;
 use crate::tree::Node;
 
@@ -10,6 +10,13 @@ struct Appearance {
     indent: &'static str,
     branch_last: &'static str,
     indent_last: &'static str,
+    scroll_before: &'static str,
+    scroll_topmost: &'static str,
+    scroll_top: &'static str,
+    scroll_bar: &'static str,
+    scroll_bot: &'static str,
+    scroll_botmost: &'static str,
+    scroll_after: &'static str,
 }
 
 const ASCII: Appearance = Appearance {
@@ -17,15 +24,32 @@ const ASCII: Appearance = Appearance {
     indent: "|   ",
     branch_last: "`-- ",
     indent_last: "    ",
+    scroll_before: ": ",
+    scroll_topmost: "% ",
+    scroll_top: "+ ",
+    scroll_bar: "# ",
+    scroll_bot: "+ ",
+    scroll_botmost: "% ",
+    scroll_after: ": ",
 };
 const PRETTY: Appearance = Appearance {
     branch: "\u{251c}\u{2500}\u{2500} ",
     indent: "\u{2502}   ",
     branch_last: "\u{2514}\u{2500}\u{2500} ",
     indent_last: "    ",
+    scroll_before: "\u{2502} ",
+    scroll_topmost: "\u{2503} ",
+    scroll_top: "\u{257d} ",
+    scroll_bar: "\u{2503} ",
+    scroll_bot: "\u{257f} ",
+    scroll_botmost: "\u{2503} ",
+    scroll_after: "\u{2502} ",
 };
 
+pub const MESSAGE_WINDOW_HEIGHT: usize = 12;
+
 impl Navigate {
+    // TODO: (almost everywhere) check and trim at terminal width (visible) characters
     pub fn render(&mut self, f: &mut impl Write) -> IoResult<()> {
         write!(f, "\x1b[H\x1b[J")?;
 
@@ -42,7 +66,7 @@ impl Navigate {
             "".into(),
             &mut current,
             &visible,
-            //&mut view.line_mapping,
+            //&mut view.line_mapping, // TODO: re-enable mouse interactions
         )?;
         self.view.total.end = current;
 
@@ -50,15 +74,50 @@ impl Navigate {
             write!(f, "{}", "\n".repeat(visible.end - current))?;
         }
 
-        let path = self.tree.resolve(self.cursor());
-        write!(f, "{}\r\n", self.provider.breadcrumb(&path[..].into()))?;
+        if let Some(Message { lines, offset, .. }) = &self.message {
+            let len = std::cmp::min(lines.len(), MESSAGE_WINDOW_HEIGHT);
+            write!(f, "\x1b[{}A", len)?;
 
-        if let Some(message) = &self.message {
-            write!(f, "{message}    ")?;
-            message.chars().count();
+            let top = offset * MESSAGE_WINDOW_HEIGHT / lines.len();
+            let bot = std::cmp::min(
+                top + MESSAGE_WINDOW_HEIGHT * MESSAGE_WINDOW_HEIGHT / lines.len(),
+                len - 1,
+            );
+            let appearance = match self.options.appearance.as_str() {
+                "pretty" => PRETTY,
+                _ => ASCII,
+            };
+
+            for (k, line) in lines[*offset..*offset + len].iter().enumerate() {
+                let sb = if k < top {
+                    appearance.scroll_before
+                } else if top == k && 0 == top {
+                    appearance.scroll_topmost
+                } else if bot == k && MESSAGE_WINDOW_HEIGHT - 1 == bot {
+                    appearance.scroll_botmost
+                } else if top == k {
+                    appearance.scroll_top
+                } else if k < bot {
+                    appearance.scroll_bar
+                } else if bot == k {
+                    appearance.scroll_bot
+                } else {
+                    appearance.scroll_after
+                };
+
+                write!(f, "{sb}{line}\r\n")?;
+            }
+
+            if MESSAGE_WINDOW_HEIGHT < lines.len() {
+                write!(f, "-- More ({} lines) --\r\n", lines.len())?;
+            } else {
+                write!(f, "-- (End) --\r\n")?;
+            }
+        } else {
+            let path = self.tree.resolve(self.cursor());
+            write!(f, "{}\r\n", self.provider.breadcrumb(&path[..].into()))?;
+            write!(f, "{}", terminal::keyseqstr(self.input.get_pending()))?;
         }
-
-        write!(f, "{}", terminal::keyseqstr(self.input.get_pending()))?;
 
         Ok(())
     }

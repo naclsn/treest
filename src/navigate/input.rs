@@ -4,6 +4,8 @@ use std::io::{self, Read};
 
 use mlua::{Function, Lua};
 
+use crate::navigate::display;
+use crate::navigate::Message;
 use crate::terminal;
 
 pub struct Input {
@@ -50,7 +52,7 @@ impl Default for Input {
             ),
             recycle: None,
             pending: Vec::default(),
-            pending_mouse_info: PendingMouseInfo { row: 0, col: 0 },
+            pending_mouse_info: PendingMouseInfo { col: 0, row: 0 },
             mappings: Vec::default(),
             pending_reachable: Vec::default(),
         }
@@ -65,7 +67,7 @@ impl Input {
             .or_else(|| self.input.next())
             .expect("niy: eof stopping condition");
         // TODO: expose this so it can be called/mapped?
-        if 3 == byte {
+        if 0x03 == byte {
             self.pending.clear();
         }
 
@@ -129,6 +131,44 @@ impl Input {
 
             _ => None,
         }
+    }
+
+    pub fn tick_message(&mut self, message: &mut Message) -> bool {
+        let Some(byte) = self.input.next() else {
+            return false;
+        };
+
+        let l = message.lines.len();
+        const H: usize = display::MESSAGE_WINDOW_HEIGHT;
+        if l < H {
+            if b"\x02\x04\x05\x06\n\r\x15\x19 +-Gbdefgjkuy".contains(&byte) {
+                return false;
+            }
+            self.recycle = Some(byte);
+            return true;
+        }
+
+        let o = message.offset;
+        let m = l - H;
+
+        message.offset = match byte {
+            b'j' | b'e' | 0x05 | b'+' | b' ' | b'\n' | b'\r' => std::cmp::min(o + 1, m),
+            b'k' | b'y' | 0x19 | b'-' => o.saturating_sub(1),
+            b'd' | 0x04 => std::cmp::min(o + H / 2, m),
+            b'u' | 0x15 => o.saturating_sub(H / 2),
+            b'f' | 0x06 => std::cmp::min(o + H - 1, m),
+            b'b' | 0x02 => o.saturating_sub(H - 1),
+            b'g' => 0,
+            b'G' => m,
+            _ => {
+                self.recycle = None;
+                self.pending.clear();
+                self.recycle = Some(byte);
+                return true;
+            }
+        };
+
+        false
     }
 
     pub fn get_pending(&self) -> &[u8] {

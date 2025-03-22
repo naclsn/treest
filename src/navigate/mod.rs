@@ -24,6 +24,13 @@ pub struct MainLoopExitText(String);
 
 type CursorLikePath = Vec<usize>;
 
+pub struct Message {
+    lines: Vec<String>,
+    offset: usize, // display offset
+    interacted: bool, // true when the user is presumably done interacting/viewing
+                   // which means that it will get cleared before the next action
+}
+
 pub struct Navigate {
     tree: Node,
     cursor: (usize, CursorLikePath),
@@ -36,7 +43,7 @@ pub struct Navigate {
     term: Option<RestoreWithPanicHook>,
     exit: Option<String>,
 
-    message: Option<String>,
+    message: Option<Message>,
     view: View,
 
     options: Options,
@@ -77,6 +84,8 @@ impl LuaTypeAliasDoc for Target {
 struct View {
     scroll: usize,
     total: Range<usize>,
+    term_col: usize,
+    term_row: usize,
     line_mapping: Vec<CursorLikePath>,
 }
 enum ViewJumpBy {
@@ -91,15 +100,23 @@ impl Default for View {
         Self {
             scroll: 0,
             total: 0..0,
+            term_col: 80,
+            term_row: 24,
             line_mapping: Vec::new(),
         }
     }
 }
 
 impl View {
-    fn visible(&self) -> Range<usize> {
-        let row = terminal::size().unwrap_or((24, 80)).0 as usize;
-        self.scroll..self.scroll + row - 2
+    ///
+    /// `view.visible` is called every frame, so we take the opportunity to
+    /// fetch and cache the terminal size again.
+    fn visible(&mut self) -> Range<usize> {
+        if let Ok(term_size) = terminal::size() {
+            self.term_col = term_size.col as usize;
+            self.term_row = term_size.row as usize;
+        }
+        self.scroll..self.scroll + self.term_row - 2
     }
 
     fn jump_by(&self, by: ViewJumpBy) -> usize {
@@ -109,10 +126,9 @@ impl View {
             Mouse => return 3,
             _ => (),
         }
-        let row = terminal::size().unwrap_or((24, 80)).0 as usize;
         match by {
-            HalfWin => row / 2,
-            Win => row - 1,
+            HalfWin => self.term_row / 2,
+            Win => self.term_row - 1,
             _ => unreachable!(),
         }
     }
@@ -348,6 +364,16 @@ return treest:_atexit()
             _ => (),
         }
         self.cursor.1.truncate(self.cursor.0);
+    }
+
+    pub fn set_message_lines(&mut self, lines: Vec<String>) {
+        if !lines.is_empty() {
+            self.message = Some(Message {
+                lines,
+                offset: 0,
+                interacted: false,
+            });
+        }
     }
 
     /// Push a new value, that is nothing happens if the old value was equal.

@@ -128,16 +128,31 @@ impl Navigate {
     fn _tick(&mut self) -> Result<Option<Function>> {
         self.render(&mut io::stderr()).map_err(Error::external)?; // xxx: should it just explodes?
 
-        if let Some(ref mut s) = self.message {
-            // TODO(maybe): --MORE-- prompt or something
-            if let Some(n) = s.find('\n') {
-                s.truncate(n);
+        // behavior of the message is:
+        //     there is a message
+        //     interract with the message
+        //     -> quit this interraction sets `interacted`
+        //     get until 1 more action from self.input (ie that isn't None)
+        //     -> clear message just before plaing action
+        // in that way if the action re-opens a prompt, the message window is still on screen
+
+        let mut clear_message = false;
+        if let Some(ref mut message) = self.message {
+            if !message.interacted {
+                message.interacted = self.input.tick_message(message);
+                return Ok(None);
+            } else {
+                clear_message = true;
             }
         }
 
         // rem: cannot call here beacause `self` is borrowed mut
         // (would cause a BadArgument: UserDataBorrowMutError)
-        Ok(self.input.tick().cloned())
+        let action = self.input.tick().cloned();
+        if action.is_some() && clear_message {
+            self.message = None
+        }
+        Ok(action)
     }
 
     /// Exported in treest.
@@ -276,13 +291,12 @@ impl Navigate {
     /// Set the message text. If it spans on multiple lines,
     /// it will trigger the -- More -- prompt.
     fn message(&mut self, text: Option<Either<String, Vec<String>>>) -> Result<()> {
-        self.message = text.map(|w| {
-            match w {
-                Either::Left(s) => s.split("\n").map(String::from).collect(),
+        if let Some(text) = text {
+            self.set_message_lines(match text {
+                Either::Left(s) => s.lines().map(String::from).collect(),
                 Either::Right(l) => l,
-            }
-            .join("\r\n") // TODO: temp hack until -- More --
-        });
+            });
+        }
         Ok(())
     }
 
@@ -507,7 +521,7 @@ fn keytrans(seq: String) -> Result<BString> {
         .map(BString::from)
 }
 
-/// Exported globally.
+/// Exported in debug.
 /// Pretty-print a value to string.
 fn pretty(obj: Value) -> Result<String> {
     Ok(format!("{obj:#?}"))

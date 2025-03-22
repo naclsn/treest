@@ -5,8 +5,14 @@ use std::sync::Mutex;
 
 pub use self::plat::*;
 
+pub struct TermSize {
+    pub col: u16,
+    pub row: u16,
+}
+
 #[cfg(unix)]
 mod plat {
+    use super::TermSize;
     use libc::{self, termios as Termios, winsize as Winsize};
     use std::io::Error as IoError;
 
@@ -34,7 +40,7 @@ mod plat {
         }
     }
 
-    pub fn size() -> Result<(u16, u16), IoError> {
+    pub fn size() -> Result<TermSize, IoError> {
         unsafe {
             let mut winsz: Winsize = std::mem::MaybeUninit::zeroed().assume_init();
             if libc::ioctl(
@@ -45,7 +51,10 @@ mod plat {
             {
                 Err(IoError::last_os_error())
             } else {
-                Ok((winsz.ws_row, winsz.ws_col))
+                Ok(TermSize {
+                    col: winsz.ws_col,
+                    row: winsz.ws_row,
+                })
             }
         }
     }
@@ -53,6 +62,7 @@ mod plat {
 
 #[cfg(windows)]
 mod plat {
+    use super::TermSize;
     use std::io::Error as IoError;
     use std::ptr;
     use winapi::{
@@ -103,17 +113,17 @@ mod plat {
         }
     }
 
-    pub fn size() -> Result<(u16, u16), IoError> {
+    pub fn size() -> Result<TermSize, IoError> {
         unsafe {
             let handle = handle()?;
             let mut info: ConsoleScreenInfo = std::mem::MaybeUninit::zeroed().assume_init();
             if 0 == wincon::GetConsoleScreenBufferInfo(handle, &mut info) {
                 Err(IoError::last_os_error())
             } else {
-                Ok((
-                    (info.srWindow.Bottom - info.srWindow.Top + 1) as u16,
-                    (info.srWindow.Right - info.srWindow.Left + 1) as u16,
-                ))
+                Ok(TermSize {
+                    col: (info.srWindow.Right - info.srWindow.Left + 1) as u16,
+                    row: (info.srWindow.Bottom - info.srWindow.Top + 1) as u16,
+                })
             }
         }
     }
