@@ -1,12 +1,7 @@
 use std::io::Write;
 use std::mem;
 
-use mlua::Lua;
-
-crate::struct_lua_conversion!(PromptSplitInfo {
-    args: Vec<String>,
-    in_arg: usize,
-});
+use crate::lua::structs::PromptSplitInfo;
 
 pub fn split(line: &str, point: usize) -> PromptSplitInfo {
     let mut args = Vec::new();

@@ -12,7 +12,6 @@ use crate::providers::{Fragment, Provider};
 use crate::tree::NodePath;
 
 pub struct Fs {
-    //nodes: Vec<Node>,
     fs_nodes: Vec<FsNode>,
 }
 
@@ -39,7 +38,7 @@ use FsNodeKind::*;
 pub struct FsNode {
     kind: FsNodeKind,
     name: String,
-    meta: Option<Box<Metadata>>,
+    meta: Option<Metadata>,
 }
 
 impl PartialEq for FsNode {
@@ -163,7 +162,7 @@ impl Display for FsNode {
             "{}{}",
             LS_COLORS
                 .get_or_init(|| LsColors::from_env().unwrap_or_default())
-                .style_for_path_with_metadata(&self.name, self.meta.as_ref().map(Box::as_ref))
+                .style_for_path_with_metadata(&self.name, self.meta.as_ref())
                 .map(Style::to_ansi_term_style)
                 .unwrap_or_default()
                 .paint(&self.name),
@@ -186,18 +185,17 @@ impl Display for FsNode {
 }
 
 impl Provider for Fs {
-    //fn tree(&self) -> &Tree { &self.nodes }
-    //fn tree_mut(&mut self) -> &mut Vec<Node> { &mut self.nodes }
-
     fn provide(&mut self, path: &NodePath) -> Vec<Fragment> {
-        let mut pb = path
+        let mut pb: PathBuf = path
             .head
             .iter()
             .map(|n| &self.fs_nodes[n.fragment.0].name)
-            .collect::<PathBuf>();
+            .collect();
         pb.push(&self.fs_nodes[path.tail.fragment.0].name);
 
-        let Ok(dir) = fs::read_dir(pb) else { return Vec::new() };
+        let Ok(dir) = fs::read_dir(pb) else {
+            return Vec::new();
+        };
 
         dir.filter_map(|d| {
             let entry = d.ok()?;
@@ -207,7 +205,7 @@ impl Provider for Fs {
             self.fs_nodes.push(FsNode {
                 kind: (entry.path(), &meta).into(),
                 name,
-                meta: meta.map(Box::new),
+                meta,
             });
 
             Some(Fragment(self.fs_nodes.len() - 1))
@@ -231,7 +229,15 @@ impl Provider for Fs {
         node.to_string()
     }
 
-    fn breadcrumb(&self, path: &NodePath) -> String {
+    fn components(&self, path: &NodePath) -> Vec<String> {
+        path.head
+            .iter()
+            .chain(std::iter::once(&path.tail))
+            .map(|n| self.fs_nodes[n.fragment.0].name.clone())
+            .collect()
+    }
+
+    fn breadcrumbs(&self, path: &NodePath) -> String {
         let node = &self.fs_nodes[path.tail.fragment.0];
         let mut r = write_meta(node);
 
@@ -282,11 +288,10 @@ impl Fs {
             Err(FsProviderError::NotADirectory.into())
         } else {
             Ok(Self {
-                //nodes: vec![Node::default()],
                 fs_nodes: vec![FsNode {
                     kind: Directory,
                     name: root.to_string_lossy().into(),
-                    meta: root.metadata().ok().map(Box::new), //meta: fs::metadata(root).ok().map(Box::new),
+                    meta: root.metadata().ok(),
                 }],
             })
         }

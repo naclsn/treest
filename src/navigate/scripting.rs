@@ -5,8 +5,9 @@ use mlua::{BString, Either, Error, Function, Lua, Result, Table, Value};
 use mlua::{UserData, UserDataFields, UserDataMethods};
 
 use crate::lua::help;
-use crate::navigate::{Navigate, Target, ViewJumpBy, IndexPath};
-use crate::prompt::{self, PromptSplitInfo};
+use crate::lua::structs::{MoveFlags, NodeInfo, PromptSplitInfo, ScrollFlags, SearchFlags, Target};
+use crate::navigate::{Navigate, ViewJumpBy};
+use crate::prompt;
 use crate::terminal::{self, KeyTransError};
 use crate::tree::NodePath;
 
@@ -102,22 +103,6 @@ pub fn global_exports(g: &Table, lua: &Lua) -> Result<()> {
     }
     Ok(())
 }
-
-crate::flags_lua_conversion!(MoveFlags {
-    wrapping: "wrap" | "sat",
-});
-crate::flags_lua_conversion!(SearchFlags {
-    wrapping: "wrap" | "sat",
-    direction: "next" | "prev",
-});
-crate::flags_lua_conversion!(ScrollFlags {
-    amount: "line" | "win" | "halfwin" | "mouse",
-});
-crate::struct_lua_conversion!(NodeInfo {
-    text: String,
-    child_count: Option<usize>,
-    path: IndexPath,
-});
 
 impl Navigate {
     fn _atexit(&mut self) -> Result<String> {
@@ -262,31 +247,18 @@ impl Navigate {
 
     /// Exported in treest.
     /// Retrieve node information at target (cursor if `nil`) or `nil` if the path is not valid.
-    /// TODO: proper return like NodeInfo or something.
     fn node(&self, target: Target) -> Result<Option<NodeInfo>> {
-        Ok(self.resolve_node(&target).map(|node| {
-            NodeInfo {
-                text: "node".to_string(), // TODO: ofc
-                child_count: if node.is_loaded() {
-                    Some(node.child_count())
-                } else {
-                    None
-                },
-                path: self.target_to_path(target),
-            }
-        }))
+        Ok(self.retrieve_node_info(target))
     }
 
     /// Exported in treest.
-    /// TODO: proper return
+    /// Retrieve node information at a given display line (or 'row'), or `nil` if there is none.
     fn node_at_line(&self, line: usize) -> Result<Option<NodeInfo>> {
-        Ok(self.view.line_mapping.get(line).cloned().map(|path| {
-            NodeInfo {
-                text: "node".to_string(), // TODO: ofc
-                child_count: None, // TODO: ofc
-                path,
-            }
-        }))
+        Ok(self
+            .view
+            .line_mapping
+            .get(line)
+            .and_then(|path| self.retrieve_node_info(Target::TrustedPath(path.clone()))))
     }
 
     /// Exported in treest.

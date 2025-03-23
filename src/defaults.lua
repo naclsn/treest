@@ -93,8 +93,11 @@ m.keys = {
     ['H']= function() treest:fold() end,
 
     ['<Space>']= function()
-        treest:mark(not treest:marked())
-        treest:next()
+        if treest:marked()
+            then treest:unmark()
+            else treest:mark()
+        end
+        treest:next({'sat'})
     end,
 
     ['<LeftMouse>']= function()

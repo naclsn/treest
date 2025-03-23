@@ -2,8 +2,9 @@ use std::fmt::Debug;
 use std::fs::File;
 use std::io::{self, Read};
 
-use mlua::{Function, Lua};
+use mlua::Function;
 
+use crate::lua::structs::PendingMouseInfo;
 use crate::navigate::display;
 use crate::navigate::Message;
 use crate::terminal;
@@ -16,8 +17,6 @@ pub struct Input {
     mappings: Vec<Mapping>,
     pending_reachable: Vec<usize>,
 }
-
-crate::struct_lua_conversion!(PendingMouseInfo { col: u8, row: u8 });
 
 struct Mapping(Vec<u8>, Function);
 

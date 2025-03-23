@@ -77,7 +77,7 @@ impl Node {
             .map(|(nodes, sel)| &mut nodes[sel[nth]])
     }
 
-    /// res will be 1 shorter than `path` (poles and power lines)
+    /// The returned list will be 1 longer than `path` (think poles and power lines).
     pub fn resolve(&self, path: &[usize]) -> Vec<&Node> {
         path.iter().fold(vec![self], |mut acc, cur| {
             acc.push(acc.last().unwrap().child(*cur).unwrap());

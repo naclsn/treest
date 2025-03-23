@@ -1,9 +1,11 @@
 #[macro_export]
 macro_rules! struct_lua_conversion {
-    ($ty:ident { $($vis:vis $field:ident: $fty:ty),*$(,)? }) => {
+    ($($vis:vis struct $ty:ident {
+        $($fvis:vis $field:ident: $fty:ty),*$(,)?
+    })*) => {$(
         #[derive(Clone, Default, Debug)]
-        pub struct $ty {
-            $($vis $field: $fty),*
+        $vis struct $ty {
+            $($fvis $field: $fty),*
         }
 
         impl ::mlua::IntoLua for $ty {
@@ -57,15 +59,17 @@ macro_rules! struct_lua_conversion {
                 )
             }
         }
-    };
+    )*};
 }
 
 #[macro_export]
 macro_rules! flags_lua_conversion {
-    ($ty:ident { $($vis:vis $flag:ident: $($val:literal)|+),*$(,)? }) => {
+    ($($vis:vis struct $ty:ident {
+        $($fvis:vis $flag:ident: $($val:literal)|+),*$(,)?
+    })*) => {$(
         #[derive(Clone, Default, Debug)]
-        pub struct $ty {
-            $($vis $flag: &'static str),*
+        $vis struct $ty {
+            $($fvis $flag: &'static str),*
         }
 
         impl ::mlua::IntoLua for $ty {
@@ -145,5 +149,5 @@ macro_rules! flags_lua_conversion {
                 )
             }
         }
-    };
+    )*};
 }

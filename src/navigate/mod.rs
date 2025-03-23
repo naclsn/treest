@@ -1,9 +1,9 @@
 use std::collections::BTreeMap;
-use std::ops::{Deref, DerefMut, Range};
+use std::ops::Range;
 use std::path::PathBuf;
 
 use anyhow::Result;
-use mlua::{FromLua, Function, IntoLua, Lua, Result as LuaResult, Table, Value};
+use mlua::{Function, Lua, LuaOptions, StdLib, Table};
 use thiserror::Error;
 
 pub mod display;
@@ -11,7 +11,7 @@ pub mod input;
 pub mod options;
 pub mod scripting;
 
-use crate::lua::typedoc::{LuaTypeAliasDoc, LuaTypeDoc};
+use crate::lua::structs::{IndexPath, NodeInfo, Target};
 use crate::navigate::input::Input;
 use crate::navigate::options::Options;
 use crate::providers::Provider;
@@ -21,49 +21,6 @@ use crate::tree::Node;
 #[derive(Error, Debug)]
 #[error("{0}")]
 pub struct MainLoopExitText(String);
-
-#[derive(Clone, Debug, Default)]
-pub struct IndexPath(Vec<usize>);
-impl From<Vec<usize>> for IndexPath {
-    fn from(value: Vec<usize>) -> Self {
-        Self(value)
-    }
-}
-impl From<&[usize]> for IndexPath {
-    fn from(value: &[usize]) -> Self {
-        Self(value.to_vec())
-    }
-}
-impl Deref for IndexPath {
-    type Target = Vec<usize>;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-impl DerefMut for IndexPath {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.0
-    }
-}
-impl FromLua for IndexPath {
-    fn from_lua(value: Value, lua: &Lua) -> LuaResult<Self> {
-        let mut v = Vec::from_lua(value, lua)?;
-        v.iter_mut().for_each(|k| *k -= 1);
-        Ok(Self(v))
-    }
-}
-impl IntoLua for IndexPath {
-    fn into_lua(mut self, lua: &Lua) -> LuaResult<Value> {
-        self.0.iter_mut().for_each(|k| *k += 1);
-        self.0.into_lua(lua)
-    }
-}
-impl LuaTypeDoc for IndexPath {
-    fn lua_type_doc() -> String {
-        "integer[]".to_string()
-    }
-}
 
 pub struct Message {
     lines: Vec<String>,
@@ -89,33 +46,6 @@ pub struct Navigate {
 
     options: Options,
     registers: BTreeMap<String, Vec<String>>,
-}
-
-#[derive(Debug, Clone)]
-pub enum Target {
-    Cursor,
-    Path(IndexPath),
-    #[allow(dead_code)] // m keepin it for now
-    TrustedPath(IndexPath),
-}
-
-impl FromLua for Target {
-    fn from_lua(value: Value, lua: &Lua) -> LuaResult<Self> {
-        match value {
-            Value::Nil => Ok(Target::Cursor),
-            _ => Ok(Target::Path(IndexPath::from_lua(value, lua)?)),
-        }
-    }
-}
-impl LuaTypeDoc for Target {
-    fn lua_type_doc() -> String {
-        "Target".to_string()
-    }
-}
-impl LuaTypeAliasDoc for Target {
-    fn lua_type_doc_alias_to() -> String {
-        "integer[]?".to_string()
-    }
 }
 
 struct View {
@@ -219,7 +149,9 @@ impl Navigate {
     pub fn main_loop(self) -> Result<(), MainLoopExitText> {
         let user_script = self.user_script.clone();
 
-        let lua = unsafe { Lua::unsafe_new() };
+        let lua = unsafe {
+            Lua::unsafe_new_with(StdLib::ALL, LuaOptions::default().catch_rust_panics(false))
+        };
         let g = lua.globals();
         g.raw_set("treest", self).unwrap();
         scripting::global_exports(&g, &lua).unwrap();
@@ -303,7 +235,7 @@ return treest:_atexit()
     pub fn target_to_path(&self, at: Target) -> IndexPath {
         match at {
             Target::Cursor => self.cursor.1[..self.cursor.0].into(),
-            Target::Path(path) => path,
+            Target::Path(path) => path, // XXX: untrusted path escalate to index path...
             Target::TrustedPath(path) => path,
         }
     }
@@ -322,6 +254,20 @@ return treest:_atexit()
             Target::Path(path) => self.tree.try_resolve_node_mut(path),
             Target::TrustedPath(path) => Some(self.tree.resolve_node_mut(path)),
         }
+    }
+
+    pub fn retrieve_node_info(&self, at: Target) -> Option<NodeInfo> {
+        self.resolve_node(&at).map(|node| {
+            let path = self.target_to_path(at);
+            let node_path = self.tree.resolve(&path);
+            NodeInfo {
+                name: self.provider.display(&node_path[..].into()),
+                components: self.provider.components(&node_path[..].into()),
+                breadcrumbs: self.provider.breadcrumbs(&node_path[..].into()),
+                child_count: node.is_loaded().then(|| node.child_count()),
+                path,
+            }
+        })
     }
 
     /// Return the target node's child count if valid.

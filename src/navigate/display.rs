@@ -116,7 +116,7 @@ impl Navigate {
             }
         } else {
             let path = self.tree.resolve(self.cursor());
-            write!(f, "{}\r\n", self.provider.breadcrumb(&path[..].into()))?;
+            write!(f, "{}\r\n", self.provider.breadcrumbs(&path[..].into()))?;
             write!(f, "{}", terminal::keyseqstr(self.input.get_pending()))?;
         }
 

@@ -1,14 +1,9 @@
-//#![allow(dead_code)]
-
 use std::io::{Result as IoResult, Write};
 
 use mlua::{BString, Either, Function, Value};
 
+use crate::lua::structs::*;
 use crate::lua::typedoc::{LuaTypeAliasDoc, LuaTypeDoc};
-use crate::navigate::input::PendingMouseInfo;
-use crate::navigate::scripting::{NodeInfo, MoveFlags, ScrollFlags, SearchFlags};
-use crate::navigate::Target;
-use crate::prompt::PromptSplitInfo;
 
 type ExportParamNameAndType = (&'static str, fn() -> String);
 pub struct Export {

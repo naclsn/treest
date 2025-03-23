@@ -15,13 +15,15 @@ pub trait Provider {
     fn keep(&self, path: &NodePath) -> bool;
 
     fn display(&self, path: &NodePath) -> String;
-    fn breadcrumb(&self, path: &NodePath) -> String {
-        let mut r = (0..path.head.len()).fold(String::new(), |mut acc, k| {
-            acc.push_str(&self.display(&path.head[..=k].into()));
-            acc
-        });
-        r.push_str(&self.display(path));
+    fn components(&self, path: &NodePath) -> Vec<String> {
+        let mut r: Vec<_> = (0..path.head.len())
+            .map(|k| self.display(&path.head[..=k].into()))
+            .collect();
+        r.push(self.display(path));
         r
+    }
+    fn breadcrumbs(&self, path: &NodePath) -> String {
+        self.components(path).join(" ")
     }
 }
 
