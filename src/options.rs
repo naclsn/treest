@@ -1,6 +1,6 @@
 use std::env;
 use std::fs::File;
-use std::io;
+use std::io::{self, Write};
 use std::path::PathBuf;
 use std::process;
 
@@ -60,10 +60,21 @@ impl Options {
 
     Navigate a tree-like space dynamically.
 
+        --help | -h
+        --list | -l
+        --user | -u <in.lua>
+        --lua-meta <out.lua>
+        --defaults <out.lua>
+
     `arg` is passed to the provider `name`; if `name` is not given
     it's guessed from `arg`. See '--list' for a list of providers.
     Note: if `arg` is not given, it defaults to ".", so "fs" name.
     Use '--user' to provide a user config script sourced at start.
+
+    Scripting is done through Lua 5.4. '--lua-meta' can generate a
+    file containing the exposed API. use '--defaults' to prints or
+    write the default config script. The default config can be use
+    already in user config with `require('defaults')`.
 "#
                     );
                     process::exit(2);
@@ -93,6 +104,17 @@ impl Options {
                         help::gen_lua_meta(&mut File::create(meta).unwrap()).unwrap();
                     }
                     process::exit(4);
+                }
+
+                "--defaults" => {
+                    let file = args.next().unwrap_or("-".into());
+                    let defaults = include_str!("defaults.lua");
+                    if "-" == file {
+                        write!(&mut io::stdout(), "{}", defaults).unwrap();
+                    } else {
+                        write!(&mut File::create(file).unwrap(), "{}", defaults).unwrap();
+                    }
+                    process::exit(5);
                 }
 
                 "-" if 0 == pos_count => {

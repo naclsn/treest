@@ -6,10 +6,10 @@ use anyhow::Result;
 use mlua::{Function, Lua, LuaOptions, StdLib, Table};
 use thiserror::Error;
 
-pub mod display;
-pub mod input;
-pub mod options;
-pub mod scripting;
+mod display;
+mod input;
+mod options;
+mod scripting;
 
 use crate::lua::structs::{IndexPath, NodeInfo, Target};
 use crate::navigate::input::Input;

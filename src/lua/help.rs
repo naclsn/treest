@@ -21,12 +21,14 @@ impl Export {
         for line in self.doc {
             writeln!(f, "---{line}")?;
         }
-        writeln!(f, "---")?;
+        let ret = (self.ret)();
+        if !self.params.is_empty() || "nil" != ret {
+            writeln!(f, "---")?;
+        }
 
         for (name, typ) in self.params {
             writeln!(f, "---@param {name} {}", typ())?;
         }
-        let ret = (self.ret)();
         if "nil" != ret {
             writeln!(f, "---@return {}", ret)?;
         }

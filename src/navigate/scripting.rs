@@ -407,7 +407,7 @@ impl Navigate {
 
     /// Exported in treest.
     /// Suspend execution for job control (by raising a SIGTSTP).
-    /// This is like hitting <C-Z> on most terminal programs.
+    /// This is like hitting `<C-Z>` on most terminal programs.
     /// It is a no-op under Windows.
     fn suspend(&mut self) -> Result<()> {
         #[cfg(not(windows))]
@@ -480,7 +480,21 @@ fn help(subj: String) -> Result<Option<String>> {
                 .collect::<String>()
         )))
     } else if let Some(ex) = help::HELP.iter().find(|ex| subj == ex.name) {
-        Ok(Some(ex.doc.join("\n")))
+        let mut r = ex.doc.join("\n") + "\n";
+        let ret = (ex.ret)();
+        if !ex.params.is_empty() || "nil" != ret {
+            r += "\n";
+        }
+
+        for (name, typ) in ex.params {
+            r += &format!("@param {name} {}\n", typ());
+        }
+
+        if "nil" != ret {
+            r += &format!("@return {}\n", ret);
+        }
+
+        Ok(Some(r))
     } else {
         Ok(None)
     }
