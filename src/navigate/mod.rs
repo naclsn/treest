@@ -1,9 +1,9 @@
 use std::collections::BTreeMap;
-use std::ops::Range;
+use std::ops::{Deref, DerefMut, Range};
 use std::path::PathBuf;
 
 use anyhow::Result;
-use mlua::{FromLua, Function, Lua, Result as LuaResult, Table, Value};
+use mlua::{FromLua, Function, IntoLua, Lua, Result as LuaResult, Table, Value};
 use thiserror::Error;
 
 pub mod display;
@@ -22,7 +22,48 @@ use crate::tree::Node;
 #[error("{0}")]
 pub struct MainLoopExitText(String);
 
-type CursorLikePath = Vec<usize>;
+#[derive(Clone, Debug, Default)]
+pub struct IndexPath(Vec<usize>);
+impl From<Vec<usize>> for IndexPath {
+    fn from(value: Vec<usize>) -> Self {
+        Self(value)
+    }
+}
+impl From<&[usize]> for IndexPath {
+    fn from(value: &[usize]) -> Self {
+        Self(value.to_vec())
+    }
+}
+impl Deref for IndexPath {
+    type Target = Vec<usize>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+impl DerefMut for IndexPath {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
+impl FromLua for IndexPath {
+    fn from_lua(value: Value, lua: &Lua) -> LuaResult<Self> {
+        let mut v = Vec::from_lua(value, lua)?;
+        v.iter_mut().for_each(|k| *k -= 1);
+        Ok(Self(v))
+    }
+}
+impl IntoLua for IndexPath {
+    fn into_lua(mut self, lua: &Lua) -> LuaResult<Value> {
+        self.0.iter_mut().for_each(|k| *k += 1);
+        self.0.into_lua(lua)
+    }
+}
+impl LuaTypeDoc for IndexPath {
+    fn lua_type_doc() -> String {
+        "integer[]".to_string()
+    }
+}
 
 pub struct Message {
     lines: Vec<String>,
@@ -33,7 +74,7 @@ pub struct Message {
 
 pub struct Navigate {
     tree: Node,
-    cursor: (usize, CursorLikePath),
+    cursor: (usize, IndexPath),
 
     user_script: Option<PathBuf>,
     provider: Box<dyn Provider>,
@@ -53,20 +94,16 @@ pub struct Navigate {
 #[derive(Debug, Clone)]
 pub enum Target {
     Cursor,
-    Path(Vec<usize>),
-    TrustedPath(Vec<usize>),
+    Path(IndexPath),
+    #[allow(dead_code)] // m keepin it for now
+    TrustedPath(IndexPath),
 }
 
 impl FromLua for Target {
     fn from_lua(value: Value, lua: &Lua) -> LuaResult<Self> {
         match value {
             Value::Nil => Ok(Target::Cursor),
-            _ => Ok(Target::Path({
-                let mut r = Vec::from_lua(value, lua)?;
-                // rem: lua's are 1-based
-                r.iter_mut().for_each(|k| *k -= 1);
-                r
-            })),
+            _ => Ok(Target::Path(IndexPath::from_lua(value, lua)?)),
         }
     }
 }
@@ -86,7 +123,7 @@ struct View {
     total: Range<usize>,
     term_col: usize,
     term_row: usize,
-    line_mapping: Vec<CursorLikePath>,
+    line_mapping: Vec<IndexPath>,
 }
 enum ViewJumpBy {
     Line,
@@ -161,7 +198,7 @@ impl Navigate {
     ) -> Self {
         Self {
             tree: Node::new(),
-            cursor: (0, vec![]),
+            cursor: (0, IndexPath::default()),
 
             user_script,
             provider,
@@ -262,6 +299,14 @@ return treest:_atexit()
     //    };
     //    f(trust, path)
     //}
+
+    pub fn target_to_path(&self, at: Target) -> IndexPath {
+        match at {
+            Target::Cursor => self.cursor.1[..self.cursor.0].into(),
+            Target::Path(path) => path,
+            Target::TrustedPath(path) => path,
+        }
+    }
 
     pub fn resolve_node(&self, at: &Target) -> Option<&Node> {
         match at {

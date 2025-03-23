@@ -51,7 +51,6 @@ m.keys = {
     ['<C-Z>']= function() treest:suspend() end,
 
     [':']= function()
-        --- @type string
         local ans = treest:prompt(':', function() return {} end)
         if not ans then return end
         local com, bang, arg = ans:match('(%w+)(!?)%s*(.*)')
@@ -76,19 +75,19 @@ m.keys = {
     ['n']= function() search(treest:get_register('/'), {'next', 'sat'}) end,
     ['N']= function() search(treest:get_register('/'), {'prev', 'sat'}) end,
 
-    ['<C-E>']= function() treest:view_down('line') end,
-    ['<C-Y>']= function() treest:view_up('line') end,
-    ['<BackwardWheel>']= function() treest:view_down('mouse') end,
-    ['<ForwardWheel>']= function() treest:view_up('mouse') end,
-    ['<C-D>']= function() treest:view_down('halfwin') end,
-    ['<C-U>']= function() treest:view_up('halfwin') end,
-    ['<C-F>']= function() treest:view_down('win') end,
-    ['<C-B>']= function() treest:view_up('win') end,
+    ['<C-E>']= function() treest:view_down({'line'}) end,
+    ['<C-Y>']= function() treest:view_up({'line'}) end,
+    ['<BackwardWheel>']= function() treest:view_down({'mouse'}) end,
+    ['<ForwardWheel>']= function() treest:view_up({'mouse'}) end,
+    ['<C-D>']= function() treest:view_down({'halfwin'}) end,
+    ['<C-U>']= function() treest:view_up({'halfwin'}) end,
+    ['<C-F>']= function() treest:view_down({'win'}) end,
+    ['<C-B>']= function() treest:view_up({'win'}) end,
 
     ['l']= function() treest:enter() end,
     ['h']= function() treest:leave() end,
-    ['j']= function() treest:next('sat') end,
-    ['k']= function() treest:prev('sat') end,
+    ['j']= function() treest:next({'sat'}) end,
+    ['k']= function() treest:prev({'sat'}) end,
 
     ['L']= function() treest:unfold() end,
     ['H']= function() treest:fold() end,
@@ -98,7 +97,19 @@ m.keys = {
         treest:next()
     end,
 
-    ['<LeftMouse>']= function() treest:message(treest.mouse_event_pos.col..'/'..treest.mouse_event_pos.row) end,
+    ['<LeftMouse>']= function()
+        local node = treest:node_at_line(treest.mouse_event_pos.row)
+        if not node then return end
+        treest:set_cursor(node.path)
+    end,
+    ['<RightMouse>']= function()
+        local node = treest:node_at_line(treest.mouse_event_pos.row)
+        if not node then return end
+        if treest:folded(node.path)
+            then treest:unfold(node.path)
+            else treest:fold(node.path)
+        end
+    end,
 }
 
 m.init = function()

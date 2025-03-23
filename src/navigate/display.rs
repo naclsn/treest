@@ -1,7 +1,7 @@
 use std::io::{Result as IoResult, Write};
 use std::ops::Range;
 
-use crate::navigate::{Message, Navigate};
+use crate::navigate::{IndexPath, Message, Navigate};
 use crate::terminal;
 use crate::tree::Node;
 
@@ -56,18 +56,19 @@ impl Navigate {
         let cursor = self.tree.resolve_node(self.cursor());
 
         let visible = self.view.visible();
-        self.view.line_mapping.resize_with(visible.len(), Vec::new);
+        let mut line_mapping = vec![IndexPath::default(); visible.len()];
 
         let mut current = 0;
         self.render_at(
             f,
-            &mut vec![&self.tree],
+            (&mut vec![&self.tree], &mut IndexPath::default()),
             cursor,
-            "".into(),
-            &mut current,
-            &visible,
-            //&mut view.line_mapping, // TODO: re-enable mouse interactions
+            String::new(),
+            (&mut current, &visible, &mut line_mapping),
         )?;
+
+        line_mapping.truncate(current);
+        self.view.line_mapping = line_mapping;
         self.view.total.end = current;
 
         if current < visible.end {
@@ -93,7 +94,7 @@ impl Navigate {
                     appearance.scroll_before
                 } else if top == k && 0 == top {
                     appearance.scroll_topmost
-                } else if bot == k && MESSAGE_WINDOW_HEIGHT - 1 == bot {
+                } else if bot == k && bot < MESSAGE_WINDOW_HEIGHT {
                     appearance.scroll_botmost
                 } else if top == k {
                     appearance.scroll_top
@@ -127,17 +128,12 @@ impl Navigate {
     fn render_at(
         &self,
         f: &mut impl Write,
-
-        at: &mut Vec<&Node>, // NodePathBuf (?maybe)
+        (at, k_at): (&mut Vec<&Node>, &mut IndexPath),
         cursor: &Node,
-
         indent: String,
-        current: &mut usize,
-        visible: &Range<usize>,
-        //line_mapping: &mut [Vec<usize>],
+        (current, visible, line_mapping): (&mut usize, &Range<usize>, &mut [IndexPath]),
     ) -> IoResult<()> {
         let node = at.last().unwrap();
-        //let frag = &node.fragment;
 
         if visible.contains(current) {
             if node.is_marked() {
@@ -148,7 +144,7 @@ impl Navigate {
             }
             let frag = self.provider.display(&at[..].into());
             write!(f, "{frag}\x1b[m")?;
-            //line_mapping[*current - visible.start] = at.clone();
+            line_mapping[*current - visible.start] = k_at.clone();
         }
 
         if node.is_folded() {
@@ -158,7 +154,9 @@ impl Navigate {
             *current += 1;
             return Ok(());
         }
+
         let children = node.children().unwrap();
+
         if children.is_empty() {
             if visible.contains(current) {
                 write!(f, "\r\n")?;
@@ -169,10 +167,16 @@ impl Navigate {
 
         if 1 == children.len() {
             at.push(children[0]);
+            k_at.push(0);
             let r = self.render_at(
-                f, at, cursor, indent, current, visible, /*line_mapping*/
+                f,
+                (at, k_at),
+                cursor,
+                indent,
+                (current, visible, line_mapping),
             );
             at.pop();
+            k_at.pop();
             r
         } else {
             if visible.contains(current) {
@@ -180,43 +184,45 @@ impl Navigate {
             }
             *current += 1;
 
-            let mut iter = children.iter();
             let appearance = match self.options.appearance.as_str() {
                 "pretty" => PRETTY,
                 _ => ASCII,
             };
 
-            for it in iter.by_ref().take(children.len() - 1) {
+            let child_count = children.len();
+            for (k, it) in children[..child_count - 1].iter().enumerate() {
                 if visible.contains(current) {
                     write!(f, "{indent}{}", appearance.branch)?;
                 }
                 at.push(it);
+                k_at.push(k);
                 self.render_at(
                     f,
-                    at,
+                    (at, k_at),
                     cursor,
                     format!("{indent}{}", appearance.indent),
-                    current,
-                    visible,
-                    //line_mapping,
+                    (current, visible, line_mapping),
                 )?;
                 at.pop();
+                k_at.pop();
             }
 
+            // last iteration unrolled (uses `appearance.[..]_last`)
             if visible.contains(current) {
                 write!(f, "{indent}{}", appearance.branch_last)?;
             }
-            at.push(iter.next().unwrap());
+            at.push(children[child_count - 1]);
+            k_at.push(child_count - 1);
             let r = self.render_at(
                 f,
-                at,
+                (at, k_at),
                 cursor,
                 format!("{indent}{}", appearance.indent_last),
-                current,
-                visible,
-                //line_mapping,
+                (current, visible, line_mapping),
             );
             at.pop();
+            k_at.pop();
+
             r
         }
     }

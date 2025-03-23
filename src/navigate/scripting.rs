@@ -5,7 +5,7 @@ use mlua::{BString, Either, Error, Function, Lua, Result, Table, Value};
 use mlua::{UserData, UserDataFields, UserDataMethods};
 
 use crate::lua::help;
-use crate::navigate::{Navigate, Target, ViewJumpBy};
+use crate::navigate::{Navigate, Target, ViewJumpBy, IndexPath};
 use crate::prompt::{self, PromptSplitInfo};
 use crate::terminal::{self, KeyTransError};
 use crate::tree::NodePath;
@@ -66,7 +66,8 @@ impl UserData for Navigate {
             fn  marked(target);
             mut message(text);
             mut next(flags);
-            //fn  node(target); // TODO: need a proper return type to be added
+            fn  node(target);
+            fn  node_at_line(line);
             mut prev(flags);
             mut prompt(ps, completion);
             fn  provider_name();
@@ -111,6 +112,11 @@ crate::flags_lua_conversion!(SearchFlags {
 });
 crate::flags_lua_conversion!(ScrollFlags {
     amount: "line" | "win" | "halfwin" | "mouse",
+});
+crate::struct_lua_conversion!(NodeInfo {
+    text: String,
+    child_count: Option<usize>,
+    path: IndexPath,
 });
 
 impl Navigate {
@@ -192,17 +198,15 @@ impl Navigate {
         Ok(self.options.get(&name, lua))
     }
 
-    // TODO: remove the Option<>
     /// Exported in treest.
-    /// Get the value of a register.
+    /// Get the value of a register or nil if it doesn't exist.
     fn get_register(&self, name: String) -> Result<Option<String>> {
         Ok(self.registers.get(&name).and_then(|h| h.last()).cloned())
     }
 
-    // TODO: remove the Option<>
     /// Exported in treest.
-    /// Get the values taken by a register,
-    /// including the current on which will be the last one.
+    /// Get the values taken by a register or nil if it doesn't exist.
+    /// This includes the current value which will be the last entry.
     fn get_register_hist(&self, name: String) -> Result<Option<Vec<String>>> {
         Ok(self.registers.get(&name).cloned())
     }
@@ -259,16 +263,29 @@ impl Navigate {
     /// Exported in treest.
     /// Retrieve node information at target (cursor if `nil`) or `nil` if the path is not valid.
     /// TODO: proper return like NodeInfo or something.
-    fn node(&self, target: Target) -> Result<Option<(String, Option<usize>)>> {
+    fn node(&self, target: Target) -> Result<Option<NodeInfo>> {
         Ok(self.resolve_node(&target).map(|node| {
-            (
-                "node".to_string(), // TODO: ofc
-                if node.is_loaded() {
+            NodeInfo {
+                text: "node".to_string(), // TODO: ofc
+                child_count: if node.is_loaded() {
                     Some(node.child_count())
                 } else {
                     None
                 },
-            )
+                path: self.target_to_path(target),
+            }
+        }))
+    }
+
+    /// Exported in treest.
+    /// TODO: proper return
+    fn node_at_line(&self, line: usize) -> Result<Option<NodeInfo>> {
+        Ok(self.view.line_mapping.get(line).cloned().map(|path| {
+            NodeInfo {
+                text: "node".to_string(), // TODO: ofc
+                child_count: None, // TODO: ofc
+                path,
+            }
         }))
     }
 

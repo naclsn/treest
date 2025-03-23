@@ -6,7 +6,7 @@ use mlua::{BString, Either, Function, Value};
 
 use crate::lua::typedoc::{LuaTypeAliasDoc, LuaTypeDoc};
 use crate::navigate::input::PendingMouseInfo;
-use crate::navigate::scripting::{MoveFlags, ScrollFlags, SearchFlags};
+use crate::navigate::scripting::{NodeInfo, MoveFlags, ScrollFlags, SearchFlags};
 use crate::navigate::Target;
 use crate::prompt::PromptSplitInfo;
 
@@ -31,7 +31,10 @@ impl Export {
         for (name, typ) in self.params {
             writeln!(f, "---@param {name} {}", typ())?;
         }
-        writeln!(f, "---@return {}", (self.ret)())?;
+        let ret = (self.ret)();
+        if "nil" != ret {
+            writeln!(f, "---@return {}", ret)?;
+        }
 
         write!(f, "function ")?;
         if let Some(table) = self.table {
@@ -67,6 +70,8 @@ pub fn gen_lua_meta(f: &mut impl Write) -> IoResult<()> {
         PromptSplitInfo,
         ScrollFlags,
         SearchFlags,
+        Target,
+        NodeInfo,
     );
 
     writeln!(f)?;
