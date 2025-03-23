@@ -367,9 +367,13 @@ return treest:_atexit()
         }
     }
 
+    pub fn register_entries(&mut self, name: &str) -> &mut Vec<String> {
+        self.registers.entry(name.trim().to_string()).or_default()
+    }
+
     /// Push a new value, that is nothing happens if the old value was equal.
-    pub fn register_push(&mut self, name: String, new: String) {
-        let v = self.registers.entry(name).or_default();
+    pub fn register_push(&mut self, name: &str, new: String) {
+        let v = self.registers.entry(name.trim().to_string()).or_default();
         if v.last().is_none_or(|old| *old != new) {
             v.push(new);
         }

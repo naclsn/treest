@@ -1,5 +1,10 @@
 local m = {}
 
+m.completions = {
+    commands= function() return {} end,
+    files= function() return {} end,
+}
+
 m.commands = {
     cquit= function(arg) treest:quit(arg) end,
     echo= function(arg, bang)
@@ -23,8 +28,24 @@ m.commands = {
     suspend= function() treest:suspend() end,
 }
 
+local function request(req)
+    return function()
+        local text = treest:prompt(req..' ', m.completions.files)
+        if not text then return end
+        local res = treest:provider_request(req, nil, text)
+        if res then treest:message(res) end
+    end
+end
+m.commands.mk = request('mk')
+m.commands.cp = request('cp')
+m.commands.rm = request('rm')
+m.commands.mv = request('mv')
+m.commands.ch = request('ch')
+m.commands.vi = request('vi')
+m.commands.ex = request('ex')
+
 local function alias(com, ...)
-    for _, al in pairs({...}) do m.commands[al] = m.commands[com] end
+    for _, al in pairs{...} do m.commands[al] = m.commands[com] end
 end
 alias('cquit', 'cq')
 alias('echo', 'ec')
@@ -51,7 +72,7 @@ m.keys = {
     ['<C-Z>']= function() treest:suspend() end,
 
     [':']= function()
-        local ans = treest:prompt(':', function() return {} end)
+        local ans = treest:prompt(':', m.completions.commands)
         if not ans then return end
         local com, bang, arg = ans:match('(%w+)(!?)%s*(.*)')
         if not com then return end
@@ -62,7 +83,7 @@ m.keys = {
         end
     end,
     ['!']= function()
-        local ans = treest:prompt('!', function() return {} end)
+        local ans = treest:prompt('!', m.completions.files)
         if not ans then return end
         local f = assert(io.popen(ans..' 2>&1', 'r'))
         local out = assert(f:read('*a'))

@@ -62,6 +62,8 @@ impl UserData for Navigate {
             fn  get_register(name);
             fn  get_register_hist(name);
             mut leave();
+            fn  list_options();
+            fn  list_registers();
             mut map(seq, cb);
             fn  mapped(seq);
             mut mark(target);
@@ -207,6 +209,18 @@ impl Navigate {
     }
 
     /// Exported in treest.
+    /// List the available options (*names* only).
+    fn list_options(&self) -> Result<Vec<String>> {
+        Ok(vec!["appearance".into()])
+    }
+
+    /// Exported in treest.
+    /// List the non-empty registers (*names* only).
+    fn list_registers(&self) -> Result<Vec<String>> {
+        Ok(self.registers.keys().cloned().collect())
+    }
+
+    /// Exported in treest.
     /// Add a mapping from a key sequence to a callback action.
     /// See also `treest:unmap`.
     fn map(&mut self, seq: String, cb: Function) -> Result<()> {
@@ -306,7 +320,7 @@ impl Navigate {
     /// History is also taken from the previous values of the register.
     /// See also `treest:set_register` for direct access.
     fn prompt(&mut self, ps: String, completion: Function) -> Result<Option<String>> {
-        let history = self.registers.entry(ps.clone()).or_default();
+        let history = self.register_entries(&ps);
 
         terminal::cursor_on();
         terminal::mouse_off();
@@ -319,6 +333,7 @@ impl Navigate {
         );
         terminal::cursor_off();
         terminal::mouse_on();
+        eprintln!("\r\x1b[K");
 
         ans.as_ref().inspect(|r| history.push(r.to_string()));
         Ok(ans)
@@ -330,17 +345,13 @@ impl Navigate {
         Ok(self.provider_name.clone())
     }
 
+    // TODO: parser in build.rs doesn't handle multi-line proto_line yet
     /// Exported in treest.
     /// Execute a provider request at target (cursor if `nil`).
     /// It will be intepreted in a provider-specific way.
     /// `text` is not relevant and not used with `'rm'` and `'vi'`.
     /// The result is only (potentially) relevant with `'vi'` and `'ex'`.
-    fn provider_request(
-        &mut self,
-        req: RequestFlags,
-        target: Target,
-        text: String,
-    ) -> Result<Option<Vec<String>>> {
+    fn provider_request(&mut self, req: RequestFlags, target: Target, text: String) -> Result<Option<Vec<String>>> {
         let path = self.tree.resolve(&self.target_to_path(target));
         let path = &path[..].into();
         match req.request {
@@ -436,7 +447,7 @@ impl Navigate {
     /// Set the value of a register.
     /// Registers are also set when using `treest:prompt`.
     fn set_register(&mut self, name: String, value: String) -> Result<()> {
-        self.register_push(name, value);
+        self.register_push(&name, value);
         Ok(())
     }
 
@@ -581,6 +592,8 @@ fn prompt(ps: String, history: Vec<String>, completion: Function) -> Result<Opti
     );
     terminal::cursor_off();
     terminal::mouse_on();
+    eprintln!("\r\x1b[K");
+
     Ok(ans)
 }
 

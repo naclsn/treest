@@ -300,7 +300,14 @@ impl Provider for Fs {
     }
 
     fn request_vi(&mut self, path: &NodePath) -> Result<Vec<String>> {
-        Ok(Vec::new())
+        Ok(vec![
+            "line 1".into(),
+            "line 2".into(),
+            "line 3".into(),
+            "line 4".into(),
+            "line 5".into(),
+            "line 6".into(),
+        ])
     }
 
     fn request_ex(&mut self, path: &NodePath, text: String) -> Result<Vec<String>> {
