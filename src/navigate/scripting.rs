@@ -5,7 +5,8 @@ use mlua::{BString, Either, Error, Function, Lua, Result, Table, Value};
 use mlua::{UserData, UserDataFields, UserDataMethods};
 
 use crate::lua::help;
-use crate::lua::structs::{MoveFlags, NodeInfo, PromptSplitInfo, ScrollFlags, SearchFlags, Target};
+use crate::lua::structs::{MoveFlags, RequestFlags, ScrollFlags, SearchFlags};
+use crate::lua::structs::{NodeInfo, PromptSplitInfo, Target};
 use crate::navigate::{Navigate, ViewJumpBy};
 use crate::prompt;
 use crate::terminal::{self, KeyTransError};
@@ -72,6 +73,7 @@ impl UserData for Navigate {
             mut prev(flags);
             mut prompt(ps, completion);
             fn  provider_name();
+            mut provider_request(req, target, text);
             mut quit(text);
             mut search_deep(q, flags);
             fn  search_level(q, flags);
@@ -326,6 +328,39 @@ impl Navigate {
     /// Retrieve the name of the current provider (eg. 'fs').
     fn provider_name(&self) -> Result<String> {
         Ok(self.provider_name.clone())
+    }
+
+    /// Exported in treest.
+    /// Execute a provider request at target (cursor if `nil`).
+    /// It will be intepreted in a provider-specific way.
+    /// `text` is not relevant and not used with `'rm'` and `'vi'`.
+    /// The result is only (potentially) relevant with `'vi'` and `'ex'`.
+    fn provider_request(
+        &mut self,
+        req: RequestFlags,
+        target: Target,
+        text: String,
+    ) -> Result<Option<Vec<String>>> {
+        let path = self.tree.resolve(&self.target_to_path(target));
+        let path = &path[..].into();
+        match req.request {
+            "mk" => self.provider.request_mk(path, text),
+            "cp" => self.provider.request_cp(path, text),
+            "rm" => self.provider.request_rm(path),
+            "mv" => self.provider.request_mv(path, text),
+            "ch" => self.provider.request_ch(path, text),
+            _ => {
+                return match req.request {
+                    "vi" => self.provider.request_vi(path),
+                    "ex" => self.provider.request_ex(path, text),
+                    _ => unreachable!(),
+                }
+                .map_err(Error::external)
+                .map(Some)
+            }
+        }
+        .map_err(Error::external)
+        .map(|()| None)
     }
 
     /// Exported in treest.

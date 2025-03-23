@@ -25,6 +25,44 @@ pub trait Provider {
     fn breadcrumbs(&self, path: &NodePath) -> String {
         self.components(path).join(" ")
     }
+
+    /// Request to create a new node at `path`.
+    /// `text` comes from user input and its interpretation is provider-dependent.
+    fn request_mk(&mut self, path: &NodePath, text: String) -> Result<()> {
+        Ok(())
+    }
+    /// Request to copy an existing node at `path`.
+    /// `text` comes from user input and its interpretation is provider-dependent.
+    fn request_cp(&mut self, path: &NodePath, text: String) -> Result<()> {
+        Ok(())
+    }
+    /// Request to remove an existing node at `path`.
+    fn request_rm(&mut self, path: &NodePath) -> Result<()> {
+        Ok(())
+    }
+    /// Request to move an existing node at `path`.
+    /// `text` comes from user input and its interpretation is provider-dependent.
+    /// The default implementation uses `request_cp` and `request_rm` which might be undesirable.
+    fn request_mv(&mut self, path: &NodePath, text: String) -> Result<()> {
+        self.request_cp(path, text)?;
+        self.request_rm(path)?;
+        Ok(())
+    }
+    /// Request to "change" an existing node at `path`.
+    /// The meaning is provider- and input- dependent.
+    /// `text` comes from user input and its interpretation is provider-dependent.
+    fn request_ch(&mut self, path: &NodePath, text: String) -> Result<()> {
+        Ok(())
+    }
+    /// Request to visualise more content / information about an existing node at `path`.
+    fn request_vi(&mut self, path: &NodePath) -> Result<Vec<String>> {
+        Ok(Vec::new())
+    }
+    /// Arbitrary provider request extension. `path` may or may not be relevant.
+    /// `text` comes from user input and its interpretation is provider-dependent.
+    fn request_ex(&mut self, path: &NodePath, text: String) -> Result<Vec<String>> {
+        Ok(Vec::new())
+    }
 }
 
 macro_rules! providers {

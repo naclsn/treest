@@ -276,6 +276,36 @@ impl Provider for Fs {
 
         r
     }
+
+    fn request_mk(&mut self, path: &NodePath, text: String) -> Result<()> {
+        Ok(())
+    }
+
+    fn request_cp(&mut self, path: &NodePath, text: String) -> Result<()> {
+        Ok(())
+    }
+
+    fn request_rm(&mut self, path: &NodePath) -> Result<()> {
+        Ok(())
+    }
+
+    fn request_mv(&mut self, path: &NodePath, text: String) -> Result<()> {
+        self.request_cp(path, text)?;
+        self.request_rm(path)?;
+        Ok(())
+    }
+
+    fn request_ch(&mut self, path: &NodePath, text: String) -> Result<()> {
+        Ok(())
+    }
+
+    fn request_vi(&mut self, path: &NodePath) -> Result<Vec<String>> {
+        Ok(Vec::new())
+    }
+
+    fn request_ex(&mut self, path: &NodePath, text: String) -> Result<Vec<String>> {
+        Ok(Vec::new())
+    }
 }
 
 impl Fs {

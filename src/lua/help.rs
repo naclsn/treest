@@ -1,6 +1,6 @@
 use std::io::{Result as IoResult, Write};
 
-use mlua::{BString, Either, Function, Value};
+use mlua::{Either, Function};
 
 use crate::lua::structs::*;
 use crate::lua::typedoc::{LuaTypeAliasDoc, LuaTypeDoc};
@@ -63,12 +63,13 @@ pub fn gen_lua_meta(f: &mut impl Write) -> IoResult<()> {
 
     top_aliases!(f;
         MoveFlags,
+        NodeInfo,
         PendingMouseInfo,
         PromptSplitInfo,
+        RequestFlags,
         ScrollFlags,
         SearchFlags,
         Target,
-        NodeInfo,
     );
 
     writeln!(f)?;

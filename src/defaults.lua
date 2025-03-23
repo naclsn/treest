@@ -75,19 +75,19 @@ m.keys = {
     ['n']= function() search(treest:get_register('/'), {'next', 'sat'}) end,
     ['N']= function() search(treest:get_register('/'), {'prev', 'sat'}) end,
 
-    ['<C-E>']= function() treest:view_down({'line'}) end,
-    ['<C-Y>']= function() treest:view_up({'line'}) end,
-    ['<BackwardWheel>']= function() treest:view_down({'mouse'}) end,
-    ['<ForwardWheel>']= function() treest:view_up({'mouse'}) end,
-    ['<C-D>']= function() treest:view_down({'halfwin'}) end,
-    ['<C-U>']= function() treest:view_up({'halfwin'}) end,
-    ['<C-F>']= function() treest:view_down({'win'}) end,
-    ['<C-B>']= function() treest:view_up({'win'}) end,
+    ['<C-E>']= function() treest:view_down('line') end,
+    ['<C-Y>']= function() treest:view_up('line') end,
+    ['<BackwardWheel>']= function() treest:view_down('mouse') end,
+    ['<ForwardWheel>']= function() treest:view_up('mouse') end,
+    ['<C-D>']= function() treest:view_down('halfwin') end,
+    ['<C-U>']= function() treest:view_up('halfwin') end,
+    ['<C-F>']= function() treest:view_down('win') end,
+    ['<C-B>']= function() treest:view_up('win') end,
 
     ['l']= function() treest:enter() end,
     ['h']= function() treest:leave() end,
-    ['j']= function() treest:next({'sat'}) end,
-    ['k']= function() treest:prev({'sat'}) end,
+    ['j']= function() treest:next('sat') end,
+    ['k']= function() treest:prev('sat') end,
 
     ['L']= function() treest:unfold() end,
     ['H']= function() treest:fold() end,
@@ -97,7 +97,7 @@ m.keys = {
             then treest:unmark()
             else treest:mark()
         end
-        treest:next({'sat'})
+        treest:next('sat')
     end,
 
     ['<LeftMouse>']= function()

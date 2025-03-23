@@ -140,13 +140,20 @@ macro_rules! flags_lua_conversion {
 
         impl $crate::lua::typedoc::LuaTypeAliasDoc for $ty {
             fn lua_type_doc_alias_to() -> String {
-                format!(
+                let mut r = format!(
                     "({})[]",
                     [$(format!(
                         "{}",
                         [$(format!("'{}'", $val)),*].join("|")
                     )),*].join(" | "),
-                )
+                );
+                if 1 == [$(stringify!($flag)),*].len() {
+                    r.push_str(&format!(
+                        " | ({})",
+                        [$($(format!("'{}'", $val)),*),*].join("|")
+                    ));
+                }
+                r
             }
         }
     )*};
