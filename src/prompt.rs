@@ -95,30 +95,10 @@ pub fn lua_tokens_split(line: &str, point: usize) -> PromptSplitInfo {
 
     let mut head = 0;
     while {
-        head = line.len() - dbg!(line[head..].trim_start()).len();
+        head = line.len() - line[head..].trim_start().len();
         head < line.len()
     } {
         let ahead = match line[head..].as_bytes() {
-            [b'-', b'-', b'[', b'[' | b'=', rest @ ..] | [b'[', b'[' | b'=', rest @ ..] => {
-                // on first '=' or '[' if long bracket of level 0
-                let st = line.len() - rest.len() - 1;
-                if let Some(level) = line[st..].find('[') {
-                    let ed = line[st + level + 1..] // just past the '[===['
-                        .find(&format!("]{}]", &line[st..st + level]))
-                        .unwrap_or(line.len() - st - level - 1);
-                    ed + level + 2
-                } else if line[head..].starts_with("--") {
-                    let nl = line[head..].find('\n').unwrap_or(line.len() - 1 - head);
-                    head + nl + 1
-                } else {
-                    line.len()
-                }
-            }
-            [b'-', b'-', ..] => {
-                let nl = line[head..].find('\n').unwrap_or(line.len() - 1 - head);
-                head + nl + 1
-            }
-
             [b'a', b'n', b'd', rest @ ..]
             | [b'b', b'r', b'e', b'a', b'k', rest @ ..]
             | [b'd', b'o', rest @ ..]
@@ -144,40 +124,60 @@ pub fn lua_tokens_split(line: &str, point: usize) -> PromptSplitInfo {
                 head + keyword.len()
             }
 
-            // names and numerical constant
-            [] => 0,
+            [b'-', b'-', b'[', b'[' | b'=', rest @ ..] | [b'[', b'[' | b'=', rest @ ..] => {
+                // on first '=' or '[' if long bracket of level 0
+                let st = line.len() - rest.len() - 1;
+                let level = line[st..].chars().take_while(|c| '=' == *c).count();
+                if st + level < line.len() && b'[' == line.as_bytes()[st + level] {
+                    let ed = line[st + level + 1..] // slice is just past the '[===['
+                        .find(&format!("]{}]", &line[st..st + level]))
+                        .unwrap_or(line.len() - st - level - 1);
+                    st + level + 1 + ed + level + 2
+                } else if line[head..].starts_with("--") {
+                    let nl = line[head..].find('\n').unwrap_or(line.len() - 1 - head);
+                    head + nl + 1
+                } else {
+                    line.len()
+                }
+            }
+            [b'-', b'-', ..] => {
+                let nl = line[head..].find('\n').unwrap_or(line.len() - 1 - head);
+                head + nl + 1
+            }
 
-            [b'+', rest @ ..]
-            | [b'-', rest @ ..]
-            | [b'*', rest @ ..]
-            | [b'/', rest @ ..]
-            | [b'%', rest @ ..]
-            | [b'^', rest @ ..]
-            | [b'#', rest @ ..]
-            | [b'=', b'=', rest @ ..]
-            | [b'~', b'=', rest @ ..]
-            | [b'<', b'=', rest @ ..]
-            | [b'>', b'=', rest @ ..]
-            | [b'<', rest @ ..]
-            | [b'>', rest @ ..]
-            | [b'=', rest @ ..]
-            | [b'(', rest @ ..]
-            | [b')', rest @ ..]
-            | [b'{', rest @ ..]
-            | [b'}', rest @ ..]
-            | [b'[', rest @ ..]
-            | [b']', rest @ ..]
-            | [b';', rest @ ..]
-            | [b':', rest @ ..]
-            | [b',', rest @ ..]
+            [b'0'..=b'9', ..] | [b'.', b'0'..=b'9', ..] => {
+                todo!("TODO");
+            }
+
+            [b'=', b'~' | b'<' | b'>', b'=', rest @ ..]
             | [b'.', b'.', b'.', rest @ ..]
             | [b'.', b'.', rest @ ..]
-            | [b'.', rest @ ..] => {
+            | [b'+' | b'-' | b'*' | b'/' | b'%' | b'^' | b'#' | b'<' | b'>' | b'=' | b'(' | b')'
+            | b'{' | b'}' | b'[' | b']' | b';' | b':' | b',' | b'.', rest @ ..] => {
                 let punct = &line[head..line.len() - rest.len()];
                 head + punct.len()
             }
 
-            _ => todo!("{:?}", &line[head..]),
+            _ => {
+                let nonalnum = line[head..]
+                    .char_indices()
+                    .find(|p| '_' != p.1 && !p.1.is_alphanumeric())
+                    .map(|p| p.0)
+                    .unwrap_or(line.len() - head);
+
+                if 0 != nonalnum {
+                    head + nonalnum
+                } else {
+                    head + line[head..]
+                        .char_indices()
+                        .find(|p| {
+                            b"#()*+,-./0123456789:;<=>[]^_{}~".contains(&(p.1 as u8))
+                                || p.1.is_alphanumeric()
+                        })
+                        .map(|p| p.0)
+                        .unwrap_or(line.len() - head)
+                }
+            }
         };
 
         parts.push(line[head..ahead].to_string());
@@ -187,10 +187,6 @@ pub fn lua_tokens_split(line: &str, point: usize) -> PromptSplitInfo {
         }
         head = ahead;
     }
-
-    //let mut chars = line.chars().enumerate();
-    //while let Some((k, c)) = chars.next() {
-    //}
 
     PromptSplitInfo { parts, in_part }
 }
@@ -407,18 +403,32 @@ fn test_split() {
     );
     assert_parts!(shell_like_split, "it's fine", ["its fine"]);
 
-    //assert_parts!(
-    //    lua_tokens_split,
-    //    "function len(t) return t.n or #t end", [""]);
-
+    assert_parts!(
+        lua_tokens_split,
+        "function len(t) return t.n or #t end",
+        ["function", "len", "(", "t", ")", "return", "t", ".", "n", "or", "#", "t", "end"],
+    );
     assert_parts!(
         lua_tokens_split,
         r#"
  -- hello
 --[[
 hi]]
+     --[==> swurd!
+     --[=halo=]
 --[===[ uuu ]] ]==] ]===]
         "#,
-        [""]
+        [
+            "-- hello\n",
+            "--[[\nhi]]",
+            "--[==> swurd!\n",
+            "--[=halo=]\n",
+            "--[===[ uuu ]] ]==] ]===]"
+        ],
+    );
+    assert_parts!(
+        lua_tokens_split,
+        ".5 ..5 ...5 3.0 53e6 1.4e-2-0xabc+1",
+        [""],
     );
 }
