@@ -166,7 +166,7 @@ pub fn prompt(
                 //let (args, in_arg) = split(&s, at);
                 //let hints = complete(args.iter().map(String::as_str).collect(), in_arg);
                 let hints = complete(&s.into_iter().collect::<String>(), at);
-                todo!("completion hints: {hints:?}"); // TODO
+                todo!("completion hints: {hints:?}"); // TODO(!)
             }
             [0x0a | 0x0d] => return Some(s.into_iter().collect()),
             [0x0b] => {

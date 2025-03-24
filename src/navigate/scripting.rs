@@ -58,7 +58,7 @@ impl UserData for Navigate {
             mut fold(target);
             fn  folded(target);
             fn  get_cursor();
-            fn  get_option(lua, name); // TODO: remove this 'lua' special case
+            fn  get_option(lua, name); // TODO(!): remove this 'lua' special case
             fn  get_register(name);
             fn  get_register_hist(name);
             mut leave();
@@ -345,7 +345,7 @@ impl Navigate {
         Ok(self.provider_name.clone())
     }
 
-    // TODO: parser in build.rs doesn't handle multi-line proto_line yet
+    // TODO(!): parser in build.rs doesn't handle multi-line proto_line yet
     /// Exported in treest.
     /// Execute a provider request at target (cursor if `nil`).
     /// It will be intepreted in a provider-specific way.
