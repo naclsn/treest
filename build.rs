@@ -9,6 +9,8 @@
 /// $( )*$(/// $docline)*
 /// $( )*fn $name($(&self, |&mut self, )?$($pname: $ptyp), *) -> Result<$ret> {
 /// ```
+/// The prototype may span multiple lines, in which case it's 1 param/line with ','.
+/// (All this is mostly `cargo fmt` with no interfering comments.)
 use std::env;
 use std::fmt::{Display, Formatter, Result as FmtResult};
 use std::fs::{self, File};
@@ -52,56 +54,85 @@ impl<'a> Export<'a> {
         r.name = &proto_line[chars.next()?.0..chars.find(|(_, c)| '(' == *c)?.0];
         eprintln!("   name: {:?}", r.name);
 
-        if chars.next_if(|(_, c)| '&' == *c).is_some() {
-            let mutable = 'm' == chars.peek()?.1;
-            if mutable {
-                chars.nth(7)?; // 'mut self'
-            } else {
-                chars.nth(3)?; // 'self'
+        let consumed;
+        // multi-line `fn $name(` .. `$param,` .. `) -> Result<$ret> {`
+        if chars.peek().is_none() {
+            lines.next()?;
+
+            if let Some(line) = lines.next_if(|line| line.starts_with('&')) {
+                let mutable = line.starts_with("&mut");
+                eprintln!("   < {}mutable self", if mutable { "" } else { "im" });
             }
-            if ',' == chars.peek()?.1 {
-                chars.nth(1)?; // ', '
+
+            while let Some(param) = lines.next_if(|line| line.ends_with(',')) {
+                let col = param.find(':')?;
+                let name = &param[..col];
+                eprintln!("   / name: {name:?}");
+                let typ = &param[col + 2..param.len() - 1]; // leave trailing ','
+                eprintln!("   \\ typ: {typ:?}");
+                r.params.push((name, typ));
             }
-            eprintln!("   < {}mutable self", if mutable { "" } else { "im" });
+
+            let ret = lines.next()?;
+            let l = ret.len();
+            r.ret = &ret[12..l - 3]; // ') -> Result<' and '> {'
+
+            consumed = unsafe { ret.as_ptr().offset_from(text.as_ptr()) } as usize + l;
+        }
+        // single-line `fn $name($params) -> Result<$ret> {`
+        else {
+            if chars.next_if(|(_, c)| '&' == *c).is_some() {
+                let mutable = 'm' == chars.peek()?.1;
+                if mutable {
+                    chars.nth(7)?; // 'mut self'
+                } else {
+                    chars.nth(3)?; // 'self'
+                }
+                if ',' == chars.peek()?.1 {
+                    chars.nth(1)?; // ', '
+                }
+                eprintln!("   < {}mutable self", if mutable { "" } else { "im" });
+            }
+
+            while let Some((st, _)) = chars
+                .peek()
+                .cloned()
+                .filter(|(_, c)| ')' != *c && '-' != *c)
+            {
+                let name = &proto_line[st..chars.find(|(_, c)| ':' == *c)?.0];
+                eprintln!("   / name: {name:?}");
+
+                let st = chars.nth(1)?.0; // ' '
+                let mut stack = Vec::new();
+                let ed = chars
+                    .find(|(_, c)| {
+                        match c {
+                            '(' => stack.push(')'),
+                            '[' => stack.push(']'),
+                            '<' | '-' => stack.push('>'),
+                            ',' | ')' if stack.is_empty() => return true,
+                            _ if Some(c) == stack.last() => _ = stack.pop(),
+                            _ => (),
+                        }
+                        false
+                    })?
+                    .0;
+                let typ = &proto_line[st..ed];
+                eprintln!("   \\ typ: {typ:?}");
+
+                r.params.push((name, typ));
+                chars.next();
+            }
+
+            if ')' == chars.peek()?.1 {
+                chars.nth(1)?;
+            }
+            let l = proto_line.len();
+            r.ret = &proto_line[chars.next()?.0 + 10..l - 3]; //  '-> Result<' and '> {'
+
+            consumed = unsafe { proto_line.as_ptr().offset_from(text.as_ptr()) } as usize + l;
         }
 
-        while let Some((st, _)) = chars
-            .peek()
-            .cloned()
-            .filter(|(_, c)| ')' != *c && '-' != *c)
-        {
-            let name = &proto_line[st..chars.find(|(_, c)| ':' == *c)?.0];
-            eprintln!("   / name: {name:?}");
-
-            let st = chars.nth(1)?.0; // ' '
-            let mut stack = Vec::new();
-            let ed = chars
-                .find(|(_, c)| {
-                    match c {
-                        '(' => stack.push(')'),
-                        '[' => stack.push(']'),
-                        '<' | '-' => stack.push('>'),
-                        ',' | ')' if stack.is_empty() => return true,
-                        _ if Some(c) == stack.last() => _ = stack.pop(),
-                        _ => (),
-                    }
-                    false
-                })?
-                .0;
-            let typ = &proto_line[st..ed];
-            eprintln!("   \\ typ: {typ:?}");
-
-            r.params.push((name, typ));
-            chars.next();
-        }
-
-        if ')' == chars.peek()?.1 {
-            chars.nth(1)?;
-        }
-        let l = proto_line.len();
-        r.ret = &proto_line[chars.next()?.0 + 10..l - 3]; //  '-> Result<' and '> {'
-
-        let consumed = unsafe { proto_line.as_ptr().offset_from(text.as_ptr()) } as usize;
         eprintln!(
             "-- success {:?}.{:?}/{} :: {:?}",
             r.table,
@@ -109,7 +140,7 @@ impl<'a> Export<'a> {
             r.params.len(),
             r.ret,
         );
-        Some((r, &text[consumed + l + 1..]))
+        Some((r, &text[consumed + 1..]))
     }
 }
 

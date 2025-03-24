@@ -100,7 +100,8 @@ pub fn global_exports(g: &Table, lua: &Lua) -> Result<()> {
     make_exports! { g.get("string").unwrap(), lua;
         pub keyseqstr(seq);
         pub keytrans(text);
-        pub prompt_split(line, point);
+        pub prompt_shell_like_split(line, point);
+        pub prompt_lua_tokens_split(line, point);
     }
     make_exports! { g.get("debug").unwrap(), lua;
         pub pretty(obj);
@@ -345,25 +346,39 @@ impl Navigate {
         Ok(self.provider_name.clone())
     }
 
-    // TODO(!): parser in build.rs doesn't handle multi-line proto_line yet
     /// Exported in treest.
     /// Execute a provider request at target (cursor if `nil`).
-    /// It will be intepreted in a provider-specific way.
+    /// It will be interpreted in a provider-specific way.
     /// `text` is not relevant and not used with `'rm'` and `'vi'`.
     /// The result is only (potentially) relevant with `'vi'` and `'ex'`.
-    fn provider_request(&mut self, req: RequestFlags, target: Target, text: String) -> Result<Option<Vec<String>>> {
+    fn provider_request(
+        &mut self,
+        req: RequestFlags,
+        target: Target,
+        text: Option<String>,
+    ) -> Result<Option<Vec<String>>> {
         let path = self.tree.resolve(&self.target_to_path(target));
         let path = &path[..].into();
+
+        if !matches!(req.request, "rm" | "vi") && text.is_none() {
+            // copied to match mlua's `FromLua for String`
+            return Err(Error::FromLuaConversionError {
+                from: "nil",
+                to: "string".to_string(),
+                message: Some("expected string or number".to_string()),
+            });
+        }
+
         match req.request {
-            "mk" => self.provider.request_mk(path, text),
-            "cp" => self.provider.request_cp(path, text),
+            "mk" => self.provider.request_mk(path, text.unwrap()),
+            "cp" => self.provider.request_cp(path, text.unwrap()),
             "rm" => self.provider.request_rm(path),
-            "mv" => self.provider.request_mv(path, text),
-            "ch" => self.provider.request_ch(path, text),
+            "mv" => self.provider.request_mv(path, text.unwrap()),
+            "ch" => self.provider.request_ch(path, text.unwrap()),
             _ => {
                 return match req.request {
                     "vi" => self.provider.request_vi(path),
-                    "ex" => self.provider.request_ex(path, text),
+                    "ex" => self.provider.request_ex(path, text.unwrap()),
                     _ => unreachable!(),
                 }
                 .map_err(Error::external)
@@ -599,8 +614,14 @@ fn prompt(ps: String, history: Vec<String>, completion: Function) -> Result<Opti
 
 /// Exported in string.
 /// Split a line of input in a shell-like manner.
-fn prompt_split(line: String, point: Option<usize>) -> Result<PromptSplitInfo> {
-    Ok(prompt::split(&line, point.unwrap_or_default()))
+fn prompt_shell_like_split(line: String, point: Option<usize>) -> Result<PromptSplitInfo> {
+    Ok(prompt::shell_like_split(&line, point.unwrap_or_default()))
+}
+
+/// Exported in string.
+/// Split a line of input in lua tokens.
+fn prompt_lua_tokens_split(line: String, point: Option<usize>) -> Result<PromptSplitInfo> {
+    Ok(prompt::lua_tokens_split(&line, point.unwrap_or_default()))
 }
 
 fn transpose_keytranserror(seq: &str, err: KeyTransError) -> Error {

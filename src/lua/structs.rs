@@ -19,8 +19,8 @@ crate::struct_lua_conversion! {
     }
 
     pub struct PromptSplitInfo {
-        pub args: Vec<String>,
-        pub in_arg: usize,
+        pub parts: Vec<String>,
+        pub in_part: usize,
     }
 }
 
