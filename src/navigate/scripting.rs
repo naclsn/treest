@@ -59,7 +59,7 @@ impl UserData for Navigate {
             mut fold(target);
             fn  folded(target);
             fn  get_cursor();
-            fn  get_option(lua, name); // TODO(!): remove this 'lua' special case
+            fn  get_option(name);
             fn  get_register(name);
             fn  get_register_hist(name);
             mut leave();
@@ -194,11 +194,16 @@ impl Navigate {
         Ok(self.cursor().to_vec())
     }
 
-    // TODO: need to remove the 'lua'
-    // Exported in treest.
+    /// Exported in treest.
     /// Get the value of an option.
-    fn get_option(&self, lua: &Lua, name: String) -> Result<Value> {
-        Ok(self.options.get(&name, lua))
+    /// See `treest:list_options` for a list of the available option names.
+    fn get_option(&self, name: String) -> Result<String> {
+        self.options.get(&name).ok_or(Error::BadArgument {
+            to: Some("get_option".to_string()),
+            pos: 2,
+            name: Some("name".to_string()),
+            cause: Error::RuntimeError(format!("no option {name:?}")).into(),
+        })
     }
 
     /// Exported in treest.
@@ -468,9 +473,14 @@ impl Navigate {
 
     /// Exported in treest.
     /// Set the value of an option.
-    fn set_option(&mut self, name: String, value: Value) -> Result<()> {
-        self.options.set(&name, value);
-        Ok(())
+    /// See `treest:list_options` for a list of the available option names.
+    fn set_option(&mut self, name: String, value: String) -> Result<()> {
+        self.options.set(&name, value).ok_or(Error::BadArgument {
+            to: Some("set_option".to_string()),
+            pos: 2,
+            name: Some("name".to_string()),
+            cause: Error::RuntimeError(format!("no option {name:?}")).into(),
+        })
     }
 
     /// Exported in treest.

@@ -1,5 +1,3 @@
-use mlua::{IntoLua, Lua, Value};
-
 pub struct Options {
     pub appearance: String,
 }
@@ -13,20 +11,17 @@ impl Default for Options {
 }
 
 impl Options {
-    pub fn get(&self, name: &str, lua: &Lua) -> Value {
+    pub fn get(&self, name: &str) -> Option<String> {
         match name {
-            "appearance" | "appea" => self.appearance.clone().into_lua(lua).unwrap(),
-            _ => Value::Nil,
+            "appearance" | "appea" => Some(self.appearance.clone()),
+            _ => None,
         }
     }
 
-    // TODO: return a LuaResult<()>
-    pub fn set(&mut self, name: &str, value: Value) {
+    pub fn set(&mut self, name: &str, value: String) -> Option<()> {
         match name {
-            "appearance" | "appea" => {
-                self.appearance = value.as_string().unwrap().to_string_lossy()
-            }
-            _ => (),
+            "appearance" | "appea" => Some(self.appearance = value),
+            _ => None,
         }
     }
 }

@@ -65,10 +65,6 @@ impl Input {
             .take()
             .or_else(|| self.input.next())
             .expect("niy: eof stopping condition");
-        // TODO: expose this so it can be called/mapped?
-        if 0x03 == byte {
-            self.pending.clear();
-        }
 
         if self.pending.is_empty() {
             self.pending_reachable = self
