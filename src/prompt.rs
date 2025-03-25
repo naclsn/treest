@@ -146,7 +146,37 @@ pub fn lua_tokens_split(line: &str, point: usize) -> PromptSplitInfo {
             }
 
             [b'0'..=b'9', ..] | [b'.', b'0'..=b'9', ..] => {
-                todo!("TODO");
+                enum State {
+                    Integral,
+                    Fractional,
+                    ExponentSign,
+                    Exponent,
+                    Hexadecimal,
+                }
+                use State::*;
+
+                let mut state = Integral;
+                let ox = line[head..].starts_with("0x");
+
+                head + &line[head..]
+                    .bytes()
+                    .position(|b| {
+                        state = match (&state, b) {
+                            (Integral, b'.') => Fractional,
+                            (Integral | Fractional, b'e') | (Hexadecimal, b'p') => ExponentSign,
+                            (ExponentSign, b'-' | b'0'..=b'9') => Exponent,
+                            (Integral, b'x') if ox => Hexadecimal,
+
+                            (Integral, b'0'..=b'9') => Integral,
+                            (Fractional, b'0'..=b'9') => Fractional,
+                            (Exponent, b'0'..=b'9') => Exponent,
+                            (Hexadecimal, b'0'..=b'9' | b'a'..=b'f' | b'A'..=b'F') => Hexadecimal,
+
+                            _ => return true,
+                        };
+                        false
+                    })
+                    .unwrap_or(line.len() - head)
             }
 
             [b'=', b'~' | b'<' | b'>', b'=', rest @ ..]
@@ -403,6 +433,7 @@ fn test_split() {
     );
     assert_parts!(shell_like_split, "it's fine", ["its fine"]);
 
+    assert_parts!(lua_tokens_split, "", [""; 0]);
     assert_parts!(
         lua_tokens_split,
         "function len(t) return t.n or #t end",
@@ -415,13 +446,14 @@ fn test_split() {
 --[[
 hi]]
      --[==> swurd!
-     --[=halo=]
+[[a]]--[=halo=]
 --[===[ uuu ]] ]==] ]===]
         "#,
         [
             "-- hello\n",
             "--[[\nhi]]",
             "--[==> swurd!\n",
+            "[[a]]",
             "--[=halo=]\n",
             "--[===[ uuu ]] ]==] ]===]"
         ],
@@ -429,6 +461,6 @@ hi]]
     assert_parts!(
         lua_tokens_split,
         ".5 ..5 ...5 3.0 53e6 1.4e-2-0xabc+1",
-        [""],
+        [".5", "..", "5", "...", "5", "3.0", "53e6", "1.4e-2", "-", "0xabc", "+", "1"],
     );
 }
