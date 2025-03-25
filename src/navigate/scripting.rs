@@ -1,3 +1,4 @@
+use std::fs::File;
 use std::io::{self, Read};
 use std::result::Result as StdResult;
 
@@ -5,8 +6,8 @@ use mlua::{BString, Either, Error, Function, Lua, Result, Table, Value};
 use mlua::{UserData, UserDataFields, UserDataMethods};
 
 use crate::lua::help;
+use crate::lua::structs::{IndexPath, Listing, NodeInfo, PromptSplitInfo, Target};
 use crate::lua::structs::{MoveFlags, RequestFlags, ScrollFlags, SearchFlags};
-use crate::lua::structs::{NodeInfo, PromptSplitInfo, Target};
 use crate::navigate::{Navigate, ViewJumpBy};
 use crate::prompt;
 use crate::terminal::{self, KeyTransError};
@@ -97,11 +98,14 @@ pub fn global_exports(g: &Table, lua: &Lua) -> Result<()> {
         pub help(subj);
         pub prompt(ps, history, completion);
     }
+    make_exports! { g.get("os").unwrap(), lua;
+        pub list(dir);
+    }
     make_exports! { g.get("string").unwrap(), lua;
         pub keyseqstr(seq);
         pub keytrans(text);
-        pub prompt_shell_like_split(line, point);
         pub prompt_lua_tokens_split(line, point);
+        pub prompt_shell_like_split(line, point);
     }
     make_exports! { g.get("debug").unwrap(), lua;
         pub pretty(obj);
@@ -115,9 +119,18 @@ impl Navigate {
             .exit
             .take()
             .unwrap_or("_atexit called too early (no exit text set)".into());
+
+        if let Some(mut dir) = dirs::cache_dir() {
+            dir.push("treest.hist");
+            if let Ok(mut f) = File::create(dir) {
+                _ = self.save_registers(&mut f);
+            }
+        }
+
         if let Some(t) = self.term.take() {
             t.restore();
         }
+
         Ok(exit)
     }
 
@@ -336,7 +349,9 @@ impl Navigate {
         terminal::mouse_on();
         eprintln!("\r\x1b[K");
 
-        ans.as_ref().inspect(|r| history.push(r.to_string()));
+        if let Some(thing) = &ans {
+            self.register_push(&ps, thing.clone());
+        }
         Ok(ans)
     }
 
@@ -408,7 +423,7 @@ impl Navigate {
 
     /// Exported in treest.
     /// Search for a sibling node with `q` in its text.
-    fn search_level(&self, q: String, flags: SearchFlags) -> Result<Option<Vec<usize>>> {
+    fn search_level(&self, q: String, flags: SearchFlags) -> Result<Option<IndexPath>> {
         if self.is_cursor_root() {
             return Ok(None);
         };
@@ -437,7 +452,7 @@ impl Navigate {
 
         let mut r = parent_path.to_vec();
         r.push(found);
-        Ok(Some(r))
+        Ok(Some(r.into()))
     }
 
     /// Exported in treest.
@@ -526,11 +541,14 @@ impl Navigate {
 
 /// Exported globally.
 /// Get a help text about a subject.
-/// `help('help')` would return this text if it was actually implemented.
-fn help(subj: String) -> Result<Option<String>> {
+/// For now subjects can only be function names registered in rust. This needs to be worked on
+/// more. `help('help')` returns this text. As a hack, the special subject `'_treest'` returns
+/// a string with all the method of the global object `treest`.
+fn help(subj: Option<String>) -> Result<Option<String>> {
+    let subj = subj.unwrap_or_default();
     if subj.is_empty() {
         Ok(Some(format!(
-            "API items:{}",
+            "// TODO: call with no arg or with an empty string should be more welcoming\nAPI items:{}",
             help::HELP
                 .iter()
                 .map(|ex| if let Some(table) = ex.table {
@@ -540,6 +558,15 @@ fn help(subj: String) -> Result<Option<String>> {
                 })
                 .collect::<String>()
         )))
+    } else if "_treest" == subj {
+        Ok(Some(
+            help::HELP
+                .iter()
+                .filter(|ex| Some("treest") == ex.table)
+                .map(|ex| ex.name)
+                .collect::<Vec<_>>()
+                .join(" "),
+        ))
     } else if let Some(ex) = help::HELP.iter().find(|ex| subj == ex.name) {
         let mut r = ex.doc.join("\n") + "\n";
         let ret = (ex.ret)();
@@ -585,6 +612,14 @@ fn keytrans(seq: String) -> Result<BString> {
         .map(BString::from)
 }
 
+/// Exported in os.
+/// Return an iterator function that lists the names in a directory.
+fn list(dir: String) -> Result<Listing> {
+    std::fs::read_dir(dir)
+        .map_err(Error::external)
+        .map(Listing::new)
+}
+
 /// Exported in debug.
 /// Pretty-print a value to string.
 fn pretty(obj: Value) -> Result<String> {
@@ -613,15 +648,15 @@ fn prompt(ps: String, history: Vec<String>, completion: Function) -> Result<Opti
 }
 
 /// Exported in string.
-/// Split a line of input in a shell-like manner.
-fn prompt_shell_like_split(line: String, point: Option<usize>) -> Result<PromptSplitInfo> {
-    Ok(prompt::shell_like_split(&line, point.unwrap_or_default()))
+/// Split a line of input in lua tokens.
+fn prompt_lua_tokens_split(line: String, point: Option<usize>) -> Result<PromptSplitInfo> {
+    Ok(prompt::lua_tokens_split(&line, point.unwrap_or(0)))
 }
 
 /// Exported in string.
-/// Split a line of input in lua tokens.
-fn prompt_lua_tokens_split(line: String, point: Option<usize>) -> Result<PromptSplitInfo> {
-    Ok(prompt::lua_tokens_split(&line, point.unwrap_or_default()))
+/// Split a line of input in a shell-like manner.
+fn prompt_shell_like_split(line: String, point: Option<usize>) -> Result<PromptSplitInfo> {
+    Ok(prompt::shell_like_split(&line, point.unwrap_or(0)))
 }
 
 fn transpose_keytranserror(seq: &str, err: KeyTransError) -> Error {

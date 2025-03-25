@@ -11,11 +11,20 @@ This project uses `cargo`:
 $ cargo install --path .
 $ treest --help
 ...
+
+$ cargo r -- --help # (without installing)
+...
 ```
+
+### todo:
+
+* th is that
+* `.config/treest.lua`, `require('defaults')` and `treest --lua-meta`
+* `.cache/treest.hist`
 
 ---
 
-## (wip and such)
+## (wip and such --todo: this is outdated)
 
 thing too long that cause terminal line wrap
 https://crates.io/crates/unicode-ellipsis/0.2.0

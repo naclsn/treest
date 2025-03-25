@@ -1,12 +1,70 @@
 local m = {}
 
+---@param incompl string
+---@param choices string[]
+local function compgen(incompl, choices)
+    if nil == incompl then return choices end
+
+    local r, n = {}, 1
+    for _, word in ipairs(choices)
+      do if word:sub(1, #incompl) == incompl then r[n], n = word, n+1 end
+    end
+    return r
+end
+
 m.completions = {
-    commands= function() return {} end,
-    files= function() return {} end,
+    ---@param line string
+    ---@param point number
+    commands= function(line, point)
+        local p = line:prompt_shell_like_split(point)
+        local incompl = p.parts[p.in_part]
+        local choices, n = {}, 1 for k, _ in pairs(m.commands) do choices[n], n = k, n+1 end
+        return compgen(incompl, choices)
+    end,
+
+    ---@param line string
+    ---@param point number
+    files= function(line, point)
+        local p = line:prompt_shell_like_split(point)
+        local incompl = p.parts[p.in_part]
+        local choices, n = {}, 1 for k, _ in os.list(incompl) do choices[n], n = k, n+1 end
+        return compgen(incompl, choices)
+    end,
+
+    ---@param line string
+    ---@param point number
+    functions= function(line, point)
+        local p = line:prompt_lua_tokens_split(point)
+        local incompl = p.parts[p.in_part]
+
+        local choices, nn = {}, 1
+          do
+            for name, val in pairs(_G)
+              do
+                choices[nn], nn = name, nn+1
+                if 'table' == type(val)
+                  then for subname in pairs(val) do choices[nn], nn = subname, nn+1 end
+                end
+            end
+            for name in help('_treest'):gmatch('%w+')
+              do choices[nn], nn = name, nn+1
+            end
+        end
+
+        return compgen(incompl, choices)
+    end,
+
+    ---@type (fun(line:string, point:string): string[])[]
+    for_command= {},
 }
 
 m.commands = {
-    cquit= function(arg) treest:quit(arg) end,
+    help= function(arg) treest:message(help(arg) or ("no help for "..arg)) end,
+
+    quit= function() treest:quit() end,
+    cquit= function(arg) treest:quit(0 < #arg and arg or "!") end,
+    suspend= function() treest:suspend() end,
+
     echo= function(arg, bang)
         local ok, err = load('return '..arg)
         if ok
@@ -18,14 +76,12 @@ m.commands = {
         end
         treest:message(err)
     end,
+
     eval= function(arg)
         local ok, err = load(arg)
         if ok then ok() return end
         treest:message(err)
     end,
-    help= function(arg) treest:message(help(arg) or ("no help for "..arg)) end,
-    quit= function() treest:quit() end,
-    suspend= function() treest:suspend() end,
 }
 
 local function request(req)
@@ -54,6 +110,12 @@ alias('help', 'h')
 alias('quit', 'q')
 alias('suspend', 'sus', 'stop', 'st')
 
+local function complete(func, ...)
+    for _, com in pairs{...} do m.completions.for_command[com] = func end
+end
+complete(m.completions.files, 'mk', 'cp', 'rm', 'ch', 'vi', 'ex') -- idk
+complete(m.completions.functions, 'echo', 'ec', 'eval', 'ev', 'let', 'call', 'cal', 'help')
+
 local function search(q, flags)
     if not q then return end
     local found = treest:search_level(q, flags)
@@ -72,16 +134,25 @@ m.keys = {
     ['<C-Z>']= function() treest:suspend() end,
 
     [':']= function()
-        local ans = treest:prompt(':', m.completions.commands)
+        local ans = treest:prompt(':', function(line, point)
+            local com = line:match('(%w+)')
+            if not com then return m.completions.commands(line, point) end
+            local comp = m.completions.for_command[com]
+            if comp then return comp(line, point) end
+            return {}
+        end)
         if not ans then return end
+
         local com, bang, arg = ans:match('(%w+)(!?)%s*(.*)')
         if not com then return end
+
         local fn = m.commands[com]
         if fn
-            then fn(arg, '!' == bang)
-            else treest:message("unknown command: "..com)
+          then fn(arg, '!' == bang)
+          else treest:message("unknown command: "..com)
         end
     end,
+
     ['!']= function()
         local ans = treest:prompt('!', m.completions.files)
         if not ans then return end
@@ -130,8 +201,8 @@ m.keys = {
         local node = treest:node_at_line(treest.mouse_event_pos.row)
         if not node then return end
         if treest:folded(node.path)
-            then treest:unfold(node.path)
-            else treest:fold(node.path)
+          then treest:unfold(node.path)
+          else treest:fold(node.path)
         end
     end,
 }

@@ -1,6 +1,7 @@
+use std::fs::ReadDir;
 use std::ops::{Deref, DerefMut};
 
-use mlua::{FromLua, IntoLua, Lua, Result, Value};
+use mlua::{Error, FromLua, IntoLua, Lua, Result, Value};
 
 use crate::lua::typedoc::{LuaTypeAliasDoc, LuaTypeDoc};
 
@@ -128,6 +129,37 @@ mod _target {
     impl LuaTypeAliasDoc for Target {
         fn lua_type_doc_alias_to() -> String {
             "integer[]?".to_string()
+        }
+    }
+}
+
+pub use _listing::Listing;
+mod _listing {
+    use super::*;
+
+    pub struct Listing(std::fs::ReadDir);
+
+    impl Listing {
+        pub fn new(read_dir: ReadDir) -> Self {
+            Self(read_dir)
+        }
+    }
+
+    impl IntoLua for Listing {
+        fn into_lua(mut self, lua: &Lua) -> Result<Value> {
+            Ok(Value::Function(lua.create_function_mut(move |_, ()| {
+                self.0
+                    .next()
+                    .transpose()
+                    .map_err(Error::external)
+                    .map(|o| o.map(|e| e.file_name().to_string_lossy().to_string()))
+            })?))
+        }
+    }
+
+    impl LuaTypeDoc for Listing {
+        fn lua_type_doc() -> String {
+            "fun():string?".to_string()
         }
     }
 }

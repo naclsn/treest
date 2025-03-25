@@ -1,4 +1,6 @@
 use std::collections::BTreeMap;
+use std::fs::File;
+use std::io::{BufRead, BufReader, Write};
 use std::ops::Range;
 use std::path::PathBuf;
 
@@ -146,8 +148,63 @@ impl Navigate {
         }
     }
 
-    pub fn main_loop(self) -> Result<(), MainLoopExitText> {
+    fn load_registers(&mut self, f: &mut impl BufRead) -> Result<()> {
+        while {
+            let mut dashes = [0u8; 5];
+            f.read_exact(&mut dashes)
+                .is_ok_and(|_| *b"\n--- " == dashes)
+        } {
+            let mut len = vec![];
+            f.read_until(b' ', &mut len)?;
+            len.pop();
+            let mut name = vec![0u8; String::from_utf8(len)?.parse()?];
+            f.read_exact(&mut name)?;
+
+            let hist = self.registers.entry(String::from_utf8(name)?).or_default();
+
+            let mut count = vec![];
+            f.read_until(b':', &mut count)?;
+            count.pop();
+            count.remove(0);
+            for _ in 0..String::from_utf8(count)?.parse()? {
+                let mut inde = [0u8; 3];
+                f.read_exact(&mut inde)?;
+                if *b"\n  " != inde {
+                    break;
+                }
+
+                let mut len = vec![];
+                f.read_until(b' ', &mut len)?;
+                len.pop();
+                let mut val = vec![0u8; String::from_utf8(len)?.parse()?];
+                f.read_exact(&mut val)?;
+
+                hist.push(String::from_utf8(val)?);
+            }
+        }
+        Ok(())
+    }
+
+    fn save_registers(&self, f: &mut impl Write) -> Result<()> {
+        writeln!(f)?;
+        for (name, hist) in self.registers.iter().take(50) {
+            writeln!(f, "--- {} {name} {}:", name.len(), hist.len())?;
+            for val in hist.iter().take(500) {
+                writeln!(f, "  {} {val}", val.len())?;
+            }
+        }
+        Ok(())
+    }
+
+    pub fn main_loop(mut self) -> Result<(), MainLoopExitText> {
         let user_script = self.user_script.clone();
+
+        if let Some(mut dir) = dirs::cache_dir() {
+            dir.push("treest.hist");
+            if let Ok(f) = File::open(&dir) {
+                _ = self.load_registers(&mut BufReader::new(f));
+            }
+        }
 
         let lua = unsafe {
             Lua::unsafe_new_with(StdLib::ALL, LuaOptions::default().catch_rust_panics(false))

@@ -29,7 +29,7 @@ pub enum OptionsError {
 pub struct Options {
     pub provider_arg: String,
     pub provider_name: String,
-    pub user_script: Option<PathBuf>, // `take`n in main_loop
+    pub user_script: Option<PathBuf>,
 }
 
 impl Default for Options {
@@ -37,7 +37,12 @@ impl Default for Options {
         Self {
             provider_arg: ".".into(),
             provider_name: "fs".into(),
-            user_script: Some(PathBuf::from("treest.rhai")).filter(|p| p.is_file()),
+            user_script: dirs::config_dir()
+                .map(|mut p| {
+                    p.push("treest.lua");
+                    p
+                })
+                .filter(|p| p.is_file()),
         }
     }
 }
