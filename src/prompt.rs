@@ -221,6 +221,11 @@ pub fn lua_tokens_split(line: &str, point: usize) -> PromptSplitInfo {
     PromptSplitInfo { parts, in_part }
 }
 
+/// A readline-like prompt.
+/// The cursor is expected to be on the first column already. `ps` is the prompt, it is used
+/// without a trailing space. The completion function receive the current line of input and the
+/// *character position* of the point. The history is of course not edited, it is caller choice to
+/// append the last line to it.
 pub fn prompt(
     ps: &str,
     input: impl IntoIterator<Item = u8>,
@@ -318,8 +323,6 @@ pub fn prompt(
                 write!(output, "\x08\x1b[P").ok()?;
             }
             [0x09] => {
-                //let (args, in_arg) = split(&s, at);
-                //let hints = complete(args.iter().map(String::as_str).collect(), in_arg);
                 let hints = complete(&s.into_iter().collect::<String>(), at);
                 todo!("completion hints: {hints:?}"); // TODO(!)
             }
@@ -331,7 +334,9 @@ pub fn prompt(
             [0x0c] => {
                 write!(output, "\x1b[G\x1b[K{ps}").ok()?;
                 s.iter().try_for_each(|c| write!(output, "{c}")).ok()?;
-                write!(output, "\x1b[{}D", s.len() - at).ok()?;
+                if at < s.len() {
+                    write!(output, "\x1b[{}D", s.len() - at).ok()?;
+                }
             }
             [0x0e] if in_hist < history.len() - 1 => {
                 if !s.is_empty() {
