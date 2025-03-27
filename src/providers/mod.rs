@@ -4,7 +4,7 @@ use anyhow::Result;
 
 use crate::tree::NodePath;
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Fragment(pub usize);
 
 /// A type that is able to provide a tree structure.
@@ -29,15 +29,18 @@ pub trait Provider {
     /// Request to create a new node at `path`.
     /// `text` comes from user input and its interpretation is provider-dependent.
     fn request_mk(&mut self, path: &NodePath, text: String) -> Result<()> {
+        _ = (path, text);
         Ok(())
     }
     /// Request to copy an existing node at `path`.
     /// `text` comes from user input and its interpretation is provider-dependent.
     fn request_cp(&mut self, path: &NodePath, text: String) -> Result<()> {
+        _ = (path, text);
         Ok(())
     }
     /// Request to remove an existing node at `path`.
     fn request_rm(&mut self, path: &NodePath) -> Result<()> {
+        _ = (path,);
         Ok(())
     }
     /// Request to move an existing node at `path`.
@@ -52,15 +55,18 @@ pub trait Provider {
     /// The meaning is provider- and input- dependent.
     /// `text` comes from user input and its interpretation is provider-dependent.
     fn request_ch(&mut self, path: &NodePath, text: String) -> Result<()> {
+        _ = (path, text);
         Ok(())
     }
     /// Request to visualise more content / information about an existing node at `path`.
     fn request_vi(&mut self, path: &NodePath) -> Result<Vec<String>> {
+        _ = (path,);
         Ok(Vec::new())
     }
     /// Arbitrary provider request extension. `path` may or may not be relevant.
     /// `text` comes from user input and its interpretation is provider-dependent.
     fn request_ex(&mut self, path: &NodePath, text: String) -> Result<Vec<String>> {
+        _ = (path, text);
         Ok(Vec::new())
     }
 }

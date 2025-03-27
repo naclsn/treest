@@ -22,6 +22,10 @@ $ cargo r -- --help # (without installing)
 * `.config/treest.lua`, `require('defaults')` and `treest --lua-meta`
 * `.cache/treest.hist`
 
+### fixme:
+
+* search can't find last line?
+
 ---
 
 ## (wip and such --todo: this is outdated)

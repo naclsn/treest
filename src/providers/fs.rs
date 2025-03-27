@@ -1,6 +1,7 @@
 use std::cmp::Ordering;
 use std::fmt::{Display, Formatter, Result as FmtResult};
-use std::fs::{self, Metadata};
+use std::fs::{self, File, Metadata};
+use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 
@@ -278,15 +279,36 @@ impl Provider for Fs {
     }
 
     fn request_mk(&mut self, path: &NodePath, text: String) -> Result<()> {
-        Ok(())
+        Ok(writeln!(
+            File::options()
+                .append(true)
+                .open("./would.notquite.sh")
+                .unwrap(),
+            "mk {:?} {text:?}",
+            self.components(path).join("/"),
+        )?)
     }
 
     fn request_cp(&mut self, path: &NodePath, text: String) -> Result<()> {
-        Ok(())
+        Ok(writeln!(
+            File::options()
+                .append(true)
+                .open("./would.notquite.sh")
+                .unwrap(),
+            "cp {:?} {text:?}",
+            self.components(path).join("/"),
+        )?)
     }
 
     fn request_rm(&mut self, path: &NodePath) -> Result<()> {
-        Ok(())
+        Ok(writeln!(
+            File::options()
+                .append(true)
+                .open("./would.notquite.sh")
+                .unwrap(),
+            "rm {:?}",
+            self.components(path).join("/"),
+        )?)
     }
 
     fn request_mv(&mut self, path: &NodePath, text: String) -> Result<()> {
@@ -296,21 +318,26 @@ impl Provider for Fs {
     }
 
     fn request_ch(&mut self, path: &NodePath, text: String) -> Result<()> {
-        Ok(())
+        Ok(writeln!(
+            File::options()
+                .append(true)
+                .open("./would.notquite.sh")
+                .unwrap(),
+            "ch {:?} {text:?}",
+            self.components(path).join("/"),
+        )?)
     }
 
     fn request_vi(&mut self, path: &NodePath) -> Result<Vec<String>> {
-        Ok(vec![
-            "line 1".into(),
-            "line 2".into(),
-            "line 3".into(),
-            "line 4".into(),
-            "line 5".into(),
-            "line 6".into(),
-        ])
+        let bytes = fs::read(self.components(path).into_iter().collect::<PathBuf>())?;
+        Ok(String::from_utf8_lossy(&bytes)
+            .lines()
+            .map(String::from)
+            .collect())
     }
 
     fn request_ex(&mut self, path: &NodePath, text: String) -> Result<Vec<String>> {
+        _ = (path, text);
         Ok(Vec::new())
     }
 }

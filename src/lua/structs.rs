@@ -48,7 +48,7 @@ pub use _index_path::IndexPath;
 mod _index_path {
     use super::*;
 
-    #[derive(Clone, Debug, Default)]
+    #[derive(Clone, Debug, Default, PartialEq)]
     pub struct IndexPath(Vec<usize>);
 
     impl From<Vec<usize>> for IndexPath {

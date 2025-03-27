@@ -164,3 +164,49 @@ impl Node {
         r
     }
 }
+
+#[cfg(test)]
+#[macro_export]
+macro_rules! make_test_tree {
+    ($frag:literal $folded:literal $marked:literal [$(
+        $cfrag:literal $cfolded:literal $cmarked:literal $cchildren:tt
+    )*]) => {
+        crate::tree::Node::test_new(
+            crate::providers::Fragment($frag),
+            Some(vec![$(
+                crate::make_test_tree!($cfrag $cfolded $cmarked $cchildren),
+            )*]),
+            $folded,
+            $marked,
+        )
+    };
+
+    ($frag:literal $folded:literal $marked:literal -) => {
+        crate::tree::Node::test_new(
+            crate::providers::Fragment($frag),
+            None,
+            $folded,
+            $marked,
+        )
+    };
+}
+
+#[cfg(test)]
+impl Node {
+    pub fn test_new(
+        fragment: Fragment,
+        children: Option<Vec<Node>>,
+        folded: bool,
+        marked: bool,
+    ) -> Self {
+        Self {
+            fragment,
+            children: children.map(|v| {
+                let len = v.len();
+                (v, (0..len).collect())
+            }),
+            folded,
+            marked,
+        }
+    }
+}
