@@ -5,7 +5,7 @@ use std::io::{self, Read};
 use mlua::Function;
 
 use crate::lua::structs::PendingMouseInfo;
-use crate::navigate::display;
+use crate::navigate::view;
 use crate::navigate::Message;
 use crate::terminal;
 
@@ -134,7 +134,7 @@ impl Input {
         };
 
         let l = message.lines.len();
-        const H: usize = display::MESSAGE_WINDOW_HEIGHT;
+        const H: usize = view::MESSAGE_WINDOW_HEIGHT; // TODO: use messageheight from options
         if l < H {
             if b"\x02\x04\x05\x06\n\r\x15\x19 +-Gbdefgjkuy".contains(&byte) {
                 return false;

@@ -291,8 +291,7 @@ impl Navigate {
     fn node_at_line(&self, line: usize) -> Result<Option<NodeInfo>> {
         Ok(self
             .view
-            .line_mapping
-            .get(line)
+            .path_for(line)
             .and_then(|path| self.retrieve_node_info(Target::TrustedPath(path.clone()))))
     }
 

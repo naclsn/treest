@@ -1,21 +1,21 @@
 use std::collections::BTreeMap;
 use std::fs::File;
 use std::io::{BufRead, BufReader, Write};
-use std::ops::Range;
 use std::path::PathBuf;
 
 use anyhow::Result;
 use mlua::{Function, Lua, LuaOptions, StdLib, Table};
 use thiserror::Error;
 
-mod display;
 mod input;
 mod options;
 mod scripting;
+mod view;
 
 use crate::lua::structs::{IndexPath, NodeInfo, Target};
 use crate::navigate::input::Input;
 use crate::navigate::options::Options;
+use crate::navigate::view::{View, ViewJumpBy};
 use crate::providers::Provider;
 use crate::terminal::{self, RestoreWithPanicHook};
 use crate::tree::Node;
@@ -33,93 +33,20 @@ pub struct Message {
 
 pub struct Navigate {
     tree: Node,
+    provider: Box<dyn Provider>,
+    provider_name: String,
+    view: View,
     cursor: (usize, IndexPath),
 
     user_script: Option<PathBuf>,
-    provider: Box<dyn Provider>,
-    provider_name: String,
 
     input: Input,
     term: Option<RestoreWithPanicHook>,
     exit: Option<String>,
-
     message: Option<Message>,
-    view: View,
 
     options: Options,
     registers: BTreeMap<String, Vec<String>>,
-}
-
-struct View {
-    scroll: usize,
-    total: Range<usize>,
-    term_col: usize,
-    term_row: usize,
-    line_mapping: Vec<IndexPath>,
-}
-enum ViewJumpBy {
-    Line,
-    Mouse,
-    HalfWin,
-    Win,
-}
-
-impl Default for View {
-    fn default() -> Self {
-        Self {
-            scroll: 0,
-            total: 0..0,
-            term_col: 80,
-            term_row: 24,
-            line_mapping: Vec::new(),
-        }
-    }
-}
-
-impl View {
-    ///
-    /// `view.visible` is called every frame, so we take the opportunity to
-    /// fetch and cache the terminal size again.
-    fn visible(&mut self) -> Range<usize> {
-        if let Ok(term_size) = terminal::size() {
-            self.term_col = term_size.col as usize;
-            self.term_row = term_size.row as usize;
-        }
-        self.scroll..self.scroll + self.term_row - 2
-    }
-
-    fn jump_by(&self, by: ViewJumpBy) -> usize {
-        use ViewJumpBy::*;
-        match by {
-            Line => return 1,
-            Mouse => return 3,
-            _ => (),
-        }
-        match by {
-            HalfWin => self.term_row / 2,
-            Win => self.term_row - 1,
-            _ => unreachable!(),
-        }
-    }
-
-    fn down(&mut self, by: ViewJumpBy) {
-        let by = self.jump_by(by);
-        let end = self.total.end;
-        if self.scroll + by < end {
-            self.scroll += by;
-        } else {
-            self.scroll = end - 1;
-        }
-    }
-
-    fn up(&mut self, by: ViewJumpBy) {
-        let by = self.jump_by(by);
-        if by < self.scroll {
-            self.scroll -= by;
-        } else {
-            self.scroll = 0;
-        }
-    }
 }
 
 impl Navigate {
@@ -130,18 +57,17 @@ impl Navigate {
     ) -> Self {
         Self {
             tree: Node::new(),
+            provider,
+            provider_name,
+            view: View::default(),
             cursor: (0, IndexPath::default()),
 
             user_script,
-            provider,
-            provider_name,
 
             input: Input::default(),
             term: terminal::raw_with_panic_hook().ok(),
             exit: None,
-
             message: None,
-            view: View::default(),
 
             options: Options::default(),
             registers: BTreeMap::default(),

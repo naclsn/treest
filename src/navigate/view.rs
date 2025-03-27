@@ -48,6 +48,85 @@ const PRETTY: Appearance = Appearance {
 
 pub const MESSAGE_WINDOW_HEIGHT: usize = 12;
 
+pub struct View {
+    scroll: usize,
+    total: Range<usize>,
+    invalidated: Option<Range<usize>>,
+    term_col: usize,
+    term_row: usize,
+    line_mapping: Vec<IndexPath>,
+}
+
+pub enum ViewJumpBy {
+    Line,
+    Mouse,
+    HalfWin,
+    Win,
+}
+
+impl Default for View {
+    fn default() -> Self {
+        Self {
+            scroll: 0,
+            total: 0..0,
+            invalidated: None,
+            term_col: 80,
+            term_row: 24,
+            line_mapping: Vec::new(),
+        }
+    }
+}
+
+impl View {
+    ///
+    /// `view.visible` is called every frame, so we take the opportunity to
+    /// fetch and cache the terminal size again.
+    fn visible(&mut self) -> Range<usize> {
+        if let Ok(term_size) = terminal::size() {
+            self.term_col = term_size.col as usize;
+            self.term_row = term_size.row as usize;
+        }
+        self.scroll..self.scroll + self.term_row - 2
+    }
+
+    pub fn path_for(&self, line: usize) -> Option<&IndexPath> {
+        self.line_mapping.get(line)
+    }
+
+    fn jump_by(&self, by: ViewJumpBy) -> usize {
+        use ViewJumpBy::*;
+        match by {
+            Line => return 1,
+            Mouse => return 3,
+            _ => (),
+        }
+        match by {
+            HalfWin => self.term_row / 2,
+            Win => self.term_row - 1,
+            _ => unreachable!(),
+        }
+    }
+
+    pub fn down(&mut self, by: ViewJumpBy) {
+        let by = self.jump_by(by);
+        let end = self.total.end;
+        if self.scroll + by < end {
+            self.scroll += by;
+        } else {
+            self.scroll = end - 1;
+        }
+    }
+
+    pub fn up(&mut self, by: ViewJumpBy) {
+        let by = self.jump_by(by);
+        if by < self.scroll {
+            self.scroll -= by;
+        } else {
+            self.scroll = 0;
+        }
+    }
+}
+
 impl Navigate {
     // TODO: (almost everywhere) check and trim at terminal width (visible) characters
     pub fn render(&mut self, f: &mut impl Write) -> IoResult<()> {
