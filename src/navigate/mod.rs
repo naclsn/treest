@@ -65,7 +65,7 @@ impl Navigate {
             user_script,
 
             input: Input::default(),
-            term: terminal::raw_with_panic_hook().ok(),
+            term: None, //terminal::raw_with_panic_hook().ok(),
             exit: None,
             message: None,
 
@@ -115,7 +115,7 @@ impl Navigate {
         writeln!(f)?;
         for (name, hist) in self.registers.iter().take(50) {
             writeln!(f, "--- {} {name} {}:", name.len(), hist.len())?;
-            for val in hist.iter().take(500) {
+            for val in hist.iter().rev().take(500).rev() {
                 writeln!(f, "  {} {val}", val.len())?;
             }
         }
@@ -123,6 +123,28 @@ impl Navigate {
     }
 
     pub fn main_loop(mut self) -> Result<(), MainLoopExitText> {
+        //panic!("\x1b[H\x1b[J");
+        self.set_folded(Target::Cursor, false);
+        dbg![self.render_tree_range(0..13)];
+
+        self.cursor_enter();
+        dbg![self.render_tree_range(0..13)];
+
+        self.cursor_prev(true);
+        self.cursor_prev(false);
+        dbg![self.render_tree_range(0..13)];
+
+        self.cursor_enter();
+        dbg![self.render_tree_range(0..13)];
+
+        dbg![self.render_tree_range(3..16)];
+
+        self.cursor_prev(true);
+        self.cursor_enter();
+        dbg![self.render_tree_range(3..16)];
+
+        return Ok(());
+
         let user_script = self.user_script.clone();
 
         if let Some(mut dir) = dirs::cache_dir() {

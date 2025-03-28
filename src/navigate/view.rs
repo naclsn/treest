@@ -1,3 +1,4 @@
+use std::fmt::{Debug, Formatter, Result as FmtResult};
 use std::io::{Result as IoResult, Write};
 use std::ops::Range;
 
@@ -58,11 +59,36 @@ pub struct View {
     line_mapping: Vec<IndexPath>,
 }
 
-#[derive(Debug)]
 struct RenderingState<'a> {
     node_path: Vec<&'a Node>,
     index_path: IndexPath,
-    depth: usize,
+    indent: Vec<&'static str>,
+
+    range: &'a Range<usize>,
+    cursor: usize,
+    lines: Vec<String>,
+
+    appearance: &'a Appearance,
+}
+
+impl Debug for RenderingState<'_> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
+        f.debug_struct("RenderingState")
+            .field(
+                "node_path",
+                &self
+                    .node_path
+                    .iter()
+                    .map(|n| n.fragment)
+                    .collect::<Vec<_>>(),
+            )
+            .field("index_path", &self.index_path)
+            .field("indent", &self.indent)
+            .field("range", &self.range)
+            .field("cursor", &self.cursor)
+            .field("lines", &self.lines)
+            .finish()
+    }
 }
 
 pub enum ViewJumpBy {
@@ -312,56 +338,126 @@ impl Navigate {
         }
     }
 
+    /// Render the lines for a view range of the tree.
+    ///
     /// Range is a 0-base in-view half-open range: start of 0 and `view.scroll` to initial 0 means
     /// the root is shown in the first returned line, end of 1 would mean it's the only line
     /// returned.
-    fn render_tree_range(&mut self, range: Range<usize>) -> Vec<String> {
-        let skip = range.start + self.view.scroll;
-
-        // The `Option` type is used for the short-circuit syntax.
+    pub fn render_tree_range(&mut self, range: Range<usize>) -> Vec<String> {
+        // The `Result` type is used for the short-circuit syntax:
+        // * `Err(lines)` means it's done rendering and that's the actual result;
+        // * `Ok(state)` means range couldn't be fulfill in this iteration.
+        // It is (for now) a panic when the top level result is `Ok` (the range was too big).
         fn inner<'a>(
             mut state: RenderingState<'a>,
-            provider: Box<dyn Provider>,
-            accu: &mut Vec<String>,
-            avail: usize,
-            appearance: &'a Appearance,
-        ) -> Option<RenderingState<'a>> {
-            let node = state.node_path.last().unwrap();
-
-            let mut line = String::new();
-            if node.is_marked() {
-                line.push_str(" \x1b[4m");
+            provider: &Box<dyn Provider>,
+            node: &'a Node,
+        ) -> Result<RenderingState<'a>, Vec<String>> {
+            // +1 because state.lines always contains the line this iteration planned to maybe fill
+            if state.range.len() + 1 == state.lines.len() {
+                state.lines.pop();
+                return Err(state.lines); // done (enough lines to fulfill `range`)
             }
-            //if cursor {
-            //    line.push_str("\x1b[7m");
-            //}
 
-            line.push_str(&provider.display(&state.node_path[..].into()));
+            state.node_path.push(node);
 
-            accu.push(line);
+            // only check start; it should not be possible to reach end because of len check above
+            if state.range.start <= state.cursor {
+                let line = state.lines.last_mut().unwrap();
+                if node.is_marked() {
+                    line.push_str(" \x1b[4m");
+                }
+                // TODO
+                //if cursor {
+                //    line.push_str("\x1b[7m");
+                //}
+                line.push_str(&provider.display(&state.node_path[..].into()));
+            }
 
-            (accu.len() < avail).then_some(state)
+            state.cursor += 1;
+
+            if !node.is_folded() {
+                if let &[ref init_children @ .., last_child] = &node.children().unwrap()[..] {
+                    if init_children.is_empty() {
+                        // child occupies same line
+                        state.cursor -= 1;
+                    }
+
+                    if !init_children.is_empty() {
+                        if let Some(branch) = state.indent.last_mut() {
+                            *branch = if std::ptr::eq(state.appearance.branch, *branch) {
+                                state.appearance.indent
+                            } else {
+                                state.appearance.indent_last
+                            };
+                        }
+                        state.indent.push(state.appearance.branch)
+                    }
+                    state.index_path.push(0);
+
+                    {
+                        let index = state.index_path.len() - 1;
+                        for child in init_children.into_iter() {
+                            // branch in loop: need to check on every iteration, better than alloc in loop
+                            if state.range.start <= state.cursor {
+                                state.lines.push(state.indent.join(""));
+                            }
+                            state = inner(state, provider, child)?;
+                            state.index_path[index] += 1;
+                        }
+
+                        if !init_children.is_empty() && state.range.start <= state.cursor {
+                            *state.indent.last_mut().unwrap() = state.appearance.branch_last;
+                            state.lines.push(state.indent.join(""));
+                        }
+                        state = inner(state, provider, last_child)?;
+                    }
+
+                    if state.range.len() == state.lines.len() {
+                        return Err(state.lines); // done (just reached it)
+                    }
+
+                    state.index_path.pop();
+                    if !init_children.is_empty() {
+                        state.indent.pop();
+                        if let Some(indent) = state.indent.last_mut() {
+                            *indent = if std::ptr::eq(state.appearance.indent, *indent) {
+                                state.appearance.branch
+                            } else {
+                                state.appearance.branch_last
+                            };
+                        }
+                    }
+                }
+            }
+
+            state.node_path.pop();
+            Ok(state)
         }
 
-        let mut state = if 0 == skip {
-            // no skipping
-            RenderingState {
-                node_path: vec![&self.tree],
-                index_path: IndexPath::default(),
-                depth: 0,
-            }
-        } else {
-            skip_to(&self.tree, skip)
+        let mut state = RenderingState {
+            node_path: Vec::new(),
+            index_path: IndexPath::default(),
+            indent: Vec::new(),
+
+            range: &range,
+            cursor: 0,
+            lines: Vec::new(),
+
+            appearance: match self.options.appearance.as_str() {
+                "pretty" => &PRETTY,
+                "ascii" => &ASCII,
+                _ => unreachable!(),
+            },
         };
 
-        let appearance = match self.options.appearance.as_str() {
-            "pretty" => PRETTY,
-            _ => ASCII,
-        };
+        // when inner is called, if it needs a line it expects a line;
+        // only case where top-level needs to ensure a line is available:
+        if 0 == state.range.start {
+            state.lines.push(String::new());
+        }
 
-        let mut lines = Vec::new();
-        inner(state, &mut lines, range.len(), &appearance);
-        lines
+        inner(state, &self.provider, &self.tree).unwrap_err()
     }
 }
 
@@ -371,7 +467,7 @@ impl Navigate {
 /// "root-relative" means it starts counting from the root (no scroll offset involved). As such
 /// `target` should be at least 1 (there is no "display line 0") and a target of exactly 1 is the
 /// rendering of the root itself.
-fn skip_to<'a>(root: &'a Node, target: usize) -> RenderingState<'a> {
+/*fn skip_to<'a>(root: &'a Node, target: usize) -> RenderingState<'a> {
     if 0 == target {
         panic!("skip_to called with target of 0");
     }
@@ -380,18 +476,18 @@ fn skip_to<'a>(root: &'a Node, target: usize) -> RenderingState<'a> {
     // * Err(r) means it reached the target and r is correct
     // * Ok((r, current)) means it didn't reach the target and stopped at current
     fn inner<'a>(
-        (mut r, mut current): (RenderingState<'a>, usize),
+        (mut state, mut current): (RenderingState<'a>, usize),
         target: usize,
         node: &'a Node,
     ) -> Result<(RenderingState<'a>, usize), RenderingState<'a>> {
         current += 1;
         if target == current {
-            r.node_path.push(node);
-            return Err(r); // found
+            state.node_path.push(node);
+            return Err(state); // found
         }
 
         if !node.is_folded() {
-            let children = node.children().unwrap();
+            let mut children = node.children().unwrap();
             if !children.is_empty() {
                 let single = 1 == children.len();
                 if single {
@@ -399,30 +495,41 @@ fn skip_to<'a>(root: &'a Node, target: usize) -> RenderingState<'a> {
                     // that has =0 or >1 children will count for the line
                     current -= 1;
                 } else {
-                    r.depth += 1;
+                    state.indent.push("todo")
                 }
+                state.node_path.push(node);
 
-                r.node_path.push(node);
+                let last_child = children.pop().unwrap();
+                let last_index = children.len();
+
                 for (index, child) in children.into_iter().enumerate() {
-                    r.index_path.push(index);
-                    (r, current) = inner((r, current), target, child)?;
-                    r.index_path.pop();
+                    state.index_path.push(index);
+                    (state, current) = inner((state, current), target, child)?;
+                    state.index_path.pop();
                 }
-                r.node_path.pop();
 
                 if !single {
-                    r.depth -= 1;
+                    *state.indent.last_mut().unwrap() = "todo";
+                }
+
+                state.index_path.push(last_index);
+                (state, current) = inner((state, current), target, last_child)?;
+                state.index_path.pop();
+
+                state.node_path.pop();
+                if !single {
+                    state.indent.pop();
                 }
             }
         }
 
-        return Ok((r, current)); // cannot find
+        Ok((state, current)) // cannot find
     }
 
     let r = RenderingState {
-        node_path: Vec::default(),
+        node_path: Vec::new(),
         index_path: IndexPath::default(),
-        depth: 0,
+        indent: Vec::new(),
     };
     match inner((r, 0), target, root) {
         Err(r) => r,
@@ -431,7 +538,7 @@ fn skip_to<'a>(root: &'a Node, target: usize) -> RenderingState<'a> {
         #[cfg(test)]
         Ok((r, _)) => r,
     }
-}
+}*/
 
 #[cfg(test)]
 #[test]
@@ -448,7 +555,7 @@ fn test_something() {
             Self {
                 node_path: value.node_path.into_iter().map(|n| n.fragment).collect(),
                 index_path: value.index_path,
-                depth: value.depth,
+                depth: value.indent,
             }
         }
     }
