@@ -42,6 +42,7 @@ pub struct Navigate {
 
     input: Input,
     term: Option<RestoreWithPanicHook>,
+
     exit: Option<String>,
     message: Option<Message>,
 
@@ -55,17 +56,23 @@ impl Navigate {
         provider: Box<dyn Provider>,
         provider_name: String,
     ) -> Self {
+        // TODO: sigwinch and [potential equivalent](https://stackoverflow.com/a/10857339)
+        let (term_col, term_row) = terminal::size()
+            .map(|t| (t.col as usize, t.row as usize))
+            .unwrap_or((80, 24));
+
         Self {
             tree: Node::new(),
             provider,
             provider_name,
-            view: View::default(),
+            view: View::new(0, term_col, term_row - 2),
             cursor: (0, IndexPath::default()),
 
             user_script,
 
             input: Input::default(),
-            term: None, //terminal::raw_with_panic_hook().ok(),
+            term: terminal::raw_with_panic_hook().ok(),
+
             exit: None,
             message: None,
 
@@ -123,28 +130,6 @@ impl Navigate {
     }
 
     pub fn main_loop(mut self) -> Result<(), MainLoopExitText> {
-        //panic!("\x1b[H\x1b[J");
-        self.set_folded(Target::Cursor, false);
-        dbg![self.render_tree_range(0..13)];
-
-        self.cursor_enter();
-        dbg![self.render_tree_range(0..13)];
-
-        self.cursor_prev(true);
-        self.cursor_prev(false);
-        dbg![self.render_tree_range(0..13)];
-
-        self.cursor_enter();
-        dbg![self.render_tree_range(0..13)];
-
-        dbg![self.render_tree_range(3..16)];
-
-        self.cursor_prev(true);
-        self.cursor_enter();
-        dbg![self.render_tree_range(3..16)];
-
-        return Ok(());
-
         let user_script = self.user_script.clone();
 
         if let Some(mut dir) = dirs::cache_dir() {
