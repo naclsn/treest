@@ -24,8 +24,9 @@ impl Options {
 
     pub fn set(&mut self, name: &str, value: String) -> Option<()> {
         match name {
-            "appearance" | "appea" => Some(self.appearance = value),
-            _ => None,
+            "appearance" | "appea" => self.appearance = value,
+            _ => return None,
         }
+        Some(())
     }
 }

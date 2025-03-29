@@ -158,7 +158,7 @@ pub fn lua_tokens_split(line: &str, point: usize) -> PromptSplitInfo {
                 let mut state = Integral;
                 let ox = line[head..].starts_with("0x");
 
-                head + &line[head..]
+                head + line[head..]
                     .bytes()
                     .position(|b| {
                         state = match (&state, b) {

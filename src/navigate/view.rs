@@ -5,7 +5,6 @@ use std::ops::Range;
 use crate::navigate::options::Options;
 use crate::navigate::{IndexPath, Message, Navigate};
 use crate::providers::Provider;
-use crate::terminal;
 use crate::tree::Node;
 
 struct Appearance {
@@ -160,19 +159,19 @@ impl View {
     fn render_tree_range(
         &mut self,
         root: &Node,
-        provider: &Box<dyn Provider>,
+        provider: &dyn Provider,
         cursor: &[usize],
         options: &Options,
     ) -> Vec<Option<String>> {
         fn inner<'a>(
             mut state: RenderingState<'a>,
             node: &'a Node,
-            provider: &Box<dyn Provider>,
+            provider: &dyn Provider,
             cursor: &'a [usize],
         ) -> RenderingState<'a> {
             state.node_path.push(node);
 
-            if state.visible_range.contains(&state.total_height) {
+            if state.visible_range.contains(state.total_height) {
                 let at = state.lines.len();
 
                 let was_cursor = at == state.was_cursor_line;
@@ -229,7 +228,7 @@ impl View {
 
                     {
                         let index = state.index_path.len() - 1;
-                        for child in init_children.into_iter() {
+                        for child in init_children.iter() {
                             state = inner(state, child, provider, cursor);
                             state.index_path[index] += 1;
                         }
@@ -296,7 +295,7 @@ impl View {
         &mut self,
         f: &mut impl Write,
         root: &Node,
-        provider: &Box<dyn Provider>,
+        provider: &dyn Provider,
         cursor: &[usize],
         options: &Options,
     ) -> IoResult<()> {
@@ -326,7 +325,7 @@ impl Navigate {
         self.view.render(
             f,
             &self.tree,
-            &self.provider,
+            self.provider.as_ref(),
             &self.cursor.1[..self.cursor.0],
             &self.options,
         )
