@@ -34,6 +34,7 @@ const ASCII: Appearance = Appearance {
     scroll_botmost: "% ",
     scroll_after: ": ",
 };
+
 const PRETTY: Appearance = Appearance {
     branch: "\u{251c}\u{2500}\u{2500} ",
     indent: "\u{2502}   ",
@@ -47,8 +48,6 @@ const PRETTY: Appearance = Appearance {
     scroll_botmost: "\u{2503} ",
     scroll_after: "\u{2502} ",
 };
-
-pub const MESSAGE_WINDOW_HEIGHT: usize = 12;
 
 pub struct View {
     scroll: usize,

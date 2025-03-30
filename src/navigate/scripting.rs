@@ -8,6 +8,7 @@ use mlua::{UserData, UserDataFields, UserDataMethods};
 use crate::lua::help;
 use crate::lua::structs::{IndexPath, Listing, NodeInfo, PromptSplitInfo, Target};
 use crate::lua::structs::{MoveFlags, RequestFlags, ScrollFlags, SearchFlags};
+use crate::navigate::options::Options;
 use crate::navigate::{Navigate, ViewJumpBy};
 use crate::prompt;
 use crate::terminal::{self, KeyTransError};
@@ -148,7 +149,8 @@ impl Navigate {
         let mut clear_message = false;
         if let Some(ref mut message) = self.message {
             if !message.interacted {
-                message.interacted = self.input.tick_message(message);
+                let msh = self.options.messageheight as usize;
+                message.interacted = self.input.tick_message(message, msh);
                 return Ok(None);
             } else {
                 clear_message = true;
@@ -197,7 +199,7 @@ impl Navigate {
     /// Exported in treest.
     /// Get the value of an option.
     /// See `treest:list_options` for a list of the available option names.
-    fn get_option(&self, name: String) -> Result<String> {
+    fn get_option(&self, name: String) -> Result<Either<String, Either<isize, bool>>> {
         self.options.get(&name).ok_or(Error::BadArgument {
             to: Some("get_option".to_string()),
             pos: 2,
@@ -230,7 +232,7 @@ impl Navigate {
     /// Exported in treest.
     /// List the available options (*names* only).
     fn list_options(&self) -> Result<Vec<String>> {
-        Ok(vec!["appearance".into()])
+        Ok(Options::list().iter().map(|s| s.to_string()).collect())
     }
 
     /// Exported in treest.
@@ -332,6 +334,7 @@ impl Navigate {
         Ok(())
     }
 
+    // TODO: make completion be @type fun(line:string, point:integer): string[]
     /// Exported in treest.
     /// Prompt the user for a line of input.
     /// The result is stored in the register given by `ps`.
@@ -473,7 +476,11 @@ impl Navigate {
     /// Exported in treest.
     /// Set the value of an option.
     /// See `treest:list_options` for a list of the available option names.
-    fn set_option(&mut self, name: String, value: String) -> Result<()> {
+    fn set_option(
+        &mut self,
+        name: String,
+        value: Either<String, Either<isize, bool>>,
+    ) -> Result<()> {
         self.options.set(&name, value).ok_or(Error::BadArgument {
             to: Some("set_option".to_string()),
             pos: 2,
@@ -554,47 +561,51 @@ impl Navigate {
 /// more. `help('help')` returns this text. As a hack, the special subject `'_treest'` returns
 /// a string with all the method of the global object `treest`.
 fn help(subj: Option<String>) -> Result<Option<String>> {
-    let subj = subj.unwrap_or_default();
-    if subj.is_empty() {
-        Ok(Some(format!(
-            "// TODO: call with no arg or with an empty string should be more welcoming\nAPI items:{}",
-            help::HELP
-                .iter()
-                .map(|ex| if let Some(table) = ex.table {
-                    format!(" {table}.{}", ex.name)
-                } else {
-                    format!(" {}", ex.name)
-                })
-                .collect::<String>()
-        )))
-    } else if "_treest" == subj {
-        Ok(Some(
-            help::HELP
+    Ok(match subj.unwrap_or_default().as_str() {
+        "" => "hi :3
+
+to get help about a subject, use `:help <subject>`
+or call the `help(<subject>)` lua function
+
+`_treest` is a special subject that lists other subjects
+
+(TODO: flesh this help out)"
+            .to_string()
+            .into(),
+
+        "_treest" => {
+            let functions = help::HELP
                 .iter()
                 .filter(|ex| Some("treest") == ex.table)
-                .map(|ex| ex.name)
-                .collect::<Vec<_>>()
-                .join(" "),
-        ))
-    } else if let Some(ex) = help::HELP.iter().find(|ex| subj == ex.name) {
-        let mut r = ex.doc.join("\n") + "\n";
-        let ret = (ex.ret)();
-        if !ex.params.is_empty() || "nil" != ret {
-            r += "\n";
+                .map(|ex| format!("{}()", ex.name));
+            let options = Options::list().iter().map(|op| format!("'{op}'"));
+            Some(functions.chain(options).collect::<Vec<_>>().join(" "))
         }
 
-        for (name, typ) in ex.params {
-            r += &format!("@param {name} {}\n", typ());
+        f if f.ends_with("()") || f.ends_with("(") => {
+            let Some(ex) = help::HELP.iter().find(|ex| ex.name.starts_with(f)) else {
+                return Ok(None);
+            };
+            let mut r = ex.doc.join("\n") + "\n";
+            let ret = (ex.ret)();
+            if !ex.params.is_empty() || "nil" != ret {
+                r += "\n";
+            }
+            for (name, typ) in ex.params {
+                r += &format!("@param {name} {}\n", typ());
+            }
+            if "nil" != ret {
+                r += &format!("@return {}\n", ret);
+            }
+            Some(r)
         }
 
-        if "nil" != ret {
-            r += &format!("@return {}\n", ret);
+        o if o.starts_with("'") => {
+            Options::help(&o.strip_suffix("'").unwrap_or(o)[1..]).map(String::from)
         }
 
-        Ok(Some(r))
-    } else {
-        Ok(None)
-    }
+        _ => None,
+    })
 }
 
 /// Exported in string.
@@ -635,6 +646,7 @@ fn pretty(obj: Value) -> Result<String> {
     Ok(format!("{obj:#?}"))
 }
 
+// TODO: make completion be @type fun(line:string, point:integer): string[]
 /// Exported globally.
 /// Prompt the user for a line of input.
 /// Same as `treest:prompt` except the history must be managed manually
@@ -657,7 +669,7 @@ fn prompt(ps: String, history: Vec<String>, completion: Function) -> Result<Opti
 }
 
 /// Exported in string.
-/// Split a line of input in lua tokens.
+/// Split a line of input into lua tokens.
 fn prompt_lua_tokens_split(line: String, point: Option<usize>) -> Result<PromptSplitInfo> {
     Ok(prompt::lua_tokens_split(&line, point.unwrap_or(0)))
 }

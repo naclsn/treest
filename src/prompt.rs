@@ -81,7 +81,7 @@ pub fn shell_like_split(line: &str, point: usize) -> PromptSplitInfo {
     PromptSplitInfo { parts, in_part }
 }
 
-/// Split `line` in lua tokens.
+/// Split `line` into lua tokens.
 /// The input might be incomplete (such as an unclosed string or comment). Strings and comments
 /// will contains their delimiters and escape sequences are not processed. Runs of unexpected
 /// characters are grouped into singular tokens.

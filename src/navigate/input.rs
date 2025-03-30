@@ -128,14 +128,14 @@ impl Input {
         }
     }
 
-    pub fn tick_message(&mut self, message: &mut Message) -> bool {
+    // TODO(wip): remove, make it accessible for script-side impl instead
+    pub fn tick_message(&mut self, message: &mut Message, messageheight: usize) -> bool {
         let Some(byte) = self.input.next() else {
             return false;
         };
 
         let l = message.lines.len();
-        const H: usize = view::MESSAGE_WINDOW_HEIGHT; // TODO: use messageheight from options
-        if l < H {
+        if l < messageheight {
             //if b"\x02\x04\x05\x06\n\r\x15\x19 +-Gbdefgjkuy".contains(&byte) {
             //    return false;
             //}
@@ -144,15 +144,15 @@ impl Input {
         }
 
         let o = message.offset;
-        let m = l - H;
+        let m = l - messageheight;
 
         message.offset = match byte {
             b'j' | b'e' | 0x05 | b'+' | b' ' | b'\n' | b'\r' => std::cmp::min(o + 1, m),
             b'k' | b'y' | 0x19 | b'-' => o.saturating_sub(1),
-            b'd' | 0x04 => std::cmp::min(o + H / 2, m),
-            b'u' | 0x15 => o.saturating_sub(H / 2),
-            b'f' | 0x06 => std::cmp::min(o + H - 1, m),
-            b'b' | 0x02 => o.saturating_sub(H - 1),
+            b'd' | 0x04 => std::cmp::min(o + messageheight / 2, m),
+            b'u' | 0x15 => o.saturating_sub(messageheight / 2),
+            b'f' | 0x06 => std::cmp::min(o + messageheight - 1, m),
+            b'b' | 0x02 => o.saturating_sub(messageheight - 1),
             b'g' => 0,
             b'G' => m,
             _ => {

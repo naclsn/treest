@@ -46,7 +46,7 @@ m.completions = {
                   then for subname in pairs(val) do choices[nn], nn = subname, nn+1 end
                 end
             end
-            for name in help('_treest'):gmatch('%w+')
+            for name in help('_treest'):gmatch('%S+')
               do choices[nn], nn = name, nn+1
             end
         end
@@ -54,7 +54,7 @@ m.completions = {
         return compgen(incompl, choices)
     end,
 
-    ---@type (fun(line:string, point:string): string[])[]
+    ---@type table<string, fun(line:string, point:integer): string[]>
     for_command= {},
 }
 
