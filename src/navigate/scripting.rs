@@ -2,11 +2,11 @@ use std::fs::File;
 use std::io::{self, Read};
 use std::result::Result as StdResult;
 
+use mlua::{AnyUserData, MetaMethod, UserData, UserDataFields, UserDataMethods};
 use mlua::{BString, Either, Error, Function, Lua, Result, Table, Value};
-use mlua::{UserData, UserDataFields, UserDataMethods};
 
 use crate::lua::help;
-use crate::lua::structs::{IndexPath, Listing, NodeInfo, PromptSplitInfo, Target};
+use crate::lua::structs::{Completion, IndexPath, Listing, NodeInfo, PromptSplitInfo, Target};
 use crate::lua::structs::{MoveFlags, RequestFlags, ScrollFlags, SearchFlags};
 use crate::navigate::options::Options;
 use crate::navigate::{Navigate, ViewJumpBy};
@@ -29,12 +29,22 @@ macro_rules! make_exports {
 macro_rules! make_methods {
     ($methods:ident; $($fn_mut:tt $name:ident($($param:ident),*);)*) => {
         $(make_methods!(@ $methods; $fn_mut $name($($param),*));)*
-    };
-    (@ $methods:ident; fn $name:ident(lua, $($param:ident),*)) => {
-        $methods.add_method(stringify!($name), |lua, this, ($($param,)*)| this.$name(lua, $($param),*))
-    };
-    (@ $methods:ident; mut $name:ident(lua, $($param:ident),*)) => {
-        $methods.add_method_mut(stringify!($name), |lua, this, ($($param,)*)| this.$name(lua, $($param),*))
+
+        $methods.add_meta_function(MetaMethod::Pairs, |lua, this: Value| {
+            let mut names = [$(stringify!($name)),*].iter();
+
+            let next = lua.create_function_mut(move |_, this: AnyUserData| {
+                if let Some(&name) = names.next() {
+                    let index: Function = this.metatable()?.get("__index")?;
+                    let value: Value = index.call((this, name))?;
+                    Ok((Some(name), Some(value)))
+                } else {
+                    Ok((None, None))
+                }
+            })?;
+
+            Ok((next, this))
+        });
     };
     (@ $methods:ident; fn $name:ident($($param:ident),*)) => {
         $methods.add_method(stringify!($name), |_, this, ($($param,)*)| this.$name($($param),*))
@@ -341,13 +351,12 @@ impl Navigate {
         Ok(())
     }
 
-    // TODO: make completion be @type fun(line:string, point:integer): string[]
     /// Exported in treest.
     /// Prompt the user for a line of input.
     /// The result is stored in the register given by `ps`.
     /// History is also taken from the previous values of the register.
     /// See also `treest:set_register` for direct access.
-    fn prompt(&mut self, ps: String, completion: Function) -> Result<Option<String>> {
+    fn prompt(&mut self, ps: String, completion: Completion) -> Result<Option<String>> {
         let history = self.register_entries(&ps);
 
         terminal::cursor_on();
@@ -566,19 +575,18 @@ fn help(subj: Option<String>) -> Result<Option<String>> {
 to get help about a subject, use `:help <subject>`
 or call the `help(<subject>)` lua function
 
-`_treest` is a special subject that lists other subjects
+`*` is a special subject that lists other subjects
 
 (TODO: flesh this help out)"
             .to_string()
             .into(),
 
-        "_treest" => {
-            let functions = help::HELP
-                .iter()
-                .filter(|ex| Some("treest") == ex.table)
-                .map(|ex| format!("{}()", ex.name));
+        "*" => {
+            let functions = help::HELP.iter().map(|ex| format!("{}()", ex.name));
             let options = Options::list().iter().map(|op| format!("'{op}'"));
-            Some(functions.chain(options).collect::<Vec<_>>().join(" "))
+            let mut all: Vec<_> = functions.chain(options).collect();
+            all.sort_unstable();
+            Some(all.join("\n") + "\n")
         }
 
         f if f.ends_with("()") || f.ends_with("(") => {
@@ -600,7 +608,7 @@ or call the `help(<subject>)` lua function
         }
 
         o if o.starts_with("'") => {
-            Options::help(&o.strip_suffix("'").unwrap_or(o)[1..]).map(String::from)
+            Options::help(&o.strip_suffix("'").unwrap_or(o)[1..]).map(|ln| ln.join("\n") + "\n")
         }
 
         _ => None,
@@ -645,12 +653,11 @@ fn pretty(obj: Value) -> Result<String> {
     Ok(format!("{obj:#?}"))
 }
 
-// TODO: make completion be @type fun(line:string, point:integer): string[]
 /// Exported globally.
 /// Prompt the user for a line of input.
 /// Same as `treest:prompt` except the history must be managed manually
 /// (the argument `history` isn't mutated).
-fn prompt(ps: String, history: Vec<String>, completion: Function) -> Result<Option<String>> {
+fn prompt(ps: String, history: Vec<String>, completion: Completion) -> Result<Option<String>> {
     terminal::cursor_on();
     terminal::mouse_off();
     let ans = prompt::prompt(

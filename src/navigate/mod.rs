@@ -143,7 +143,7 @@ impl Navigate {
         let defaults: Table = lua
             .load_from_function(
                 "defaults",
-                lua.load(include_str!("../defaults.lua"))
+                lua.load(crate::include_etc!("defaults.lua"))
                     .set_name("@defaults.lua")
                     .into_function()
                     .unwrap(),

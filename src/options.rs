@@ -113,7 +113,7 @@ impl Options {
 
                 "--defaults" => {
                     let file = args.next().unwrap_or("-".into());
-                    let defaults = include_str!("defaults.lua");
+                    let defaults = crate::include_etc!("defaults.lua");
                     if "-" == file {
                         write!(&mut io::stdout(), "{}", defaults).unwrap();
                     } else {

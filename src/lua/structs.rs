@@ -1,7 +1,7 @@
 use std::fs::ReadDir;
 use std::ops::{Deref, DerefMut};
 
-use mlua::{Error, FromLua, IntoLua, Lua, Result, Value};
+use mlua::{Error, FromLua, Function, IntoLua, Lua, Result, Value};
 
 use crate::lua::typedoc::{LuaTypeAliasDoc, LuaTypeDoc};
 
@@ -160,6 +160,34 @@ mod _listing {
     impl LuaTypeDoc for Listing {
         fn lua_type_doc() -> String {
             "fun():string?".to_string()
+        }
+    }
+}
+
+pub use _completion::Completion;
+mod _completion {
+    use super::*;
+
+    #[derive(Debug, Clone)]
+    pub struct Completion(Function);
+
+    impl Deref for Completion {
+        type Target = Function;
+
+        fn deref(&self) -> &Self::Target {
+            &self.0
+        }
+    }
+
+    impl FromLua for Completion {
+        fn from_lua(value: Value, lua: &Lua) -> Result<Self> {
+            Function::from_lua(value, lua).map(Self)
+        }
+    }
+
+    impl LuaTypeDoc for Completion {
+        fn lua_type_doc() -> String {
+            "fun(line:string, point:integer): string[]?".to_string()
         }
     }
 }

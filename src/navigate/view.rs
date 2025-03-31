@@ -73,6 +73,7 @@ struct RenderingState<'a> {
     now_cursor_line: &'a mut usize,
 
     appearance: &'a Appearance,
+    singlechildline: bool,
 }
 
 impl Debug for RenderingState<'_> {
@@ -166,6 +167,7 @@ impl View {
             node: &'a Node,
             provider: &dyn Provider,
             cursor: &'a [usize],
+            is_node_sch: bool,
         ) -> RenderingState<'a> {
             state.node_path.push(node);
 
@@ -190,17 +192,20 @@ impl View {
                         state.line_mapping[at] = state.index_path.clone();
                     }
 
-                    let mut line = state.indent.join("");
-                    if node.is_marked() {
-                        line.push_str(" \x1b[4m");
+                    if is_node_sch {
+                        todo!("'singlechildline'");
+                    } else {
+                        let mut line = state.indent.join("");
+                        if node.is_marked() {
+                            line.push_str(" \x1b[4m");
+                        }
+                        if now_cursor {
+                            line.push_str("\x1b[7m");
+                            *state.now_cursor_line = at;
+                        }
+                        line.push_str(&provider.display(&state.node_path[..].into()));
+                        state.lines.push(Some(line));
                     }
-                    if now_cursor {
-                        line.push_str("\x1b[7m");
-                        *state.now_cursor_line = at;
-                    }
-                    line.push_str(&provider.display(&state.node_path[..].into()));
-
-                    state.lines.push(Some(line));
                 }
             }
 
@@ -208,41 +213,45 @@ impl View {
 
             if !node.is_folded() {
                 if let &[ref init_children @ .., last_child] = &node.children().unwrap()[..] {
-                    if init_children.is_empty() {
-                        todo!();
+                    // TODO: singlechildline
+                    if false && init_children.is_empty() && state.singlechildline {
                         // child occupies same line
                         *state.total_height -= 1;
-                    }
 
-                    if let Some(branch) = state.indent.last_mut() {
-                        *branch = if std::ptr::eq(state.appearance.branch, *branch) {
-                            state.appearance.indent
-                        } else {
-                            state.appearance.indent_last
-                        };
-                    }
-                    state.indent.push(state.appearance.branch);
-                    state.index_path.push(0);
+                        state.index_path.push(0);
+                        state = inner(state, last_child, provider, cursor, true);
+                        state.index_path.pop();
+                    } else {
+                        if let Some(branch) = state.indent.last_mut() {
+                            *branch = if std::ptr::eq(state.appearance.branch, *branch) {
+                                state.appearance.indent
+                            } else {
+                                state.appearance.indent_last
+                            };
+                        }
+                        state.indent.push(state.appearance.branch);
+                        state.index_path.push(0);
 
-                    {
-                        let index = state.index_path.len() - 1;
-                        for child in init_children.iter() {
-                            state = inner(state, child, provider, cursor);
-                            state.index_path[index] += 1;
+                        {
+                            let index = state.index_path.len() - 1;
+                            for child in init_children.iter() {
+                                state = inner(state, child, provider, cursor, false);
+                                state.index_path[index] += 1;
+                            }
+
+                            *state.indent.last_mut().unwrap() = state.appearance.branch_last;
+                            state = inner(state, last_child, provider, cursor, false);
                         }
 
-                        *state.indent.last_mut().unwrap() = state.appearance.branch_last;
-                        state = inner(state, last_child, provider, cursor);
-                    }
-
-                    state.index_path.pop();
-                    state.indent.pop();
-                    if let Some(indent) = state.indent.last_mut() {
-                        *indent = if std::ptr::eq(state.appearance.indent, *indent) {
-                            state.appearance.branch
-                        } else {
-                            state.appearance.branch_last
-                        };
+                        state.index_path.pop();
+                        state.indent.pop();
+                        if let Some(indent) = state.indent.last_mut() {
+                            *indent = if std::ptr::eq(state.appearance.indent, *indent) {
+                                state.appearance.branch
+                            } else {
+                                state.appearance.branch_last
+                            };
+                        }
                     }
                 }
             }
@@ -272,9 +281,10 @@ impl View {
                 "ascii" => &ASCII,
                 _ => unreachable!(),
             },
+            singlechildline: options.singlechildline,
         };
 
-        let mut lines = inner(state, root, provider, cursor).lines;
+        let mut lines = inner(state, root, provider, cursor, false).lines;
 
         let render_height = lines.len();
         if render_height < self.line_mapping.len() {
@@ -376,7 +386,6 @@ impl Navigate {
             let visible_range = self.message.scroll..self.message.scroll + height;
             for (k, line) in self.message.lines[visible_range].iter().enumerate() {
                 if self.options.messagescrollbar {
-                    // TODO: use match
                     let sb = if k < top {
                         appearance.scroll_before
                     } else if top == k && 0 == top {

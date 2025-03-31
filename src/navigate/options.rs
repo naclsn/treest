@@ -10,7 +10,7 @@ trait OptionValueConvert: Sized {
 macro_rules! make_options {
     ($vis:vis struct $ty:ident {
         $(
-            #[$doc:meta]
+            $(#[doc = $doc:literal])+
             $fvis:vis $field:ident|$fld:ident: $fty:ty = $default:expr
         ),*$(,)?
     }) => {
@@ -42,9 +42,9 @@ macro_rules! make_options {
                 Some(())
             }
 
-            pub fn help(name: &str) -> Option<&'static str> {
+            pub fn help(name: &str) -> Option<&'static [&'static str]> {
                 match name {
-                    $(stringify!($field) | stringify!($fld) => Some(stringify!($doc)),)*
+                    $(stringify!($field) | stringify!($fld) => Some(&[$($doc),+]),)*
                     _ => None,
                 }
             }
@@ -60,14 +60,14 @@ make_options! {
     pub struct Options {
         /// "pretty" to use box-drawing characters, or "ascii" for more limited font/terminal/render/..
         pub appearance|appea: String = "pretty",
-        /// put single-child on the same line as parent
+        /// put single-child on the same line as parent (not supported yet)
         pub singlechildline|sch: bool = true,
         /// height of the message window
         pub messageheight|msh: u16 = 12,
         /// show a scollbar-like position indicator for long messages
         pub messagescrollbar|msba: bool = true,
-        /// only when singlechildline is set; >n are shortened to letters eg. "a/b/coucou"
-        pub pathshorten|psh: u8 = 2,
+        // /// only when singlechildline is set; >n are shortened to letters eg. "a/b/coucou"
+        // pub pathshorten|psh: u8 = 2,
         /// highlight search matches
         pub hlsearch|hls: bool = false,
     }
