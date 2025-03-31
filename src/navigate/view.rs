@@ -3,7 +3,7 @@ use std::io::{Result as IoResult, Write};
 use std::ops::Range;
 
 use crate::navigate::options::Options;
-use crate::navigate::{IndexPath, Message, Navigate};
+use crate::navigate::{IndexPath, Navigate};
 use crate::providers::Provider;
 use crate::terminal;
 use crate::tree::Node;
@@ -52,11 +52,11 @@ const PRETTY: Appearance = Appearance {
 
 #[derive(Default)]
 pub struct View {
-    scroll: usize,
+    pub scroll: usize, // FIXME: pub because of treest:view_down/_up
     line_mapping: Vec<IndexPath>,
     cursor_line: usize,
-    visible_height: usize,
-    total_height: usize,
+    pub visible_height: usize, // FIXME: pub because of treest:view_down/_up
+    pub total_height: usize,   // FIXME: pub because of treest:view_down/_up
 }
 
 struct RenderingState<'a> {
@@ -105,41 +105,53 @@ pub enum ViewJumpBy {
     Win,
 }
 
-impl View {
-    pub fn path_for(&self, line: usize) -> Option<&IndexPath> {
-        self.line_mapping.get(line)
-    }
-
-    fn jump_by(&self, by: ViewJumpBy) -> usize {
-        use ViewJumpBy::*;
-        match by {
-            Line => return 1,
-            Mouse => return 3,
-            _ => (),
-        }
-        match by {
-            HalfWin => self.visible_height / 2,
-            Win => self.visible_height - 1,
+impl ViewJumpBy {
+    pub fn new_by(amount: &str) -> Self {
+        match amount {
+            "line" => ViewJumpBy::Line,
+            "win" => ViewJumpBy::Win,
+            "halfwin" => ViewJumpBy::HalfWin,
+            "mouse" => ViewJumpBy::Mouse,
             _ => unreachable!(),
         }
     }
 
-    pub fn down(&mut self, by: ViewJumpBy) {
-        let by = self.jump_by(by);
-        if self.scroll + by < self.total_height {
-            self.scroll += by;
-        } else {
-            self.scroll = self.total_height - 1;
+    fn jump_by(&self, win: usize) -> usize {
+        use ViewJumpBy::*;
+        match self {
+            Line => return 1,
+            Mouse => return 3,
+            _ => (),
+        }
+        match self {
+            HalfWin => win / 2,
+            Win => win - 1,
+            _ => unreachable!(),
         }
     }
 
-    pub fn up(&mut self, by: ViewJumpBy) {
-        let by = self.jump_by(by);
-        if by < self.scroll {
-            self.scroll -= by;
+    pub fn down(&mut self, scroll: &mut usize, win: usize, max: usize) {
+        let by = self.jump_by(win);
+        if *scroll + by < max {
+            *scroll += by;
         } else {
-            self.scroll = 0;
+            *scroll = max.saturating_sub(1);
         }
+    }
+
+    pub fn up(&mut self, scroll: &mut usize, win: usize, min: usize) {
+        let by = self.jump_by(win);
+        if min + by < *scroll {
+            *scroll -= by;
+        } else {
+            *scroll = min;
+        }
+    }
+}
+
+impl View {
+    pub fn path_for(&self, line: usize) -> Option<&IndexPath> {
+        self.line_mapping.get(line)
     }
 
     /// Compute the lines needed to re-render the visible range of the tree.
@@ -314,10 +326,26 @@ impl Navigate {
             .map(|t| (t.col as usize, t.row as usize))
             .unwrap_or((80, 24));
 
+        // clear message from previous render
+        write!(
+            f,
+            "\x1b[{}H\x1b[J",
+            term_row - self.message.previous_height - 1
+        )?;
+        let len = self.message.lines.len();
+        let msh = self.options.messageheight as usize;
+        let height = std::cmp::min(len, msh);
+        self.message.previous_height = height;
+
+        // update render tree(s)
         {
             let col_offset = 0;
             let cols = term_col;
-            let rows = term_row - 2;
+            let rows = if self.message.lines.is_empty() {
+                term_row - 2
+            } else {
+                term_row - height - 2
+            };
 
             self.view.render(
                 f,
@@ -332,18 +360,12 @@ impl Navigate {
             )?;
         }
 
-        if let Some(Message {
-            lines,
-            scroll: offset,
-            ..
-        }) = &self.message
-        {
-            let msh = self.options.messageheight as usize;
-            let len = std::cmp::min(lines.len(), msh);
-            write!(f, "\x1b[{}H", term_row - len - 1)?;
+        // render message
+        if !self.message.lines.is_empty() {
+            write!(f, "\x1b[{}H", term_row - height - 1)?;
 
-            let top = offset * msh / lines.len();
-            let bot = std::cmp::min(top + msh * msh / lines.len(), len - 1);
+            let top = self.message.scroll * msh / len;
+            let bot = std::cmp::min(top + msh * msh / len, height - 1);
 
             let appearance = match self.options.appearance.as_str() {
                 "pretty" => PRETTY,
@@ -351,7 +373,8 @@ impl Navigate {
                 _ => unreachable!(),
             };
 
-            for (k, line) in lines[*offset..*offset + len].iter().enumerate() {
+            let visible_range = self.message.scroll..self.message.scroll + height;
+            for (k, line) in self.message.lines[visible_range].iter().enumerate() {
                 if self.options.messagescrollbar {
                     // TODO: use match
                     let sb = if k < top {
@@ -371,21 +394,23 @@ impl Navigate {
                     };
                     write!(f, "{sb}")?;
                 }
+                // TODO: trim line to available width
                 write!(f, "{line}\r\n")?;
             }
 
-            if msh < lines.len() {
-                write!(f, "-- More ({} lines) --\r\n", lines.len())?;
-            } else {
-                write!(f, "-- (End) --\r\n")?;
-            }
+            write!(f, "-- {} lines --\r\n", self.message.lines.len())?;
         } else {
             let path = self.tree.resolve(self.cursor());
             write!(f, "\x1b[{}H\x1b[K", term_row - 1)?;
             write!(f, "{}\r\n", self.provider.breadcrumbs(&path[..].into()))?;
-            write!(f, "{}", terminal::keyseqstr(self.input.get_pending()))?;
         }
 
-        Ok(())
+        write!(f, "{}", terminal::keyseqstr(self.input.get_pending()))
+    }
+
+    pub fn render_buffered(&mut self, f: &mut impl Write) -> IoResult<()> {
+        let mut buf = Vec::new();
+        self.render(&mut buf)?;
+        f.write_all(&buf)
     }
 }

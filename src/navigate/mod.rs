@@ -24,9 +24,11 @@ use crate::tree::Node;
 #[error("{0}")]
 pub struct MainLoopExitText(String);
 
+#[derive(Default)]
 pub struct Message {
     lines: Vec<String>,
-    scroll: usize, // display offset
+    scroll: usize,          // display offset
+    previous_height: usize, // height from last render
 }
 
 pub struct Navigate {
@@ -42,7 +44,7 @@ pub struct Navigate {
     term: Option<RestoreWithPanicHook>,
 
     exit: Option<String>,
-    message: Option<Message>,
+    message: Message,
 
     options: Options,
     registers: BTreeMap<String, Vec<String>>,
@@ -67,7 +69,7 @@ impl Navigate {
             term: terminal::raw_with_panic_hook().ok(),
 
             exit: None,
-            message: None,
+            message: Message::default(),
 
             options: Options::default(),
             registers: BTreeMap::default(),
@@ -340,8 +342,12 @@ return treest:_atexit()
         self.cursor.1.truncate(self.cursor.0);
     }
 
+    /// Set the message lines.
+    ///
+    /// This also resets the scrolling. Setting to an empty vector will essentially clear it.
     pub fn set_message_lines(&mut self, lines: Vec<String>) {
-        self.message = (!lines.is_empty()).then_some(Message { lines, scroll: 0 });
+        self.message.lines = lines;
+        self.message.scroll = 0;
     }
 
     pub fn register_entries(&mut self, name: &str) -> &mut Vec<String> {

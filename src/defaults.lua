@@ -138,8 +138,7 @@ m.keys = {
             local com = line:match('(%w+)')
             if not com then return m.completions.commands(line, point) end
             local comp = m.completions.for_command[com]
-            if comp then return comp(line, point) end
-            return {}
+            return comp and comp(line, point) or {}
         end)
         if not ans then return end
 
@@ -156,10 +155,9 @@ m.keys = {
     ['!']= function()
         local ans = treest:prompt('!', m.completions.files)
         if not ans then return end
-        local f = assert(io.popen(ans..' 2>&1', 'r'))
-        local out = assert(f:read('*a'))
-        f:close()
-        treest:message(out)
+        local p = assert(io.popen(ans..' 2>&1', 'r'))
+        treest:message(assert(p:read('*a')))
+        p:close()
     end,
 
     ['/']= function() search(treest:prompt('/', function() end), {'next', 'sat'}) end,
@@ -221,6 +219,8 @@ m.keys = {
     [']']= function() treest:message_scroll_down('line') end,
     ['{']= function() treest:message_scroll_up('halfwin') end,
     ['}']= function() treest:message_scroll_down('halfwin') end,
+
+    ['<C-L>']= function() treest:message({}) end,
 }
 
 m.init = function()

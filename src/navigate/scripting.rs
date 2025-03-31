@@ -71,6 +71,8 @@ impl UserData for Navigate {
             mut mark(target);
             fn  marked(target);
             mut message(text);
+            mut message_scroll_down(by);
+            mut message_scroll_up(by);
             mut next(flags);
             fn  node(target);
             fn  node_at_line(line);
@@ -136,7 +138,7 @@ impl Navigate {
     }
 
     fn _tick(&mut self) -> Result<Option<Function>> {
-        if let Err(err) = self.render(&mut io::stderr()) {
+        if let Err(err) = self.render_buffered(&mut io::stderr()) {
             // assume unrecoverable situation, bail out
             self.exit = Some(err.to_string());
             return Ok(None);
@@ -294,8 +296,9 @@ impl Navigate {
     }
 
     /// Exported in treest.
-    /// Set the message text. If it spans on multiple lines,
-    /// it will trigger the -- More -- prompt.
+    /// Set the message text. A multiline message can be interacted with through
+    /// `treest:message_scroll_up` and `treest:message_scroll_down`.
+    /// Setting to an empty vector will essentially clear it.
     fn message(&mut self, text: Option<Either<String, Vec<String>>>) -> Result<()> {
         if let Some(text) = text {
             self.set_message_lines(match text {
@@ -303,6 +306,29 @@ impl Navigate {
                 Either::Right(l) => l,
             });
         }
+        Ok(())
+    }
+
+    /// Exported in treest.
+    /// Move the message view down, revealing any hidden lines at the bottom.
+    fn message_scroll_down(&mut self, by: ScrollFlags) -> Result<()> {
+        let msh = self.options.messageheight as usize;
+        ViewJumpBy::new_by(by.amount).down(
+            &mut self.message.scroll,
+            msh,
+            self.message.lines.len().saturating_sub(msh - 1),
+        );
+        Ok(())
+    }
+
+    /// Exported in treest.
+    /// Move the message view up, revealing any hidden lines at the top.
+    fn message_scroll_up(&mut self, by: ScrollFlags) -> Result<()> {
+        ViewJumpBy::new_by(by.amount).up(
+            &mut self.message.scroll,
+            self.options.messageheight as usize,
+            0,
+        );
         Ok(())
     }
 
@@ -335,7 +361,7 @@ impl Navigate {
         );
         terminal::cursor_off();
         terminal::mouse_on();
-        eprintln!("\r\x1b[K");
+        eprint!("\r\x1b[K");
 
         if let Some(thing) = &ans {
             self.register_push(&ps, thing.clone());
@@ -512,26 +538,18 @@ impl Navigate {
     /// Exported in treest.
     /// Move the view down, revealing any hidden lines at the bottom.
     fn view_down(&mut self, by: ScrollFlags) -> Result<()> {
-        self.view.down(match by.amount {
-            "line" => ViewJumpBy::Line,
-            "win" => ViewJumpBy::Win,
-            "halfwin" => ViewJumpBy::HalfWin,
-            "mouse" => ViewJumpBy::Mouse,
-            _ => unreachable!(),
-        });
+        ViewJumpBy::new_by(by.amount).down(
+            &mut self.view.scroll,
+            self.view.visible_height,
+            self.view.total_height,
+        );
         Ok(())
     }
 
     /// Exported in treest.
     /// Move the view up, revealing any hidden lines at the top.
     fn view_up(&mut self, by: ScrollFlags) -> Result<()> {
-        self.view.up(match by.amount {
-            "line" => ViewJumpBy::Line,
-            "win" => ViewJumpBy::Win,
-            "halfwin" => ViewJumpBy::HalfWin,
-            "mouse" => ViewJumpBy::Mouse,
-            _ => unreachable!(),
-        });
+        ViewJumpBy::new_by(by.amount).up(&mut self.view.scroll, self.view.visible_height, 0);
         Ok(())
     }
 }
@@ -644,7 +662,7 @@ fn prompt(ps: String, history: Vec<String>, completion: Function) -> Result<Opti
     );
     terminal::cursor_off();
     terminal::mouse_on();
-    eprintln!("\r\x1b[K");
+    eprint!("\r\x1b[K");
 
     Ok(ans)
 }

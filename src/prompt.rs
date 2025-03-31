@@ -355,6 +355,9 @@ pub fn prompt(
                 if !s.is_empty() {
                     write!(output, "\x1b[{at}D\x1b[{}P", s.len()).ok()?;
                 }
+                if history.len() - 1 == in_hist {
+                    history[in_hist] = s.into_iter().collect();
+                }
                 in_hist -= 1;
                 s = history[in_hist].chars().collect();
                 s.iter().try_for_each(|c| write!(output, "{c}")).ok()?;
