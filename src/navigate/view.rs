@@ -73,7 +73,7 @@ struct RenderingState<'a> {
     now_cursor_line: &'a mut usize,
 
     appearance: &'a Appearance,
-    singlechildline: bool,
+    //singlechildline: bool,
 }
 
 impl Debug for RenderingState<'_> {
@@ -214,14 +214,15 @@ impl View {
             if !node.is_folded() {
                 if let &[ref init_children @ .., last_child] = &node.children().unwrap()[..] {
                     // TODO: singlechildline
-                    if false && init_children.is_empty() && state.singlechildline {
+                    /*if init_children.is_empty() && state.singlechildline {
                         // child occupies same line
                         *state.total_height -= 1;
 
                         state.index_path.push(0);
                         state = inner(state, last_child, provider, cursor, true);
                         state.index_path.pop();
-                    } else {
+                    } else*/
+                    {
                         if let Some(branch) = state.indent.last_mut() {
                             *branch = if std::ptr::eq(state.appearance.branch, *branch) {
                                 state.appearance.indent
@@ -281,7 +282,7 @@ impl View {
                 "ascii" => &ASCII,
                 _ => unreachable!(),
             },
-            singlechildline: options.singlechildline,
+            //singlechildline: options.singlechildline,
         };
 
         let mut lines = inner(state, root, provider, cursor, false).lines;
