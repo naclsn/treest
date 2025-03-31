@@ -315,16 +315,22 @@ pub fn prompt(
             }
             [.., 0x07] => pend.clear(),
             [0x08 | 127] => {
-                if 0 == at && s.is_empty() {
-                    return None;
+                if 0 == at {
+                    if s.is_empty() {
+                        return None;
+                    }
+                } else {
+                    at -= 1;
+                    s.remove(at);
+                    write!(output, "\x08\x1b[P").ok()?;
                 }
-                at -= 1;
-                s.remove(at);
-                write!(output, "\x08\x1b[P").ok()?;
             }
             [0x09] => {
-                let hints = complete(&s.into_iter().collect::<String>(), at);
-                todo!("completion hints: {hints:?}"); // TODO(!)
+                let hints = complete(&s.iter().collect::<String>(), at);
+                write!(output, "\r\x1b[A\x1b[K").ok()?;
+                // TODO: limit to term width
+                write!(output, "{}", hints.join(" ")).ok()?;
+                write!(output, "\n\r{ps}\x1b[{}C", s.len()).ok()?;
             }
             [0x0a | 0x0d] => return Some(s.into_iter().collect()),
             [0x0b] => {
@@ -366,6 +372,7 @@ pub fn prompt(
             [0x15] => {
                 write!(output, "\x1b[{at}D\x1b[{at}P").ok()?;
                 s.drain(..at);
+                at = 0;
             }
             [0x17] if 0 < at => {
                 let by = s[..at]
