@@ -26,9 +26,7 @@ pub struct MainLoopExitText(String);
 
 pub struct Message {
     lines: Vec<String>,
-    offset: usize, // display offset
-    interacted: bool, // true when the user is presumably done interacting/viewing
-                   // which means that it will get cleared before the next action
+    scroll: usize, // display offset
 }
 
 pub struct Navigate {
@@ -56,16 +54,11 @@ impl Navigate {
         provider: Box<dyn Provider>,
         provider_name: String,
     ) -> Self {
-        // TODO: sigwinch and [potential equivalent](https://stackoverflow.com/a/10857339)
-        let (term_col, term_row) = terminal::size()
-            .map(|t| (t.col as usize, t.row as usize))
-            .unwrap_or((80, 24));
-
         Self {
             tree: Node::new(),
             provider,
             provider_name,
-            view: View::new(0, term_col, term_row - 2),
+            view: View::default(),
             cursor: (0, IndexPath::default()),
 
             user_script,
@@ -171,7 +164,7 @@ impl Navigate {
 
         let exit: String = lua
             .load(
-                r#"repeat
+                "repeat
     local action = treest:_tick()
     if action
       then
@@ -180,7 +173,7 @@ impl Navigate {
     end
 until treest.quitting
 return treest:_atexit()
-"#,
+",
             )
             .set_name("=_heartbeat")
             .call(())
@@ -348,13 +341,7 @@ return treest:_atexit()
     }
 
     pub fn set_message_lines(&mut self, lines: Vec<String>) {
-        if !lines.is_empty() {
-            self.message = Some(Message {
-                lines,
-                offset: 0,
-                interacted: false,
-            });
-        }
+        self.message = (!lines.is_empty()).then_some(Message { lines, scroll: 0 });
     }
 
     pub fn register_entries(&mut self, name: &str) -> &mut Vec<String> {

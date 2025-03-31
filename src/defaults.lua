@@ -169,8 +169,6 @@ m.keys = {
 
     ['<C-E>']= function() treest:view_down('line') end,
     ['<C-Y>']= function() treest:view_up('line') end,
-    ['<BackwardWheel>']= function() treest:view_down('mouse') end,
-    ['<ForwardWheel>']= function() treest:view_up('mouse') end,
     ['<C-D>']= function() treest:view_down('halfwin') end,
     ['<C-U>']= function() treest:view_up('halfwin') end,
     ['<C-F>']= function() treest:view_down('win') end,
@@ -205,6 +203,24 @@ m.keys = {
           else treest:fold(node.path)
         end
     end,
+
+    ['<BackwardWheel>']= function()
+        if false -- TODO: term_row - treest.mouse_event_pos.row < treest:get_option('msh')
+            then treest:message_scroll_down('mouse')
+            else treest:view_down('mouse')
+        end
+    end,
+    ['<ForwardWheel>']= function()
+        if false -- TODO: term_row - treest.mouse_event_pos.row < treest:get_option('msh')
+            then treest:message_scroll_up('mouse')
+            else treest:view_up('mouse')
+        end
+    end,
+
+    ['[']= function() treest:message_scroll_up('line') end,
+    [']']= function() treest:message_scroll_down('line') end,
+    ['{']= function() treest:message_scroll_up('halfwin') end,
+    ['}']= function() treest:message_scroll_down('halfwin') end,
 }
 
 m.init = function()

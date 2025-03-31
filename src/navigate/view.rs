@@ -5,6 +5,7 @@ use std::ops::Range;
 use crate::navigate::options::Options;
 use crate::navigate::{IndexPath, Message, Navigate};
 use crate::providers::Provider;
+use crate::terminal;
 use crate::tree::Node;
 
 struct Appearance {
@@ -49,13 +50,12 @@ const PRETTY: Appearance = Appearance {
     scroll_after: "\u{2502} ",
 };
 
+#[derive(Default)]
 pub struct View {
     scroll: usize,
-    cols: Range<usize>,
-    rows: usize, // tree views all start at row 0
-
     line_mapping: Vec<IndexPath>,
     cursor_line: usize,
+    visible_height: usize,
     total_height: usize,
 }
 
@@ -106,18 +106,6 @@ pub enum ViewJumpBy {
 }
 
 impl View {
-    pub fn new(col_offset: usize, cols: usize, rows: usize) -> Self {
-        Self {
-            scroll: 0,
-            cols: col_offset..cols,
-            rows,
-
-            line_mapping: Vec::new(),
-            cursor_line: 0,
-            total_height: 0,
-        }
-    }
-
     pub fn path_for(&self, line: usize) -> Option<&IndexPath> {
         self.line_mapping.get(line)
     }
@@ -130,8 +118,8 @@ impl View {
             _ => (),
         }
         match by {
-            HalfWin => self.rows / 2,
-            Win => self.rows - 1,
+            HalfWin => self.visible_height / 2,
+            Win => self.visible_height - 1,
             _ => unreachable!(),
         }
     }
@@ -157,9 +145,8 @@ impl View {
     /// Compute the lines needed to re-render the visible range of the tree.
     fn render_tree_range(
         &mut self,
-        root: &Node,
-        provider: &dyn Provider,
-        cursor: &[usize],
+        (root, provider, cursor): (&Node, &dyn Provider, &[usize]),
+        visible_range: Range<usize>,
         options: &Options,
     ) -> Vec<Option<String>> {
         fn inner<'a>(
@@ -252,6 +239,7 @@ impl View {
             state
         }
 
+        self.visible_height = visible_range.len();
         self.total_height = 0;
 
         let state = RenderingState {
@@ -259,7 +247,7 @@ impl View {
             index_path: IndexPath::default(),
             indent: Vec::new(),
 
-            visible_range: self.scroll..self.scroll + self.rows,
+            visible_range,
             total_height: &mut self.total_height,
             lines: Vec::new(),
 
@@ -293,14 +281,15 @@ impl View {
     pub fn render(
         &mut self,
         f: &mut impl Write,
-        root: &Node,
-        provider: &dyn Provider,
-        cursor: &[usize],
+        (root, provider, cursor): (&Node, &dyn Provider, &[usize]),
+        cols: Range<usize>,
+        rows: usize, // tree views all start at row 0
         options: &Options,
     ) -> IoResult<()> {
-        let lines = self.render_tree_range(root, provider, cursor, options);
+        let range = self.scroll..self.scroll + rows;
+        let lines = self.render_tree_range((root, provider, cursor), range, options);
 
-        write!(f, "\x1b[;{}H", self.cols.start + 1)?;
+        write!(f, "\x1b[;{}H", cols.start + 1)?;
         for (off, line) in lines.iter().enumerate() {
             // None truly means "don't touch the line, it's good as is"
             // Some means replace with this, (TODO) clearing existing as needed
@@ -309,7 +298,7 @@ impl View {
                 //      * trim leading spaces (increment col as needed)
                 //      * use '\r\n' when col is 0
                 // TODO: trim line to available width, cache used width for later clearing
-                write!(f, "\x1b[{};{}H", off + 1, self.cols.start + 1)?;
+                write!(f, "\x1b[{};{}H", off + 1, cols.start + 1)?;
                 write!(f, "\x1b[K")?; // temporary hard full-line clear
                 write!(f, "{line}\x1b[m")?;
             }
@@ -321,12 +310,82 @@ impl View {
 
 impl Navigate {
     pub fn render(&mut self, f: &mut impl Write) -> IoResult<()> {
-        self.view.render(
-            f,
-            &self.tree,
-            self.provider.as_ref(),
-            &self.cursor.1[..self.cursor.0],
-            &self.options,
-        )
+        let (term_col, term_row) = terminal::size()
+            .map(|t| (t.col as usize, t.row as usize))
+            .unwrap_or((80, 24));
+
+        {
+            let col_offset = 0;
+            let cols = term_col;
+            let rows = term_row - 2;
+
+            self.view.render(
+                f,
+                (
+                    &self.tree,
+                    self.provider.as_ref(),
+                    &self.cursor.1[..self.cursor.0],
+                ),
+                col_offset..cols,
+                rows,
+                &self.options,
+            )?;
+        }
+
+        if let Some(Message {
+            lines,
+            scroll: offset,
+            ..
+        }) = &self.message
+        {
+            let msh = self.options.messageheight as usize;
+            let len = std::cmp::min(lines.len(), msh);
+            write!(f, "\x1b[{}H", term_row - len - 1)?;
+
+            let top = offset * msh / lines.len();
+            let bot = std::cmp::min(top + msh * msh / lines.len(), len - 1);
+
+            let appearance = match self.options.appearance.as_str() {
+                "pretty" => PRETTY,
+                "ascii" => ASCII,
+                _ => unreachable!(),
+            };
+
+            for (k, line) in lines[*offset..*offset + len].iter().enumerate() {
+                if self.options.messagescrollbar {
+                    // TODO: use match
+                    let sb = if k < top {
+                        appearance.scroll_before
+                    } else if top == k && 0 == top {
+                        appearance.scroll_topmost
+                    } else if bot == k && bot < msh {
+                        appearance.scroll_botmost
+                    } else if top == k {
+                        appearance.scroll_top
+                    } else if k < bot {
+                        appearance.scroll_bar
+                    } else if bot == k {
+                        appearance.scroll_bot
+                    } else {
+                        appearance.scroll_after
+                    };
+                    write!(f, "{sb}")?;
+                }
+                write!(f, "{line}\r\n")?;
+            }
+
+            if msh < lines.len() {
+                write!(f, "-- More ({} lines) --\r\n", lines.len())?;
+            } else {
+                write!(f, "-- (End) --\r\n")?;
+            }
+        } else {
+            let path = self.tree.resolve(self.cursor());
+            write!(f, "\x1b[{}H\x1b[K", term_row - 1)?;
+            write!(f, "{}\r\n", self.provider.breadcrumbs(&path[..].into()))?;
+            write!(f, "{}", terminal::keyseqstr(self.input.get_pending()))?;
+        }
+
+        Ok(())
     }
 }

@@ -68,6 +68,8 @@ make_options! {
         pub messagescrollbar|msba: bool = true,
         /// only when singlechildline is set; >n are shortened to letters eg. "a/b/coucou"
         pub pathshorten|psh: u8 = 2,
+        /// highlight search matches
+        pub hlsearch|hls: bool = false,
     }
 }
 
@@ -93,7 +95,7 @@ impl OptionValueConvert for bool {
 
 impl OptionValueConvert for u16 {
     fn my_into(&self) -> OptionValue {
-        Either::Right(Either::Left((*self).try_into().unwrap()))
+        Either::Right(Either::Left(*self as isize))
     }
 
     fn my_from(value: OptionValue) -> Option<Self> {
@@ -103,7 +105,7 @@ impl OptionValueConvert for u16 {
 
 impl OptionValueConvert for u8 {
     fn my_into(&self) -> OptionValue {
-        Either::Right(Either::Left((*self).try_into().unwrap()))
+        Either::Right(Either::Left(*self as isize))
     }
 
     fn my_from(value: OptionValue) -> Option<Self> {

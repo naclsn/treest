@@ -136,34 +136,15 @@ impl Navigate {
     }
 
     fn _tick(&mut self) -> Result<Option<Function>> {
-        self.render(&mut io::stderr()).map_err(Error::external)?; // xxx: should it just explodes?
-
-        // behavior of the message is:
-        //     there is a message
-        //     interract with the message
-        //     -> quit this interraction sets `interacted`
-        //     get until 1 more action from self.input (ie that isn't None)
-        //     -> clear message just before plaing action
-        // in that way if the action re-opens a prompt, the message window is still on screen
-
-        let mut clear_message = false;
-        if let Some(ref mut message) = self.message {
-            if !message.interacted {
-                let msh = self.options.messageheight as usize;
-                message.interacted = self.input.tick_message(message, msh);
-                return Ok(None);
-            } else {
-                clear_message = true;
-            }
+        if let Err(err) = self.render(&mut io::stderr()) {
+            // assume unrecoverable situation, bail out
+            self.exit = Some(err.to_string());
+            return Ok(None);
         }
 
         // rem: cannot call here beacause `self` is borrowed mut
         // (would cause a BadArgument: UserDataBorrowMutError)
-        let action = self.input.tick().cloned();
-        if action.is_some() && clear_message {
-            self.message = None
-        }
-        Ok(action)
+        Ok(self.input.tick().cloned())
     }
 
     /// Exported in treest.
