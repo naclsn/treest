@@ -355,7 +355,8 @@ impl Navigate {
     /// Prompt the user for a line of input.
     /// The result is stored in the register given by `ps`.
     /// History is also taken from the previous values of the register.
-    /// See also `treest:set_register` for direct access.
+    /// The `point` argument to the `completion` function is base-0.
+    /// See also `treest:set_register` for direct register access.
     fn prompt(&mut self, ps: String, completion: Completion) -> Result<Option<String>> {
         let history = self.register_entries(&ps);
 
@@ -657,6 +658,7 @@ fn pretty(obj: Value) -> Result<String> {
 /// Prompt the user for a line of input.
 /// Same as `treest:prompt` except the history must be managed manually
 /// (the argument `history` isn't mutated).
+/// The `point` argument to the `completion` function is base-0.
 fn prompt(ps: String, history: Vec<String>, completion: Completion) -> Result<Option<String>> {
     terminal::cursor_on();
     terminal::mouse_off();
@@ -677,13 +679,13 @@ fn prompt(ps: String, history: Vec<String>, completion: Completion) -> Result<Op
 /// Exported in string.
 /// Split a line of input into lua tokens.
 fn prompt_lua_tokens_split(line: String, point: Option<usize>) -> Result<PromptSplitInfo> {
-    Ok(prompt::lua_tokens_split(&line, point.unwrap_or(0)))
+    Ok(prompt::lua_tokens_split(&line, point))
 }
 
 /// Exported in string.
 /// Split a line of input in a shell-like manner.
 fn prompt_shell_like_split(line: String, point: Option<usize>) -> Result<PromptSplitInfo> {
-    Ok(prompt::shell_like_split(&line, point.unwrap_or(0)))
+    Ok(prompt::shell_like_split(&line, point))
 }
 
 fn transpose_keytranserror(seq: &str, err: KeyTransError) -> Error {

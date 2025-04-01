@@ -40,6 +40,7 @@ m.completions = {
     ---@param point number
     script = function(line, point)
         local p = line:prompt_lua_tokens_split(point)
+        do return {'split:', debug.pretty(p):gsub('\n', '')} end
         local incompl = p.parts[p.in_part]
         local choices, n = {}, 1
         for _, val in pairs(_G)

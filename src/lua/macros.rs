@@ -1,19 +1,11 @@
 #[macro_export]
 macro_rules! struct_lua_conversion {
     ($($vis:vis struct $ty:ident {
-        $($fvis:vis $field:ident: $fty:ty),*$(,)?
+        $($fvis:vis $field:ident: $fty:ty $({$from:expr; $into:expr})?),*$(,)?
     })*) => {$(
         #[derive(Clone, Default, Debug)]
         $vis struct $ty {
             $($fvis $field: $fty),*
-        }
-
-        impl ::mlua::IntoLua for $ty {
-            fn into_lua(self, lua: &::mlua::Lua) -> ::mlua::Result<::mlua::Value> {
-                let t = lua.create_table()?;
-                $(t.raw_set(stringify!($field), self.$field)?;)*
-                Ok(::mlua::Value::Table(t))
-            }
         }
 
         impl ::mlua::FromLua for $ty {
@@ -22,6 +14,7 @@ macro_rules! struct_lua_conversion {
                     Ok(Self {
                         $($field: table
                             .get(stringify!($field))
+                            $(.map($from as fn($fty) -> $fty))?
                             .map_err(|err| ::mlua::Error::WithContext {
                                 context: format!(
                                     "field {} required on type {}",
@@ -38,6 +31,14 @@ macro_rules! struct_lua_conversion {
                         message: Some("expected table".to_string()),
                     })
                 }
+            }
+        }
+
+        impl ::mlua::IntoLua for $ty {
+            fn into_lua(self, lua: &::mlua::Lua) -> ::mlua::Result<::mlua::Value> {
+                let t = lua.create_table()?;
+                $(t.raw_set(stringify!($field), $($into)?(self.$field))?;)*
+                Ok(::mlua::Value::Table(t))
             }
         }
 

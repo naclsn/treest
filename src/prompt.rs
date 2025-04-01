@@ -3,7 +3,8 @@ use std::mem;
 
 use crate::lua::structs::PromptSplitInfo;
 
-/// Split `line` in a shell-line args manner:
+/// Split `line` in a shell-line.
+///
 /// * words are split on (unicode) "whitespace" characters
 /// * backslash and single quotes preserve literal meaning
 /// * single quotes cannot contain a single quote
@@ -18,10 +19,10 @@ use crate::lua::structs::PromptSplitInfo;
 ///
 /// There is always at least 1 part in the result's `parts`.
 /// `point` is used to set `in_part` to the index of the part containing it.
-pub fn shell_like_split(line: &str, point: usize) -> PromptSplitInfo {
+pub fn shell_like_split(line: &str, point: Option<usize>) -> PromptSplitInfo {
     let mut parts = Vec::new();
     let mut curr = String::new();
-    let mut in_part = 0;
+    let mut in_part = None;
 
     enum State {
         Word,
@@ -36,6 +37,13 @@ pub fn shell_like_split(line: &str, point: usize) -> PromptSplitInfo {
 
     let mut chars = line.chars().enumerate();
     while let Some((k, c)) = chars.next() {
+        if in_part.is_none() && point.is_some_and(|p| p == k) {
+            in_part = Some(parts.len());
+            if matches!(state, Blank) && c.is_whitespace() {
+                parts.push("".to_string());
+            }
+        }
+
         match state {
             Word | Blank if '\'' == c => state = SingleQuote,
             Word | Blank if '\"' == c => state = DoubleQuote,
@@ -45,9 +53,6 @@ pub fn shell_like_split(line: &str, point: usize) -> PromptSplitInfo {
                 None => break,
             },
             Word if c.is_whitespace() => {
-                if 0 == in_part && point < k {
-                    in_part = parts.len();
-                }
                 parts.push(mem::take(&mut curr));
                 state = Blank;
             }
@@ -74,14 +79,16 @@ pub fn shell_like_split(line: &str, point: usize) -> PromptSplitInfo {
             DoubleQuote => curr.push(c),
         }
     }
-    if !matches!(state, Blank) {
+    if !matches!(state, Blank) || parts.is_empty() {
         parts.push(curr);
     }
 
+    let in_part = in_part.unwrap_or(parts.len() - 1);
     PromptSplitInfo { parts, in_part }
 }
 
 /// Split `line` into lua tokens.
+///
 /// The input might be incomplete (such as an unclosed string or comment). Strings and comments
 /// will contains their delimiters and escape sequences are not processed. Runs of unexpected
 /// characters are grouped into singular tokens.
@@ -89,9 +96,9 @@ pub fn shell_like_split(line: &str, point: usize) -> PromptSplitInfo {
 /// If the input only consists of whitespaces, the result's `parts` will be empty
 /// and as such `in_part` will be irrelevant. Otherwise `in_part` is the index
 /// of the token containing `point`.
-pub fn lua_tokens_split(line: &str, point: usize) -> PromptSplitInfo {
+pub fn lua_tokens_split(line: &str, point: Option<usize>) -> PromptSplitInfo {
     let mut parts = Vec::new();
-    let mut in_part = 0;
+    let mut in_part = None;
 
     let mut head = 0;
     while {
@@ -212,8 +219,17 @@ pub fn lua_tokens_split(line: &str, point: usize) -> PromptSplitInfo {
 
         parts.push(line[head..ahead].to_string());
 
-        if (head..ahead).contains(&point) {
-            in_part = parts.len() - 1;
+        if in_part.is_none() {
+            if let Some(point) = point {
+                // token     t o k e n      token
+                //      head[         [ahead
+                if point < head {
+                    in_part = Some(parts.len() - 1);
+                }
+                if (head..ahead).contains(&point) {
+                    in_part = Some(parts.len() - 1);
+                }
+            }
         }
         head = ahead;
     }
@@ -222,6 +238,7 @@ pub fn lua_tokens_split(line: &str, point: usize) -> PromptSplitInfo {
 }
 
 /// A readline-like prompt.
+///
 /// The cursor is expected to be on the first column already. `ps` is the prompt, it is used
 /// without a trailing space. The completion function receive the current line of input and the
 /// *character position* of the point. The history is of course not edited, it is caller choice to
@@ -326,11 +343,19 @@ pub fn prompt(
                 }
             }
             [0x09] => {
-                let hints = complete(&s.iter().collect::<String>(), at);
-                write!(output, "\r\x1b[A\x1b[K").ok()?;
-                // TODO: limit to term width
-                write!(output, "{}", hints.join(" ")).ok()?;
-                write!(output, "\n\r{ps}\x1b[{}C", s.len()).ok()?;
+                match &complete(&s.iter().collect::<String>(), at)[..] {
+                    [] => (),
+                    [single] => todo!("insert completion: {single:?}"),
+                    hints => {
+                        write!(output, "\r\x1b[A\x1b[K").ok()?;
+                        // TODO: limit to term width
+                        write!(output, "{}", hints.join(" ")).ok()?;
+                        write!(output, "\n\r{ps}").ok()?;
+                        if 0 < at {
+                            write!(output, "\x1b[{}C", at).ok()?;
+                        }
+                    }
+                }
             }
             [0x0a | 0x0d] => return Some(s.into_iter().collect()),
             [0x0b] => {
@@ -425,9 +450,19 @@ pub fn prompt(
 
 #[cfg(test)]
 macro_rules! assert_parts {
+    ($split:ident, $line:literal, $point:literal, $parts:expr, $in_part:expr $(,)?) => {
+        let info = $split($line, Some($point));
+        assert_eq!(info.parts, $parts, "{}", stringify!($split($line, $point)));
+        assert_eq!(
+            info.in_part,
+            $in_part,
+            "{}",
+            stringify!($split($line, $point)),
+        );
+    };
     ($split:ident, $line:literal, $parts:expr $(,)?) => {
-        let parts = $split($line, 0).parts;
-        assert_eq!(parts, $parts, "{}({:?})", stringify!($split), $line);
+        let parts = $split($line, None).parts;
+        assert_eq!(parts, $parts, "{}", stringify!($split($line)));
     };
 }
 
@@ -435,6 +470,7 @@ macro_rules! assert_parts {
 #[test]
 fn test_split() {
     assert_parts!(shell_like_split, "", [""]);
+    assert_parts!(shell_like_split, " ", [""]);
     assert_parts!(shell_like_split, "coucou ", ["coucou"]);
     assert_parts!(
         shell_like_split,
@@ -447,6 +483,12 @@ fn test_split() {
         ["quoted", "and", "disjoi'\n\\t\"", "ye\"y"],
     );
     assert_parts!(shell_like_split, "it's fine", ["its fine"]);
+    assert_parts!(shell_like_split, "one two", 0, ["one", "two"], 0);
+    assert_parts!(shell_like_split, "one two", 3, ["one", "two"], 0);
+    assert_parts!(shell_like_split, "one two", 4, ["one", "two"], 1);
+    assert_parts!(shell_like_split, "one two", 6, ["one", "two"], 1);
+    assert_parts!(shell_like_split, "one two", 7, ["one", "two"], 1);
+    assert_parts!(shell_like_split, "one  two", 4, ["one", "", "two"], 1);
 
     assert_parts!(lua_tokens_split, "", [""; 0]);
     assert_parts!(
@@ -478,4 +520,10 @@ hi]]
         ".5 ..5 ...5 3.0 53e6 1.4e-2-0xabc+1",
         [".5", "..", "5", "...", "5", "3.0", "53e6", "1.4e-2", "-", "0xabc", "+", "1"],
     );
+    assert_parts!(lua_tokens_split, "one two", 0, ["one", "two"], 0);
+    assert_parts!(lua_tokens_split, "one two", 3, ["one", "two"], 0);
+    assert_parts!(lua_tokens_split, "one two", 4, ["one", "two"], 1);
+    assert_parts!(lua_tokens_split, "one two", 6, ["one", "two"], 1);
+    assert_parts!(lua_tokens_split, "one two", 7, ["one", "two"], 1);
+    assert_parts!(lua_tokens_split, "one  two", 4, ["one", "", "two"], 1);
 }

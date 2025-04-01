@@ -131,21 +131,21 @@ impl ViewJumpBy {
         }
     }
 
-    pub fn down(&mut self, scroll: &mut usize, win: usize, max: usize) {
+    pub fn down(&mut self, scroll: &mut usize, win: usize, top: usize) {
         let by = self.jump_by(win);
-        if *scroll + by < max {
+        if *scroll + by < top {
             *scroll += by;
         } else {
-            *scroll = max.saturating_sub(1);
+            *scroll = top.saturating_sub(1);
         }
     }
 
-    pub fn up(&mut self, scroll: &mut usize, win: usize, min: usize) {
+    pub fn up(&mut self, scroll: &mut usize, win: usize, bot: usize) {
         let by = self.jump_by(win);
-        if min + by < *scroll {
+        if bot + by < *scroll {
             *scroll -= by;
         } else {
-            *scroll = min;
+            *scroll = bot;
         }
     }
 }
