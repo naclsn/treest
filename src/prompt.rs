@@ -79,11 +79,14 @@ pub fn shell_like_split(line: &str, point: Option<usize>) -> PromptSplitInfo {
             DoubleQuote => curr.push(c),
         }
     }
-    if !matches!(state, Blank) || parts.is_empty() {
+
+    if !matches!(state, Blank) || parts.is_empty() || point.is_some() && in_part.is_none() {
         parts.push(curr);
     }
+    if point.is_some() && in_part.is_none() {
+        in_part = Some(parts.len() - 1);
+    }
 
-    let in_part = in_part.unwrap_or(parts.len() - 1);
     PromptSplitInfo { parts, in_part }
 }
 
@@ -234,9 +237,16 @@ pub fn lua_tokens_split(line: &str, point: Option<usize>) -> PromptSplitInfo {
         head = ahead;
     }
 
+    //let in_part = in_part.unwrap_or(todo!());
     PromptSplitInfo { parts, in_part }
 }
 
+// TODO: this should be moved into navigate so it can integrate better with:
+//      * watchers updates (think eg inotify for fs-based)
+//      * key mapping? tho we dont have mode mapping and dont plan to
+//      * redrawing the breadcrumbs line after completion session
+//      * base inputs and outputs on the same instance of the same streams
+//      * ... idk
 /// A readline-like prompt.
 ///
 /// The cursor is expected to be on the first column already. `ps` is the prompt, it is used
@@ -451,18 +461,13 @@ pub fn prompt(
 #[cfg(test)]
 macro_rules! assert_parts {
     ($split:ident, $line:literal, $point:literal, $parts:expr, $in_part:expr $(,)?) => {
-        let info = $split($line, Some($point));
-        assert_eq!(info.parts, $parts, "{}", stringify!($split($line, $point)));
-        assert_eq!(
-            info.in_part,
-            $in_part,
-            "{}",
-            stringify!($split($line, $point)),
-        );
+        let r = $split($line, Some($point));
+        assert_eq!(r.parts, $parts, stringify!($split($line, $point)));
+        assert_eq!(r.in_part, Some($in_part), stringify!($split($line, $point)));
     };
     ($split:ident, $line:literal, $parts:expr $(,)?) => {
         let parts = $split($line, None).parts;
-        assert_eq!(parts, $parts, "{}", stringify!($split($line)));
+        assert_eq!(parts, $parts, stringify!($split($line)));
     };
 }
 
@@ -488,7 +493,9 @@ fn test_split() {
     assert_parts!(shell_like_split, "one two", 4, ["one", "two"], 1);
     assert_parts!(shell_like_split, "one two", 6, ["one", "two"], 1);
     assert_parts!(shell_like_split, "one two", 7, ["one", "two"], 1);
+    assert_parts!(shell_like_split, " one two", 0, ["", "one", "two"], 0);
     assert_parts!(shell_like_split, "one  two", 4, ["one", "", "two"], 1);
+    assert_parts!(shell_like_split, "one two ", 8, ["one", "two", ""], 2);
 
     assert_parts!(lua_tokens_split, "", [""; 0]);
     assert_parts!(
@@ -525,5 +532,7 @@ hi]]
     assert_parts!(lua_tokens_split, "one two", 4, ["one", "two"], 1);
     assert_parts!(lua_tokens_split, "one two", 6, ["one", "two"], 1);
     assert_parts!(lua_tokens_split, "one two", 7, ["one", "two"], 1);
+    assert_parts!(lua_tokens_split, " one two", 0, ["", "one", "two"], 0);
     assert_parts!(lua_tokens_split, "one  two", 4, ["one", "", "two"], 1);
+    assert_parts!(lua_tokens_split, "one two ", 8, ["one", "two", ""], 2);
 }

@@ -37,7 +37,7 @@ macro_rules! struct_lua_conversion {
         impl ::mlua::IntoLua for $ty {
             fn into_lua(self, lua: &::mlua::Lua) -> ::mlua::Result<::mlua::Value> {
                 let t = lua.create_table()?;
-                $(t.raw_set(stringify!($field), $($into)?(self.$field))?;)*
+                $(t.raw_set(stringify!($field), $(($into as fn($fty) -> $fty))?(self.$field))?;)*
                 Ok(::mlua::Value::Table(t))
             }
         }
