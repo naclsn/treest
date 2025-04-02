@@ -20,7 +20,7 @@ m.completions = {
         local incompl = p.parts[p.in_part]
         local choices, n = {}, 1
         for k, _ in pairs(m.commands) do choices[n], n = k, n + 1 end
-        return compgen(incompl or '', choices)
+        return compgen(incompl, choices)
     end,
 
     ---@param line string
@@ -29,20 +29,14 @@ m.completions = {
         local p = line:prompt_shell_like_split(point)
         local incompl = p.parts[p.in_part]
         local choices, n = {}, 1
-
-        local maybedir = os.list(incompl)
-        if maybedir
-        then
-            if not incompl:match('/$') then incompl = incompl..'/' end
-            for f in maybedir do choices[n], n = incompl..f, n + 1 end
-        else
-            local basename = incompl:find('[^/]+/?$') or 1
-            maybedir = os.list(incompl:sub(1, basename - 1))
-            if not maybedir then return {} end
-            for f in maybedir do choices[n], n = f, n + 1 end
+        local dir = incompl
+        if not dir:match('/$')
+            then dir = dir:match('(.*/)[^/]+$') or ''
         end
-
-        return compgen(incompl or '', choices)
+        local readdir = os.list(dir)
+        if not readdir then return {} end
+        for f in readdir do choices[n], n = dir..f, n + 1 end
+        return compgen(incompl, choices)
     end,
 
     ---@param line string
@@ -58,7 +52,7 @@ m.completions = {
                 for name in pairs(val) do choices[n], n = name, n + 1 end
             end
         end
-        return compgen(incompl or '', choices)
+        return compgen(incompl, choices)
     end,
 
     ---@type table<string, fun(line:string, point:integer): string[]>
