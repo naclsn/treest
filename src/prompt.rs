@@ -582,18 +582,6 @@ pub fn prompt(
                     s.insert(at, c);
                 }
                 at += 1;
-                // TODO: filter&keep_compl if still match
-                //if let Some(ComplSess {
-                //    hints,
-                //    in_hint,
-                //    hint_pos,
-                //}) = &mut compl
-                //{
-                //    let mut common = hints.remove(*in_hint);
-                //    common.push(c);
-                //    hints.retain(|s| s.starts_with(&common));
-                //    hint_pos.clear();
-                //}
             }
 
             _ => (),

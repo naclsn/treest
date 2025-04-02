@@ -641,11 +641,13 @@ fn keytrans(seq: String) -> Result<BString> {
 }
 
 /// Exported in os.
-/// Return an iterator function that lists the names in a directory.
-fn list(dir: String) -> Result<Listing> {
-    std::fs::read_dir(dir)
-        .map_err(Error::external)
-        .map(Listing::new)
+/// Return an iterator function that lists the names in a directory
+/// or `nil` and an error message.
+fn list(dir: String) -> Result<(Option<Listing>, Option<String>)> {
+    match std::fs::read_dir(if dir.is_empty() { "." } else { &dir }) {
+        Ok(ls) => Ok((Some(Listing::new(ls)), None)),
+        Err(err) => Ok((None, Some(err.to_string()))),
+    }
 }
 
 /// Exported in debug.
