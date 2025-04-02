@@ -40,7 +40,7 @@ pub fn shell_like_split(line: &str, point: Option<usize>) -> PromptSplitInfo {
         if in_part.is_none() && point.is_some_and(|p| p == k) {
             in_part = Some(parts.len());
             if matches!(state, Blank) && c.is_whitespace() {
-                parts.push("".to_string());
+                parts.push(String::new());
             }
         }
 
@@ -222,22 +222,30 @@ pub fn lua_tokens_split(line: &str, point: Option<usize>) -> PromptSplitInfo {
 
         parts.push(line[head..ahead].to_string());
 
-        if in_part.is_none() {
-            if let Some(point) = point {
-                // token     t o k e n      token
-                //      head[         [ahead
-                if point < head {
-                    in_part = Some(parts.len() - 1);
-                }
-                if (head..ahead).contains(&point) {
-                    in_part = Some(parts.len() - 1);
-                }
+        if let Some(point) = point.filter(|_| in_part.is_none()) {
+            // token     t o k e n      token
+            //      head[         [ahead
+            //
+            // point before head means it's in the spaces between tokens
+            // point at head means just before the token's first character
+            // point at ahead means just after the token's last character
+            // point after ahead means it's none of this iteration's problem
+            if point < head {
+                let under = parts.len() - 1;
+                parts.insert(under, String::new());
+                in_part = Some(under);
+            } else if (head..=ahead).contains(&point) {
+                in_part = Some(parts.len() - 1);
             }
         }
         head = ahead;
     }
 
-    //let in_part = in_part.unwrap_or(todo!());
+    if point.is_some() && in_part.is_none() {
+        parts.push(String::new());
+        in_part = Some(parts.len() - 1);
+    }
+
     PromptSplitInfo { parts, in_part }
 }
 
@@ -246,6 +254,8 @@ pub fn lua_tokens_split(line: &str, point: Option<usize>) -> PromptSplitInfo {
 //      * key mapping? tho we dont have mode mapping and dont plan to
 //      * redrawing the breadcrumbs line after completion session
 //      * base inputs and outputs on the same instance of the same streams
+//      * term width
+//      * enough persistence for ^O maybe
 //      * ... idk
 /// A readline-like prompt.
 ///
@@ -256,7 +266,7 @@ pub fn lua_tokens_split(line: &str, point: Option<usize>) -> PromptSplitInfo {
 pub fn prompt(
     ps: &str,
     input: impl IntoIterator<Item = u8>,
-    mut output: impl Write,
+    output: &mut impl Write,
     mut history: Vec<String>,
     complete: impl Fn(&str, usize) -> Vec<String>,
 ) -> Option<String> {
@@ -268,6 +278,14 @@ pub fn prompt(
 
     let mut in_hist = history.len();
     history.push(String::new());
+
+    struct ComplSess {
+        hints: Vec<String>,
+        in_hint: usize,
+        hint_pos: Vec<usize>,
+    }
+    let mut compl: Option<ComplSess> = None;
+    let mut keep_compl = false;
 
     let mut pend = Vec::new();
     let mut input = input.into_iter();
@@ -352,25 +370,131 @@ pub fn prompt(
                     write!(output, "\x08\x1b[P").ok()?;
                 }
             }
-            [0x09] => {
-                match &complete(&s.iter().collect::<String>(), at)[..] {
-                    [] => (),
-                    [single] => todo!("insert completion: {single:?}"),
-                    hints => {
-                        write!(output, "\r\x1b[A\x1b[K").ok()?;
-                        // TODO: limit to term width
-                        write!(output, "{}", hints.join(" ")).ok()?;
-                        write!(output, "\n\r{ps}").ok()?;
-                        if 0 < at {
-                            write!(output, "\x1b[{}C", at).ok()?;
+            [0x09] | b"\x1b[Z" => {
+                if let Some(ComplSess {
+                    ref hints,
+                    in_hint,
+                    ref hint_pos,
+                }) = &mut compl
+                {
+                    let in_prev = *in_hint;
+                    let prev = &hints[*in_hint];
+                    *in_hint = if 0x09 == pend[0] {
+                        *in_hint + 1
+                    } else {
+                        *in_hint + hints.len() - 1
+                    } % hints.len();
+                    write!(output, "\x1b[A").ok()?;
+                    if 2 < hint_pos.len() && hint_pos[1] == hint_pos[2] {
+                        if 0 == *in_hint {
+                            write!(output, "\r\x1b[K\x1b[7m{}\x1b[m", hints[0]).ok()?;
+                            write!(output, " \x1b[4m{}\x1b[m", hints[1]).ok()?;
+                            write!(output, " ... ({} total)", hints.len() - 1).ok()?;
+                        } else {
+                            write!(output, "\r\x1b[K\x1b[4m{}\x1b[m", hints[0]).ok()?;
+                            write!(output, " \x1b[7m{}\x1b[m", hints[*in_hint]).ok()?;
+                            write!(output, " ... ({}/{})", *in_hint, hints.len() - 1).ok()?;
+                        }
+                    } else {
+                        write!(output, "\x1b[{}G", hint_pos[in_prev] + 1).ok()?;
+                        write!(output, "\x1b[4m{}\x1b[m", hints[in_prev]).ok()?;
+                        write!(output, "\x1b[{}G", hint_pos[*in_hint] + 1).ok()?;
+                        write!(output, "\x1b[7m{}\x1b[m", hints[*in_hint]).ok()?;
+                    }
+                    write!(output, "\n\r{ps}").ok()?;
+                    if 0 < at {
+                        write!(output, "\x1b[{at}C").ok()?;
+                    }
+                    s.splice(at - prev.len()..at, hints[*in_hint].chars());
+                    if !prev.is_empty() {
+                        write!(output, "\x1b[{}D", prev.len()).ok()?;
+                    }
+                    if hints[*in_hint].len() < prev.len() {
+                        let diff = prev.len() - hints[*in_hint].len();
+                        write!(output, "\x1b[{diff}P").ok()?;
+                        at -= diff;
+                    } else {
+                        let diff = hints[*in_hint].len() - prev.len();
+                        if 0 != diff && at < s.len() {
+                            write!(output, "\x1b[{diff}@").ok()?;
+                        }
+                        at += diff;
+                    }
+                    write!(output, "{}", hints[*in_hint]).ok()?;
+                    keep_compl = true;
+                } else {
+                    let mut hints = complete(&s.iter().collect::<String>(), at);
+                    hints.retain(|s| !s.is_empty());
+                    if hints.is_empty() {
+                        write!(output, "\x07").ok()?;
+                    } else {
+                        hints.sort_unstable();
+                        hints.dedup();
+                        let mut common = &hints[0][..];
+                        for hint in &hints[1..] {
+                            if let Some(((k, _), _)) = common
+                                .char_indices()
+                                .zip(hint.chars())
+                                .find(|((_, l), r)| l != r)
+                            {
+                                common = &common[..k];
+                            }
+                        }
+                        let chars: Vec<_> = common.chars().collect();
+                        let common_len = (1..=std::cmp::min(chars.len(), at))
+                            .rev()
+                            .find(|k| s[at - k..at] == chars[..*k])
+                            .unwrap_or(0);
+                        if 0 < chars.len() - common_len {
+                            write!(output, "\x1b[{}@", chars.len() - common_len).ok()?;
+                        }
+                        s.splice(at..at, chars[common_len..].iter().copied());
+                        at += chars.len() - common_len;
+                        for c in &chars[common_len..] {
+                            write!(output, "{c}").ok()?;
+                        }
+                        if 1 < hints.len() {
+                            write!(output, "\r\x1b[A\x1b[K").ok()?;
+                            write!(output, "\x1b[4m{common}\x1b[m").ok()?;
+                            let mut hint_pos = Vec::with_capacity(hints.len());
+                            hint_pos.push(0);
+                            let mut pos = common.len();
+                            if hints[0] != common {
+                                hints.insert(0, common.to_string());
+                            }
+                            if hints.len() < 16 {
+                                for hint in &hints[1..] {
+                                    write!(output, " \x1b[4m{hint}\x1b[m").ok()?;
+                                    pos += 1;
+                                    hint_pos.push(pos);
+                                    pos += hint.len();
+                                }
+                            } else {
+                                write!(output, " \x1b[4m{}\x1b[m", hints[1]).ok()?;
+                                write!(output, " ... ({} total)", hints.len() - 1).ok()?;
+                                pos += 1;
+                                hint_pos.resize_with(hints.len(), || pos);
+                            }
+                            write!(output, "\n\r{ps}").ok()?;
+                            if 0 < at {
+                                write!(output, "\x1b[{at}C").ok()?;
+                            }
+                            compl = Some(ComplSess {
+                                hints,
+                                in_hint: 0,
+                                hint_pos,
+                            });
+                            keep_compl = true;
                         }
                     }
                 }
             }
             [0x0a | 0x0d] => return Some(s.into_iter().collect()),
             [0x0b] => {
-                write!(output, "\x1b[{}P", s.len() - at).ok()?;
-                s.truncate(at);
+                if at < s.len() {
+                    write!(output, "\x1b[{}P", s.len() - at).ok()?;
+                    s.truncate(at);
+                }
             }
             [0x0c] => {
                 write!(output, "\x1b[G\x1b[K{ps}").ok()?;
@@ -380,9 +504,10 @@ pub fn prompt(
                 }
             }
             [0x0e] if in_hist < history.len() - 1 => {
-                if !s.is_empty() {
-                    write!(output, "\x1b[{at}D\x1b[{}P", s.len()).ok()?;
+                if 0 < at {
+                    write!(output, "\x1b[{at}D\x1b[K").ok()?;
                 }
+                write!(output, "\x1b[K").ok()?;
                 in_hist += 1;
                 s = history[in_hist].chars().collect();
                 s.iter().try_for_each(|c| write!(output, "{c}")).ok()?;
@@ -393,9 +518,10 @@ pub fn prompt(
                 return Some(s.into_iter().collect());
             }
             [0x10] if 0 < in_hist => {
-                if !s.is_empty() {
-                    write!(output, "\x1b[{at}D\x1b[{}P", s.len()).ok()?;
+                if 0 < at {
+                    write!(output, "\x1b[{at}D\x1b[K").ok()?;
                 }
+                write!(output, "\x1b[K").ok()?;
                 if history.len() - 1 == in_hist {
                     history[in_hist] = s.into_iter().collect();
                 }
@@ -405,7 +531,10 @@ pub fn prompt(
                 at = s.len();
             }
             [0x15] => {
-                write!(output, "\x1b[{at}D\x1b[{at}P").ok()?;
+                if 0 < at {
+                    write!(output, "\x1b[{at}D\x1b[K").ok()?;
+                }
+                write!(output, "\x1b[K").ok()?;
                 s.drain(..at);
                 at = 0;
             }
@@ -445,14 +574,37 @@ pub fn prompt(
                     }
                     _ => u,
                 })?;
-                write!(output, "\x1b[@{c}").ok()?;
-                s.insert(at, c);
+                if s.len() == at {
+                    write!(output, "{c}").ok()?;
+                    s.push(c);
+                } else {
+                    write!(output, "\x1b[@{c}").ok()?;
+                    s.insert(at, c);
+                }
                 at += 1;
+                // TODO: filter&keep_compl if still match
+                //if let Some(ComplSess {
+                //    hints,
+                //    in_hint,
+                //    hint_pos,
+                //}) = &mut compl
+                //{
+                //    let mut common = hints.remove(*in_hint);
+                //    common.push(c);
+                //    hints.retain(|s| s.starts_with(&common));
+                //    hint_pos.clear();
+                //}
             }
 
             _ => (),
         }
         pend.clear();
+
+        if !keep_compl && compl.is_some() {
+            write!(output, "\x1b[A\x1b[2K\n").ok()?;
+            compl = None;
+        }
+        keep_compl = false;
     }
 
     None
@@ -488,10 +640,11 @@ fn test_split() {
         ["quoted", "and", "disjoi'\n\\t\"", "ye\"y"],
     );
     assert_parts!(shell_like_split, "it's fine", ["its fine"]);
+    assert_parts!(shell_like_split, "  ", 1, [""], 0);
     assert_parts!(shell_like_split, "one two", 0, ["one", "two"], 0);
     assert_parts!(shell_like_split, "one two", 3, ["one", "two"], 0);
     assert_parts!(shell_like_split, "one two", 4, ["one", "two"], 1);
-    assert_parts!(shell_like_split, "one two", 6, ["one", "two"], 1);
+    assert_parts!(shell_like_split, "one two", 6, ["one", "two"], 1); // TODO: "tw" "o"
     assert_parts!(shell_like_split, "one two", 7, ["one", "two"], 1);
     assert_parts!(shell_like_split, " one two", 0, ["", "one", "two"], 0);
     assert_parts!(shell_like_split, "one  two", 4, ["one", "", "two"], 1);
@@ -527,10 +680,11 @@ hi]]
         ".5 ..5 ...5 3.0 53e6 1.4e-2-0xabc+1",
         [".5", "..", "5", "...", "5", "3.0", "53e6", "1.4e-2", "-", "0xabc", "+", "1"],
     );
+    assert_parts!(lua_tokens_split, "  ", 1, [""], 0);
     assert_parts!(lua_tokens_split, "one two", 0, ["one", "two"], 0);
     assert_parts!(lua_tokens_split, "one two", 3, ["one", "two"], 0);
     assert_parts!(lua_tokens_split, "one two", 4, ["one", "two"], 1);
-    assert_parts!(lua_tokens_split, "one two", 6, ["one", "two"], 1);
+    assert_parts!(lua_tokens_split, "one two", 6, ["one", "two"], 1); // TODO: "tw" "o"
     assert_parts!(lua_tokens_split, "one two", 7, ["one", "two"], 1);
     assert_parts!(lua_tokens_split, " one two", 0, ["", "one", "two"], 0);
     assert_parts!(lua_tokens_split, "one  two", 4, ["one", "", "two"], 1);

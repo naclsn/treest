@@ -355,7 +355,7 @@ impl Navigate {
     /// Prompt the user for a line of input.
     /// The result is stored in the register given by `ps`.
     /// History is also taken from the previous values of the register.
-    /// The `point` argument to the `completion` function is base-0.
+    /// The `point` argument to the `completion` function is 0-base.
     /// See also `treest:set_register` for direct register access.
     fn prompt(&mut self, ps: String, completion: Completion) -> Result<Option<String>> {
         let history = self.register_entries(&ps);
@@ -365,7 +365,7 @@ impl Navigate {
         let ans = prompt::prompt(
             &ps,
             io::stdin().bytes().map_while(StdResult::ok),
-            io::stderr(),
+            &mut io::stderr(),
             history.clone(),
             |line, point| completion.call((line, point)).unwrap_or_default(),
         );
@@ -658,14 +658,14 @@ fn pretty(obj: Value) -> Result<String> {
 /// Prompt the user for a line of input.
 /// Same as `treest:prompt` except the history must be managed manually
 /// (the argument `history` isn't mutated).
-/// The `point` argument to the `completion` function is base-0.
+/// The `point` argument to the `completion` function is 0-base.
 fn prompt(ps: String, history: Vec<String>, completion: Completion) -> Result<Option<String>> {
     terminal::cursor_on();
     terminal::mouse_off();
     let ans = prompt::prompt(
         &ps,
         io::stdin().bytes().map_while(StdResult::ok),
-        io::stderr(),
+        &mut io::stderr(),
         history.clone(),
         |line, point| completion.call((line, point)).unwrap_or_default(),
     );
