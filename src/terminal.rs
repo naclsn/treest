@@ -1,6 +1,5 @@
 use std::io::Error as IoError;
 use std::panic::{self, PanicHookInfo};
-use std::ptr;
 use std::sync::Mutex;
 
 pub use self::plat::*;
@@ -64,7 +63,6 @@ mod plat {
 mod plat {
     use super::TermSize;
     use std::io::Error as IoError;
-    use std::ptr;
     use winapi::{
         fileapi::{self, CreateFileW},
         um::{
@@ -80,10 +78,10 @@ mod plat {
             con.as_ptr(),
             winnt::GENERIC_READ | winnt::GENERIC_WRITE,
             winnt::FILE_SHARE_READ | winnt::FILE_SHARE_WRITE,
-            ptr::null_mut(),
+            std::ptr::null_mut(),
             fileapi::OPEN_EXISTING,
             0,
-            ptr::null_mut(),
+            std::ptr::null_mut(),
         );
         if handleapi::INVALID_HANDLE_VALUE == handle {
             Err(IoError::last_os_error())
@@ -130,7 +128,8 @@ mod plat {
 }
 
 pub struct RestoreWithPanicHook;
-const RESTORE_SIGNAL: *const PanicHookInfo = ptr::null();
+const RESTORE_SIGNAL: *const PanicHookInfo =
+    &[0u8; std::mem::size_of::<PanicHookInfo>()] as *const _ as *const PanicHookInfo;
 
 pub fn raw_with_panic_hook() -> Result<RestoreWithPanicHook, IoError> {
     let r = Mutex::new(Some(raw()?));
@@ -143,7 +142,7 @@ pub fn raw_with_panic_hook() -> Result<RestoreWithPanicHook, IoError> {
 
         _ = r.lock().map(|mut m| m.take().map(Restore::restore));
 
-        if !ptr::eq(RESTORE_SIGNAL, info) {
+        if !std::ptr::eq(RESTORE_SIGNAL, info) {
             phook(info);
         }
     }));

@@ -354,7 +354,7 @@ impl Fs {
             Ok(Self {
                 fs_nodes: vec![FsNode {
                     kind: Directory,
-                    name: root.to_string_lossy().into(),
+                    name: root.to_string_lossy().trim_end_matches('/').to_string(),
                     meta: root.metadata().ok(),
                 }],
             })
