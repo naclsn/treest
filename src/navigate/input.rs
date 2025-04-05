@@ -1,14 +1,15 @@
 use std::fmt::Debug;
-use std::fs::File;
-use std::io::{self, Read};
+use std::io::{self, Bytes, Read, Result, Stdin};
+use std::iter::MapWhile;
 
 use mlua::Function;
 
 use crate::lua::structs::PendingMouseInfo;
 use crate::terminal;
 
+type OptionOk = fn(Result<u8>) -> Option<u8>;
 pub struct Input {
-    input: Box<dyn Iterator<Item = u8>>,
+    input: MapWhile<Bytes<Stdin>, OptionOk>,
     recycle: Option<u8>,
     pending: Vec<u8>,
     pending_mouse_info: PendingMouseInfo,
@@ -39,14 +40,7 @@ impl Debug for Input {
 impl Default for Input {
     fn default() -> Self {
         Self {
-            input: Box::new(
-                match File::open("/dev/tty") {
-                    Ok(f) => Box::new(f) as Box<dyn Read>,
-                    Err(_) => Box::new(io::stdin()),
-                }
-                .bytes()
-                .map_while(Result::ok),
-            ),
+            input: io::stdin().bytes().map_while(Result::ok),
             recycle: None,
             pending: Vec::default(),
             pending_mouse_info: PendingMouseInfo { col: 0, row: 0 },

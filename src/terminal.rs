@@ -136,9 +136,10 @@ pub fn raw_with_panic_hook() -> Result<RestoreWithPanicHook, IoError> {
 
     let phook = panic::take_hook();
     panic::set_hook(Box::new(move |info| {
-        cursor_on();
-        mouse_off();
-        altscreen_off();
+        // just blindly reset to what is expectedly initial state
+        cursor(true);
+        mouse(false);
+        altscreen(false);
 
         _ = r.lock().map(|mut m| m.take().map(Restore::restore));
 
@@ -156,24 +157,17 @@ impl RestoreWithPanicHook {
     }
 }
 
-pub fn cursor_on() {
-    eprint!("\x1b[?25h");
+macro_rules! term_feat {
+    ($($name:ident: $feat:literal;)*) => {
+        $(pub fn $name(set: bool) {
+            eprint!("\x1b[?{}{}", $feat, if set { 'h' } else { 'l' });
+        })*
+    }
 }
-pub fn mouse_on() {
-    eprint!("\x1b[?1000h");
-}
-pub fn altscreen_on() {
-    eprint!("\x1b[?1049h");
-}
-
-pub fn cursor_off() {
-    eprint!("\x1b[?25l");
-}
-pub fn mouse_off() {
-    eprint!("\x1b[?1000l");
-}
-pub fn altscreen_off() {
-    eprint!("\x1b[?1049l");
+term_feat! {
+    cursor: 25;
+    mouse: 1000;
+    altscreen: 1049;
 }
 
 #[derive(Debug, PartialEq)]

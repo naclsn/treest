@@ -160,9 +160,7 @@ impl Navigate {
                 .unwrap();
         }
 
-        terminal::cursor_off();
-        terminal::mouse_on();
-        terminal::altscreen_on();
+        terminal::cursor(false);
 
         let exit: String = lua
             .load(
@@ -180,10 +178,6 @@ return treest:_atexit()
             .set_name("=_heartbeat")
             .call(())
             .unwrap();
-
-        terminal::cursor_on();
-        terminal::mouse_off();
-        terminal::altscreen_off();
 
         match exit {
             it if it.is_empty() => Ok(()),

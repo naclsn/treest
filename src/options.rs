@@ -1,6 +1,7 @@
 use std::env;
 use std::fs::File;
-use std::io::{self, Write};
+use std::io::{self, IsTerminal, Write};
+use std::os::fd::AsRawFd;
 use std::path::PathBuf;
 use std::process;
 
@@ -13,6 +14,8 @@ use crate::providers;
 
 #[derive(Error, Debug)]
 pub enum OptionsError {
+    #[error("could not get a terminal file descriptor")]
+    NoTerminal,
     #[error("unexpected extra argument '{0}'")]
     UnexpectedArg(String),
     #[error("the provider to use could not be guessed from the argument (see '--list')")]
@@ -151,6 +154,25 @@ impl Options {
                 return Err(OptionsError::ProviderNeeded);
             };
             r.provider_name = name.into();
+        }
+
+        let in_tty = io::stdin().is_terminal();
+        let err_tty = io::stderr().is_terminal();
+        if !in_tty || !err_tty {
+            #[cfg(windows)]
+            return Err(OptionsError::NoTerminal);
+            #[cfg(not(windows))]
+            match File::open("/dev/tty") {
+                Ok(f) => unsafe {
+                    if libc::dup2(f.as_raw_fd(), libc::STDIN_FILENO) < 0 {
+                        return Err(OptionsError::NoTerminal);
+                    }
+                    if libc::dup2(f.as_raw_fd(), libc::STDERR_FILENO) < 0 {
+                        return Err(OptionsError::NoTerminal);
+                    }
+                },
+                Err(_) => return Err(OptionsError::NoTerminal),
+            }
         }
 
         Ok(r)

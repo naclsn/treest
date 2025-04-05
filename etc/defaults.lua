@@ -30,12 +30,10 @@ m.completions = {
         local incompl = p.parts[p.in_part]
         local choices, n = {}, 1
         local dir = incompl
-        if not dir:match('/$')
-            then dir = dir:match('(.*/)[^/]+$') or ''
-        end
+        if not dir:match('/$') then dir = dir:match('(.*/)[^/]+$') or '' end
         local readdir = os.list(dir)
         if not readdir then return {} end
-        for f in readdir do choices[n], n = dir..f, n + 1 end
+        for f in readdir do choices[n], n = dir .. f, n + 1 end
         return compgen(incompl, choices)
     end,
 
@@ -81,10 +79,42 @@ m.commands = {
     eval = function(arg)
         local ok, err = load(arg)
         if ok then
-            ok()
+            _ = ok()
             return
         end
         treest:message(err)
+    end,
+
+    set = function(arg)
+        local show = {}
+        for _, op in ipairs(string.prompt_shell_like_split(arg).parts)
+        do
+            ---@type string|integer|boolean
+            local val = true
+            local eq = op:find('=')
+
+            if 'no' == op:sub(1, 2)
+            then
+                op = op:sub(3)
+                val = false
+            elseif '!' == op:sub(#op)
+            then
+                op = op:sub(1, #op - 1)
+                val = not treest:get_option(op)
+            elseif '?' == op:sub(#op)
+            then
+                op = op:sub(1, #op - 1)
+                show[#show + 1], val = op .. '=' .. tostring(treest:get_option(op))
+            elseif eq
+            then
+                val = op:sub(eq + 1)
+                op = op:sub(1, eq)
+            end
+
+            if nil ~= val then treest:set_option(op, val) end
+        end
+
+        if show[1] then treest:message(show) end
     end,
 }
 
@@ -113,6 +143,7 @@ alias('eval', 'ev', 'let', 'call', 'cal')
 alias('help', 'h')
 alias('quit', 'q')
 alias('suspend', 'sus', 'stop', 'st')
+alias('set', 'se')
 
 local function complete(func, ...)
     for _, com in pairs { ... } do m.completions.for_command[com] = func end
@@ -247,6 +278,8 @@ m.keys = {
 }
 
 m.init = function()
+    treest:set_option('mouse', true)
+    treest:set_option('altscreen', true)
     for seq, cb in pairs(m.keys) do treest:map(seq, cb) end
     treest:unfold()
 end

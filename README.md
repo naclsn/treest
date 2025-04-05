@@ -18,20 +18,14 @@ $ cargo r -- --help # (without installing)
 
 ### todo:
 
-* th is that
-* `.config/treest.lua`, `require('defaults')` and `treest --lua-meta`
-* `.cache/treest.hist`
+* doc/help situation (`.config/treest.lua`, `require('defaults')` and `treest --lua-meta`)
+* thing too long that cause terminal line wrap (render and prompt)
 
 ### fixme:
 
 * search can't find last line?
 
 ---
-
-## (wip and such --todo: this is outdated)
-
-thing too long that cause terminal line wrap
-https://crates.io/crates/unicode-ellipsis/0.2.0
 
 ### ps
 
@@ -41,23 +35,8 @@ https://docs.rs/sysinfo/0.30.13/sysinfo/struct.Process.html
 
 ### settings, config, ..
 
-- [x] enable/disable mouse support
-- [x] enable/disable alt screen
-- [x] enable/disable pretty (ascii)
-
-- [ ] enable/disable single nested child
-
 - provider-specific
     - [ ] sorting/filtering
     - [ ] fs: chdir to root
     - [ ] fs: .ignore
     - [ ] json: render keys as quoted strings
-
-### `ProviderMut`
-
-mv: edit a fragment
-mk: add and edit a fragment -> add
-rm: remove a fragment
-cp
-
-### better redraw logic than "redraw all"

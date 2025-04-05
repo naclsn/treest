@@ -109,7 +109,6 @@ impl UserData for Navigate {
 pub fn global_exports(g: &Table, lua: &Lua) -> Result<()> {
     make_exports! { g, lua;
         pub help(subj);
-        pub prompt(ps, history, completion);
     }
     make_exports! { g.get("os").unwrap(), lua;
         pub list(dir);
@@ -358,10 +357,12 @@ impl Navigate {
     /// The `point` argument to the `completion` function is 0-base.
     /// See also `treest:set_register` for direct register access.
     fn prompt(&mut self, ps: String, completion: Completion) -> Result<Option<String>> {
-        let history = self.register_entries(&ps);
+        terminal::cursor(true);
+        if !self.options.mouse {
+            terminal::mouse(false);
+        }
 
-        terminal::cursor_on();
-        terminal::mouse_off();
+        let history = self.register_entries(&ps);
         let ans = prompt::prompt(
             &ps,
             io::stdin().bytes().map_while(StdResult::ok),
@@ -369,8 +370,11 @@ impl Navigate {
             history.clone(),
             |line, point| completion.call((line, point)).unwrap_or_default(),
         );
-        terminal::cursor_off();
-        terminal::mouse_on();
+
+        terminal::cursor(false);
+        if self.options.mouse {
+            terminal::mouse(true);
+        }
         eprint!("\r\x1b[K");
 
         if let Some(thing) = &ans {
@@ -521,9 +525,13 @@ impl Navigate {
     fn suspend(&mut self) -> Result<()> {
         #[cfg(not(windows))]
         {
-            terminal::cursor_on();
-            terminal::mouse_off();
-            terminal::altscreen_off();
+            terminal::cursor(true);
+            if self.options.mouse {
+                terminal::mouse(false);
+            }
+            if self.options.altscreen {
+                terminal::altscreen(false);
+            }
 
             if let Some(t) = self.term.take() {
                 t.restore();
@@ -531,9 +539,13 @@ impl Navigate {
             unsafe { libc::raise(libc::SIGTSTP) };
             self.term = terminal::raw_with_panic_hook().ok();
 
-            terminal::cursor_off();
-            terminal::mouse_on();
-            terminal::altscreen_on();
+            terminal::cursor(false);
+            if self.options.mouse {
+                terminal::mouse(true);
+            }
+            if self.options.altscreen {
+                terminal::altscreen(true);
+            }
         }
         Ok(())
     }
@@ -565,10 +577,8 @@ impl Navigate {
 }
 
 /// Exported globally.
-/// Get a help text about a subject.
-/// For now subjects can only be function names registered in rust. This needs to be worked on
-/// more. `help('help')` returns this text. As a hack, the special subject `'_treest'` returns
-/// a string with all the method of the global object `treest`.
+/// Get a help text about a subject. `help('help')` returns this text.
+/// The special subject `'*'` lists other subject.
 fn help(subj: Option<String>) -> Result<Option<String>> {
     Ok(match subj.unwrap_or_default().as_str() {
         "" => "hi :3
@@ -654,28 +664,6 @@ fn list(dir: String) -> Result<(Option<Listing>, Option<String>)> {
 /// Pretty-print a value to string.
 fn pretty(obj: Value) -> Result<String> {
     Ok(format!("{obj:#?}"))
-}
-
-/// Exported globally.
-/// Prompt the user for a line of input.
-/// Same as `treest:prompt` except the history must be managed manually
-/// (the argument `history` isn't mutated).
-/// The `point` argument to the `completion` function is 0-base.
-fn prompt(ps: String, history: Vec<String>, completion: Completion) -> Result<Option<String>> {
-    terminal::cursor_on();
-    terminal::mouse_off();
-    let ans = prompt::prompt(
-        &ps,
-        io::stdin().bytes().map_while(StdResult::ok),
-        &mut io::stderr(),
-        history.clone(),
-        |line, point| completion.call((line, point)).unwrap_or_default(),
-    );
-    terminal::cursor_off();
-    terminal::mouse_on();
-    eprint!("\r\x1b[K");
-
-    Ok(ans)
 }
 
 /// Exported in string.

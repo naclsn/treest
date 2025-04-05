@@ -589,7 +589,7 @@ pub fn prompt(
         pend.clear();
 
         if !keep_compl && compl.is_some() {
-            write!(output, "\x1b[A\x1b[2K\n").ok()?;
+            writeln!(output, "\x1b[A\x1b[2K").ok()?;
             compl = None;
         }
         keep_compl = false;

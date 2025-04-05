@@ -1,5 +1,7 @@
 use mlua::Either;
 
+use crate::terminal;
+
 pub type OptionValue = Either<String, Either<isize, bool>>;
 
 trait OptionValueConvert: Sized {
@@ -11,7 +13,7 @@ macro_rules! make_options {
     ($vis:vis struct $ty:ident {
         $(
             $(#[doc = $doc:literal])+
-            $fvis:vis $field:ident|$fld:ident: $fty:ty = $default:expr
+            $fvis:vis $field:ident|$fld:ident: $fty:ty $({$tr:expr})? = $default:expr
         ),*$(,)?
     }) => {
         $vis struct $ty {
@@ -36,7 +38,7 @@ macro_rules! make_options {
 
             pub fn set(&mut self, name: &str, value: OptionValue) -> Option<()> {
                 match name {
-                    $(stringify!($field) | stringify!($fld) => self.$field = <$fty>::my_from(value)?,)*
+                    $(stringify!($field) | stringify!($fld) => self.$field = $(($tr as fn($fty) -> $fty))?(<$fty>::my_from(value)?),)*
                     _ => return None,
                 }
                 Some(())
@@ -60,7 +62,7 @@ make_options! {
     pub struct Options {
         /// "pretty" to use box-drawing characters, or "ascii" for more limited font/terminal/render/..
         pub appearance|appea: String = "pretty",
-        /// put single-child on the same line as parent (not supported yet)
+        /// put single-child on the same line as parent (TODO: not supported yet)
         pub singlechildline|sch: bool = true,
         /// height of the message window
         pub messageheight|msh: u16 = 12,
@@ -70,6 +72,10 @@ make_options! {
         // pub pathshorten|psh: u8 = 2,
         /// highlight search matches
         pub hlsearch|hls: bool = false,
+        /// toggle mouse support; this is set to true in defaults.lua `init`
+        pub mouse|mouse: bool {|v| {terminal::mouse(v); v}} = false,
+        /// toggle alt-screen; this is set to true in defaults.lua `init`
+        pub altscreen|mcup: bool {|v| {terminal::altscreen(v); v}} = false,
     }
 }
 
