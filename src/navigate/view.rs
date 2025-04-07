@@ -52,11 +52,11 @@ const PRETTY: Appearance = Appearance {
 
 #[derive(Default)]
 pub struct View {
-    pub scroll: usize, // FIXME: pub because of treest:view_down/_up
+    scroll: usize,
     line_mapping: Vec<IndexPath>,
     cursor_line: usize,
-    pub visible_height: usize, // FIXME: pub because of treest:view_down/_up
-    pub total_height: usize,   // FIXME: pub because of treest:view_down/_up
+    visible_height: usize,
+    total_height: usize,
 }
 
 struct RenderingState<'a> {
@@ -131,7 +131,7 @@ impl ViewJumpBy {
         }
     }
 
-    pub fn down(&mut self, scroll: &mut usize, win: usize, top: usize) {
+    pub fn down(&self, scroll: &mut usize, win: usize, top: usize) {
         let by = self.jump_by(win);
         if *scroll + by < top {
             *scroll += by;
@@ -140,13 +140,21 @@ impl ViewJumpBy {
         }
     }
 
-    pub fn up(&mut self, scroll: &mut usize, win: usize, bot: usize) {
+    pub fn up(&self, scroll: &mut usize, win: usize, bot: usize) {
         let by = self.jump_by(win);
         if bot + by < *scroll {
             *scroll -= by;
         } else {
             *scroll = bot;
         }
+    }
+
+    pub fn view_down(&self, view: &mut View) {
+        self.down(&mut view.scroll, view.visible_height, view.total_height)
+    }
+
+    pub fn view_up(&self, view: &mut View) {
+        self.up(&mut view.scroll, view.visible_height, 0)
     }
 }
 
@@ -304,11 +312,16 @@ impl View {
     pub fn render(
         &mut self,
         f: &mut impl Write,
+        force: bool,
         (root, provider, cursor): (&Node, &dyn Provider, &[usize]),
         cols: Range<usize>,
         rows: usize, // tree views all start at row 0
         options: &Options,
     ) -> IoResult<()> {
+        if force {
+            self.line_mapping.clear();
+        }
+
         let range = self.scroll..self.scroll + rows;
         let lines = self.render_tree_range((root, provider, cursor), range, options);
 
@@ -332,7 +345,16 @@ impl View {
 }
 
 impl Navigate {
-    pub fn render(&mut self, f: &mut impl Write) -> IoResult<()> {
+    /// Re-render the things.
+    ///
+    /// Essentially:
+    ///     * clear just message window to end of screen;
+    ///     * update tree(s) (fully re-render if `force`);
+    ///     * render any message;
+    ///     * render any prompt line.
+    ///
+    /// Cursor positions before and after are unspecified.
+    pub fn render(&mut self, f: &mut impl Write, force: bool) -> IoResult<()> {
         let (term_col, term_row) = terminal::size()
             .map(|t| (t.col as usize, t.row as usize))
             .unwrap_or((80, 24));
@@ -360,6 +382,7 @@ impl Navigate {
 
             self.view.render(
                 f,
+                force,
                 (
                     &self.tree,
                     self.provider.as_ref(),
@@ -371,7 +394,7 @@ impl Navigate {
             )?;
         }
 
-        // render message
+        // render message and -- {} lines -- or breadcrumbs (message is always re-rendered)
         if !self.message.lines.is_empty() {
             write!(f, "\x1b[{}H", term_row - height - 1)?;
 
@@ -408,19 +431,37 @@ impl Navigate {
                 write!(f, "{line}\r\n")?;
             }
 
-            write!(f, "-- {} lines --\r\n", self.message.lines.len())?;
+            // don't render that if there is a completion session
+            if self.input.get_prompt().is_none_or(|p| !p.has_compl()) {
+                write!(
+                    f,
+                    "-- {} line{} --\r\n",
+                    self.message.lines.len(),
+                    if 1 == self.message.lines.len() {
+                        ""
+                    } else {
+                        "s"
+                    }
+                )?;
+            }
         } else {
             let path = self.tree.resolve(self.cursor());
             write!(f, "\x1b[{}H\x1b[K", term_row - 1)?;
-            write!(f, "{}\r\n", self.provider.breadcrumbs(&path[..].into()))?;
+            // don't render that if there is a completion session
+            if self.input.get_prompt().is_none_or(|p| !p.has_compl()) {
+                write!(f, "{}\r\n", self.provider.breadcrumbs(&path[..].into()))?;
+            }
         }
 
-        write!(f, "{}", terminal::keyseqstr(self.input.get_pending()))
+        match (force, self.input.get_prompt()) {
+            (true, Some(prompt)) => prompt.render(f),
+            _ => write!(f, "{}", terminal::keyseqstr(self.input.get_pending())),
+        }
     }
 
-    pub fn render_buffered(&mut self, f: &mut impl Write) -> IoResult<()> {
+    pub fn render_buffered(&mut self, f: &mut impl Write, force: bool) -> IoResult<()> {
         let mut buf = Vec::new();
-        self.render(&mut buf)?;
+        self.render(&mut buf, force)?;
         f.write_all(&buf)
     }
 }

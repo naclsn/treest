@@ -164,30 +164,7 @@ mod _listing {
     }
 }
 
-pub use _completion::Completion;
-mod _completion {
-    use super::*;
-
-    #[derive(Debug, Clone)]
-    pub struct Completion(Function);
-
-    impl Deref for Completion {
-        type Target = Function;
-
-        fn deref(&self) -> &Self::Target {
-            &self.0
-        }
-    }
-
-    impl FromLua for Completion {
-        fn from_lua(value: Value, lua: &Lua) -> Result<Self> {
-            Function::from_lua(value, lua).map(Self)
-        }
-    }
-
-    impl LuaTypeDoc for Completion {
-        fn lua_type_doc() -> String {
-            "fun(line:string, point:integer): string[]?".to_string()
-        }
-    }
+crate::lua_aliased_function! {
+    pub Completion: fn(line: &str, point: usize) -> Option<Vec<String>>;
+    pub PromptAnsCallback: fn(ans: String);
 }

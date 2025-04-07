@@ -6,8 +6,10 @@ use mlua::{AnyUserData, MetaMethod, UserData, UserDataFields, UserDataMethods};
 use mlua::{BString, Either, Error, Function, Lua, Result, Table, Value};
 
 use crate::lua::help;
-use crate::lua::structs::{Completion, IndexPath, Listing, NodeInfo, PromptSplitInfo, Target};
+use crate::lua::structs::{Completion, PromptAnsCallback};
+use crate::lua::structs::{IndexPath, Listing, NodeInfo, PromptSplitInfo, Target};
 use crate::lua::structs::{MoveFlags, RequestFlags, ScrollFlags, SearchFlags};
+use crate::navigate::input::InputTickResponse;
 use crate::navigate::options::Options;
 use crate::navigate::{Navigate, ViewJumpBy};
 use crate::prompt;
@@ -87,7 +89,7 @@ impl UserData for Navigate {
             fn  node(target);
             fn  node_at_line(line);
             mut prev(flags);
-            mut prompt(ps, completion);
+            mut prompt(ps, completion, then);
             fn  provider_name();
             mut provider_request(req, target, text);
             mut quit(text);
@@ -147,15 +149,24 @@ impl Navigate {
     }
 
     fn _tick(&mut self) -> Result<Option<Function>> {
-        if let Err(err) = self.render_buffered(&mut io::stderr()) {
+        if let Err(err) = self.render_buffered(&mut io::stderr(), false) {
             // assume unrecoverable situation, bail out
             self.exit = Some(err.to_string());
             return Ok(None);
         }
 
-        // rem: cannot call here beacause `self` is borrowed mut
-        // (would cause a BadArgument: UserDataBorrowMutError)
-        Ok(self.input.tick().cloned())
+        Ok(match self.input.tick() {
+            InputTickResponse::Noop => None,
+            InputTickResponse::EndOfInput => {
+                // assume unrecoverable situation, bail out
+                self.exit = Some("EOF".to_string());
+                None
+            }
+            // rem: cannot call here beacause `self` is borrowed mut
+            // (would cause a BadArgument: UserDataBorrowMutError)
+            InputTickResponse::Callback(action) => Some(action),
+            InputTickResponse::CallbackWithArg(prompt_cb, prompt_ans) => todo!(),
+        })
     }
 
     /// Exported in treest.
@@ -356,7 +367,12 @@ impl Navigate {
     /// History is also taken from the previous values of the register.
     /// The `point` argument to the `completion` function is 0-base.
     /// See also `treest:set_register` for direct register access.
-    fn prompt(&mut self, ps: String, completion: Completion) -> Result<Option<String>> {
+    fn prompt(
+        &mut self,
+        ps: String,
+        completion: Completion,
+        then: Option<PromptAnsCallback>,
+    ) -> Result<Option<String>> {
         terminal::cursor(true);
         if !self.options.mouse {
             terminal::mouse(false);
@@ -367,7 +383,12 @@ impl Navigate {
             &ps,
             io::stdin().bytes().map_while(StdResult::ok),
             history.clone(),
-            Box::new(move |line: &str, point| completion.call((line, point)).unwrap_or_default()),
+            Box::new(move |line: &str, point| {
+                completion
+                    .call(line, point)
+                    .unwrap_or_default()
+                    .unwrap_or_default()
+            }),
         );
 
         terminal::cursor(false);
@@ -559,18 +580,14 @@ impl Navigate {
     /// Exported in treest.
     /// Move the view down, revealing any hidden lines at the bottom.
     fn view_down(&mut self, by: ScrollFlags) -> Result<()> {
-        ViewJumpBy::new_by(by.amount).down(
-            &mut self.view.scroll,
-            self.view.visible_height,
-            self.view.total_height,
-        );
+        ViewJumpBy::new_by(by.amount).view_down(&mut self.view);
         Ok(())
     }
 
     /// Exported in treest.
     /// Move the view up, revealing any hidden lines at the top.
     fn view_up(&mut self, by: ScrollFlags) -> Result<()> {
-        ViewJumpBy::new_by(by.amount).up(&mut self.view.scroll, self.view.visible_height, 0);
+        ViewJumpBy::new_by(by.amount).view_up(&mut self.view);
         Ok(())
     }
 }

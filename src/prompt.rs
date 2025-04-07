@@ -1,3 +1,5 @@
+use std::io::{Result as IoResult, Write};
+
 use crate::lua::structs::PromptSplitInfo;
 
 pub trait Completion {
@@ -22,6 +24,7 @@ struct ComplSess {
     hint_pos: Vec<usize>,
 }
 
+/// Cursor visibility is never managed by this structure and associated functions.
 pub struct Prompt {
     ps: String,
 
@@ -637,6 +640,31 @@ impl Prompt {
         self.keep_compl = false;
 
         PromptState::Again(out, self)
+    }
+
+    pub fn has_compl(&self) -> bool {
+        self.compl.is_some()
+    }
+
+    /// Re-render the prompt.
+    ///
+    /// Cursor positions before should be at start of line (ie just before ps), and after will be
+    /// at point in line. Note that the prompt updates its render itself in `feed` (through the
+    /// returned string in `PromtState::Again`) in a more efficient manner than full redraw would.
+    ///
+    /// If there is a completion hint line, it will also be re-rendered (it is located above).
+    pub fn render(&self, f: &mut impl Write) -> IoResult<()> {
+
+        /*
+        out.push_str(&format!("\x1b[G\x1b[K{}", self.ps));
+        out.extend(&self.s);
+        if self.at < self.s.len() {
+            out.push_str(&format!("\x1b[{}D", self.s.len() - self.at));
+        }
+        */
+        todo!();
+
+        Ok(())
     }
 }
 

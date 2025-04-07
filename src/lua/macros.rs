@@ -159,3 +159,47 @@ macro_rules! flags_lua_conversion {
         }
     )*};
 }
+
+#[macro_export]
+macro_rules! lua_aliased_function {
+    ($($vis:vis $ty:ident: fn($($ar:ident: $aty:ty),*$(,)?)$( -> $rty:ty)?;)*) => {$(
+        #[derive(Debug, Clone)]
+        $vis struct $ty(::mlua::Function);
+
+        impl $ty {
+            #[allow(unused_parens)]
+            pub fn call(&self, $($ar: $aty),*) -> ::mlua::Result<($($rty)?)> {
+                self.0.call(($($ar),*))
+            }
+        }
+
+        impl From<$ty> for ::mlua::Function {
+            fn from(value: $ty) -> Self {
+                value.0
+            }
+        }
+
+        impl ::mlua::FromLua for $ty {
+            fn from_lua(value: Value, lua: &Lua) -> Result<Self> {
+                Function::from_lua(value, lua).map(Self)
+            }
+        }
+
+        impl $crate::lua::typedoc::LuaTypeDoc for $ty {
+            fn lua_type_doc() -> String {
+                format!(
+                    "fun({})",
+                    <[String]>::join(&[$(format!(
+                        "{}:{}",
+                        stringify!($ar),
+                        <$aty>::lua_type_doc(),
+                    )),*], ", "),
+                )$(+ &if std::any::type_name::<$rty>().contains("Either") {
+                    format!(": ({})", <$rty>::lua_type_doc())
+                } else {
+                    format!(": {}", <$rty>::lua_type_doc())
+                })?
+            }
+        }
+    )*};
+}
