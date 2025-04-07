@@ -45,6 +45,7 @@ pub struct Navigate {
 
     exit: Option<String>,
     message: Message,
+    prompt_ans: Option<String>, // TODO: hate it, but less that other solution; fix this
 
     options: Options,
     registers: BTreeMap<String, Vec<String>>,
@@ -70,6 +71,7 @@ impl Navigate {
 
             exit: None,
             message: Message::default(),
+            prompt_ans: None,
 
             options: Options::default(),
             registers: BTreeMap::default(),

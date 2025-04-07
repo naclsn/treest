@@ -18,7 +18,7 @@ pub struct Input {
     mappings: Vec<Mapping>,
     pending_reachable: Vec<usize>,
 
-    prompt: Option<(Prompt, PromptAnsCallback)>,
+    prompt: Option<(Prompt, Option<PromptAnsCallback>)>,
 }
 
 struct Mapping(Vec<u8>, Function);
@@ -75,12 +75,20 @@ impl Input {
         if let Some((prompt, then)) = self.prompt.take() {
             return match prompt.feed(byte) {
                 PromptState::Again(up, prompt) => {
-                    self.prompt = Some((prompt, then));
                     eprint!("{up}");
+                    self.prompt = Some((prompt, then));
                     Noop
                 }
                 PromptState::Abort => Noop,
-                PromptState::Final(ans) => CallbackWithArg(then.into(), ans),
+                PromptState::Final(ans) => {
+                    terminal::cursor(false); // set from back in Navitate::prompt
+                    eprint!("\r\x1b[K");
+                    if let Some(then) = then {
+                        CallbackWithArg(then.into(), ans)
+                    } else {
+                        Noop
+                    }
+                }
             };
         }
 
@@ -156,6 +164,10 @@ impl Input {
 
     pub fn get_prompt(&self) -> Option<&Prompt> {
         self.prompt.as_ref().map(|(prompt, _)| prompt)
+    }
+
+    pub fn set_prompt(&mut self, prompt: Prompt, then: Option<PromptAnsCallback>) {
+        self.prompt = Some((prompt, then));
     }
 
     pub fn add_mapping(&mut self, sequence: Vec<u8>, action: Function) {

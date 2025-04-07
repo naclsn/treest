@@ -1,6 +1,5 @@
 use std::fs::File;
-use std::io::{self, Read};
-use std::result::Result as StdResult;
+use std::io;
 
 use mlua::{AnyUserData, MetaMethod, UserData, UserDataFields, UserDataMethods};
 use mlua::{BString, Either, Error, Function, Lua, Result, Table, Value};
@@ -12,7 +11,7 @@ use crate::lua::structs::{MoveFlags, RequestFlags, ScrollFlags, SearchFlags};
 use crate::navigate::input::InputTickResponse;
 use crate::navigate::options::Options;
 use crate::navigate::{Navigate, ViewJumpBy};
-use crate::prompt;
+use crate::prompt::{self, Prompt};
 use crate::terminal::{self, KeyTransError};
 use crate::tree::NodePath;
 
@@ -62,6 +61,7 @@ impl UserData for Navigate {
         fields.add_field_method_get("mouse_event_pos", |_, nav| {
             Ok(nav.input.get_pending_mouse_info())
         });
+        fields.add_field_method_get("prompt_ans", |_, nav| Ok(nav.prompt_ans.clone()));
     }
 
     fn add_methods<M: UserDataMethods<Self>>(methods: &mut M) {
@@ -155,6 +155,8 @@ impl Navigate {
             return Ok(None);
         }
 
+        self.prompt_ans = None;
+
         Ok(match self.input.tick() {
             InputTickResponse::Noop => None,
             InputTickResponse::EndOfInput => {
@@ -165,7 +167,10 @@ impl Navigate {
             // rem: cannot call here beacause `self` is borrowed mut
             // (would cause a BadArgument: UserDataBorrowMutError)
             InputTickResponse::Callback(action) => Some(action),
-            InputTickResponse::CallbackWithArg(prompt_cb, prompt_ans) => todo!(),
+            InputTickResponse::CallbackWithArg(prompt_cb, ans) => {
+                self.prompt_ans = Some(ans);
+                Some(prompt_cb)
+            }
         })
     }
 
@@ -372,35 +377,24 @@ impl Navigate {
         ps: String,
         completion: Completion,
         then: Option<PromptAnsCallback>,
-    ) -> Result<Option<String>> {
-        terminal::cursor(true);
-        if !self.options.mouse {
-            terminal::mouse(false);
-        }
-
-        let history = self.register_entries(&ps);
-        let ans = prompt::prompt(
-            &ps,
-            io::stdin().bytes().map_while(StdResult::ok),
-            history.clone(),
-            Box::new(move |line: &str, point| {
-                completion
-                    .call(line, point)
-                    .unwrap_or_default()
-                    .unwrap_or_default()
-            }),
+    ) -> Result<()> {
+        terminal::cursor(true); // reset again in Input::tick
+        eprint!("{ps}");
+        let history = self.register_entries(&ps).to_vec();
+        self.input.set_prompt(
+            Prompt::new(
+                ps,
+                history,
+                Box::new(move |line: &str, point| {
+                    completion
+                        .call(line, point)
+                        .unwrap_or_default()
+                        .unwrap_or_default()
+                }),
+            ),
+            then,
         );
-
-        terminal::cursor(false);
-        if self.options.mouse {
-            terminal::mouse(true);
-        }
-        eprint!("\r\x1b[K");
-
-        if let Some(thing) = &ans {
-            self.register_push(&ps, thing.clone());
-        }
-        Ok(ans)
+        Ok(())
     }
 
     /// Exported in treest.

@@ -170,24 +170,27 @@ m.keys = {
     ['<C-Z>'] = function() treest:suspend() end,
 
     [':'] = function()
-        local ans = treest:prompt(':', function(line, point)
+        treest:prompt(':', function(line, point)
             local com = line:sub(1, point):match('(%w+)%s')
             if not com then return m.completions.commands(line, point) end
             local comp = m.completions.for_command[com]
             return comp and comp(line, point) or {}
+        end, function()
+            ---@type string
+            local ans = treest.prompt_ans
+            if not ans then return end
+
+            local com, bang, arg = ans:match('(%w+)(!?)%s*(.*)')
+            if not com then return end
+
+            local fn = m.commands[com]
+            if fn
+            then
+                fn(arg, '!' == bang)
+            else
+                treest:message("unknown command: " .. com)
+            end
         end)
-        if not ans then return end
-
-        local com, bang, arg = ans:match('(%w+)(!?)%s*(.*)')
-        if not com then return end
-
-        local fn = m.commands[com]
-        if fn
-        then
-            fn(arg, '!' == bang)
-        else
-            treest:message("unknown command: " .. com)
-        end
     end,
 
     ['!'] = function()

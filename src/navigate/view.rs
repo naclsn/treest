@@ -360,11 +360,12 @@ impl Navigate {
             .unwrap_or((80, 24));
 
         // clear message from previous render
-        write!(
-            f,
-            "\x1b[{}H\x1b[J",
-            term_row - self.message.previous_height - 1
-        )?;
+        write!(f, "\x1b[{}H", term_row - self.message.previous_height - 1)?;
+        if self.input.get_prompt().is_none() {
+            write!(f, "\x1b[J")?;
+        } else {
+            write!(f, "{}", "\x1b[J".repeat(self.message.previous_height))?;
+        }
         let len = self.message.lines.len();
         let msh = self.options.messageheight as usize;
         let height = std::cmp::min(len, msh);
@@ -459,9 +460,12 @@ impl Navigate {
         }
     }
 
+    /// Render the whole mess at once. This one also makes sure the cursor is repositioned.
     pub fn render_buffered(&mut self, f: &mut impl Write, force: bool) -> IoResult<()> {
-        let mut buf = Vec::new();
+        let mut buf = vec![b'\x1b', b'7'];
         self.render(&mut buf, force)?;
+        buf.push(b'\x1b');
+        buf.push(b'8');
         f.write_all(&buf)
     }
 }
