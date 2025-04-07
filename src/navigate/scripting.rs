@@ -366,9 +366,8 @@ impl Navigate {
         let ans = prompt::prompt(
             &ps,
             io::stdin().bytes().map_while(StdResult::ok),
-            &mut io::stderr(),
             history.clone(),
-            |line, point| completion.call((line, point)).unwrap_or_default(),
+            Box::new(move |line: &str, point| completion.call((line, point)).unwrap_or_default()),
         );
 
         terminal::cursor(false);
