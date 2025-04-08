@@ -59,7 +59,7 @@ impl Node {
     }
 
     pub fn fragment<T: 'static>(&self) -> &T {
-        (&*self.fragment).as_any().downcast_ref().unwrap()
+        (*self.fragment).as_any().downcast_ref().unwrap()
     }
 
     pub fn is_loaded(&self) -> bool {

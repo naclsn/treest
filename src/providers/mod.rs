@@ -24,7 +24,7 @@ pub trait Provider {
         self.components(path).join(" ")
     }
 
-    //fn poll_event(&self) -> () {}
+    // TODO: fn poll_event(&self) -> () {}
 
     /// Request to create a new node at `path`.
     /// `text` comes from user input and its interpretation is provider-dependent.

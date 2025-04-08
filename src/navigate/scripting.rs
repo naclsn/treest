@@ -177,7 +177,7 @@ impl Navigate {
     /// Try to enter the node at cursor (ie relative motion), unfolding it as needed.
     /// Nothing happens if it cannot be unfolded.
     fn enter(&mut self) -> Result<()> {
-        self.cursor_enter();
+        self.space_mut().cursor_enter();
         Ok(())
     }
 
@@ -185,7 +185,7 @@ impl Navigate {
     /// Fold the node at target (cursor if `nil`).
     /// Nothing happens if the target is not valid.
     fn fold(&mut self, target: Target) -> Result<()> {
-        self.set_folded(target, true);
+        self.space_mut().set_folded(target, true);
         Ok(())
     }
 
@@ -193,14 +193,14 @@ impl Navigate {
     /// Check if the node at target (cursor if `nil`) is folded.
     /// Return `nil` if the target is not valid.
     fn folded(&self, target: Target) -> Result<Option<bool>> {
-        Ok(self.get_folded(target))
+        Ok(self.space().get_folded(target))
     }
 
     /// Exported in treest.
     /// Retrieve the cursor path.
     /// Using this where a `Target` is expected is equivalent to `nil`.
     fn get_cursor(&self) -> Result<Vec<usize>> {
-        Ok(self.cursor().to_vec())
+        Ok(self.space().cursor().to_vec())
     }
 
     /// Exported in treest.
@@ -232,7 +232,7 @@ impl Navigate {
     /// Try to leave the node at cursor (ie relative motion).
     /// Nothing happens if the cursor is already at root node.
     fn leave(&mut self) -> Result<()> {
-        self.cursor_leave();
+        self.space_mut().cursor_leave();
         Ok(())
     }
 
@@ -269,7 +269,7 @@ impl Navigate {
     /// Mark the node at target (cursor if `nil`).
     /// Nothing happens if the target is not valid.
     fn mark(&mut self, target: Target) -> Result<()> {
-        self.set_marked(target, true);
+        self.space_mut().set_marked(target, true);
         Ok(())
     }
 
@@ -277,7 +277,7 @@ impl Navigate {
     /// Check if the node at target (cursor if `nil`) is marked.
     /// Return `nil` if the target is not valid.
     fn marked(&self, target: Target) -> Result<Option<bool>> {
-        Ok(self.get_marked(target))
+        Ok(self.space().get_marked(target))
     }
 
     /// Exported in treest.
@@ -285,23 +285,23 @@ impl Navigate {
     /// When flag is 'sat' and it's the last child, nothing happens.
     /// 'wrap' will instead go back to first child.
     fn next(&mut self, flags: MoveFlags) -> Result<()> {
-        self.cursor_next("wrap" == flags.wrapping);
+        self.space_mut().cursor_next("wrap" == flags.wrapping);
         Ok(())
     }
 
     /// Exported in treest.
     /// Retrieve node information at target (cursor if `nil`) or `nil` if the path is not valid.
     fn node(&self, target: Target) -> Result<Option<NodeInfo>> {
-        Ok(self.retrieve_node_info(target))
+        Ok(self.space().retrieve_node_info(target))
     }
 
     /// Exported in treest.
     /// Retrieve node information at a given display line (or 'row'), or `nil` if there is none.
     fn node_at_line(&self, line: usize) -> Result<Option<NodeInfo>> {
-        Ok(self
-            .view
-            .path_for(line)
-            .and_then(|path| self.retrieve_node_info(Target::TrustedPath(path.clone()))))
+        Ok(self.space().view.path_for(line).and_then(|path| {
+            self.space()
+                .retrieve_node_info(Target::TrustedPath(path.clone()))
+        }))
     }
 
     /// Exported in treest.
@@ -315,7 +315,7 @@ impl Navigate {
     /// Exported in treest.
     /// Unmark the node at target (cursor if `nil`).
     fn unmark(&mut self, target: Target) -> Result<()> {
-        self.set_marked(target, false);
+        self.space_mut().set_marked(target, false);
         Ok(())
     }
 
@@ -361,7 +361,7 @@ impl Navigate {
     /// When flag is 'sat' and it's the first child, nothing happens.
     /// 'wrap' will instead go back to last child.
     fn prev(&mut self, flags: MoveFlags) -> Result<()> {
-        self.cursor_prev("wrap" == flags.wrapping);
+        self.space_mut().cursor_prev("wrap" == flags.wrapping);
         Ok(())
     }
 
@@ -401,7 +401,7 @@ impl Navigate {
     /// Exported in treest.
     /// Retrieve the name of the current provider (eg. 'fs').
     fn provider_name(&self) -> Result<String> {
-        Ok(self.provider_name.clone())
+        Ok(self.space().provider_name().to_string())
     }
 
     /// Exported in treest.
@@ -415,7 +415,8 @@ impl Navigate {
         target: Target,
         text: Option<String>,
     ) -> Result<Option<Vec<String>>> {
-        let path = self.tree.resolve(&self.target_to_path(target));
+        let space = self.space_mut();
+        let path = space.tree.resolve(&space.target_to_path(target));
         let path = &path[..].into();
 
         if !matches!(req.request, "rm" | "vi") && text.is_none() {
@@ -428,15 +429,15 @@ impl Navigate {
         }
 
         match req.request {
-            "mk" => self.provider.request_mk(path, text.unwrap()),
-            "cp" => self.provider.request_cp(path, text.unwrap()),
-            "rm" => self.provider.request_rm(path),
-            "mv" => self.provider.request_mv(path, text.unwrap()),
-            "ch" => self.provider.request_ch(path, text.unwrap()),
+            "mk" => space.provider.request_mk(path, text.unwrap()),
+            "cp" => space.provider.request_cp(path, text.unwrap()),
+            "rm" => space.provider.request_rm(path),
+            "mv" => space.provider.request_mv(path, text.unwrap()),
+            "ch" => space.provider.request_ch(path, text.unwrap()),
             _ => {
                 return match req.request {
-                    "vi" => self.provider.request_vi(path),
-                    "ex" => self.provider.request_ex(path, text.unwrap()),
+                    "vi" => space.provider.request_vi(path),
+                    "ex" => space.provider.request_ex(path, text.unwrap()),
                     _ => unreachable!(),
                 }
                 .map_err(Error::external)
@@ -467,20 +468,21 @@ impl Navigate {
     /// Exported in treest.
     /// Search for a sibling node with `q` in its text.
     fn search_level(&self, q: String, flags: SearchFlags) -> Result<Option<IndexPath>> {
-        if self.is_cursor_root() {
+        if self.space().is_cursor_root() {
             return Ok(None);
         };
-        let [parent_path @ .., current] = self.cursor() else {
+        let [parent_path @ .., current] = self.space().cursor() else {
             unreachable!();
         };
-        let parent = self.tree.resolve(parent_path);
+        let parent = self.space().tree.resolve(parent_path);
         let chs = parent.last().unwrap().children().unwrap();
 
         let Some(found) = slice_search(
             &chs,
             *current,
             |node| {
-                self.provider
+                self.space()
+                    .provider
                     .display(&NodePath {
                         head: &parent,
                         tail: node,
@@ -502,9 +504,8 @@ impl Navigate {
     /// Move the cursor the the given target.
     /// If the target is not valid, the longest valid path is used (for now we just crash).
     fn set_cursor(&mut self, target: Target) -> Result<()> {
-        // TODO: check validity before assigning, unfolding and cropping as needed
         if let Target::Path(path) = target {
-            self.cursor = (path.len(), path);
+            self.space_mut().cursor_to(path.len(), path);
         }
         Ok(())
     }
@@ -568,21 +569,21 @@ impl Navigate {
     /// Exported in treest.
     /// Unfold the node at target (cursor if `nil`).
     fn unfold(&mut self, target: Target) -> Result<()> {
-        self.set_folded(target, false);
+        self.space_mut().set_folded(target, false);
         Ok(())
     }
 
     /// Exported in treest.
     /// Move the view down, revealing any hidden lines at the bottom.
     fn view_down(&mut self, by: ScrollFlags) -> Result<()> {
-        ViewJumpBy::new_by(by.amount).view_down(&mut self.view);
+        ViewJumpBy::new_by(by.amount).view_down(&mut self.space_mut().view);
         Ok(())
     }
 
     /// Exported in treest.
     /// Move the view up, revealing any hidden lines at the top.
     fn view_up(&mut self, by: ScrollFlags) -> Result<()> {
-        ViewJumpBy::new_by(by.amount).view_up(&mut self.view);
+        ViewJumpBy::new_by(by.amount).view_up(&mut self.space_mut().view);
         Ok(())
     }
 }

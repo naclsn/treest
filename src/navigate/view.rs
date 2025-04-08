@@ -58,6 +58,13 @@ pub struct View {
     total_height: usize,
 }
 
+/// Parts of the `Space` needed by the `View` for rendering.
+pub struct ViewSpaceSubset<'a> {
+    pub root: &'a Node,
+    pub provider: &'a dyn Provider,
+    pub cursor: &'a [usize],
+}
+
 struct RenderingState<'a> {
     node_path: Vec<&'a Node>,
     index_path: IndexPath,
@@ -142,7 +149,7 @@ impl View {
     /// Compute the lines needed to re-render the visible range of the tree.
     fn render_tree_range(
         &mut self,
-        (root, provider, cursor): (&Node, &dyn Provider, &[usize]),
+        space: ViewSpaceSubset,
         visible_range: Range<usize>,
         options: &Options,
     ) -> Vec<Option<String>> {
@@ -269,7 +276,7 @@ impl View {
             //singlechildline: options.singlechildline,
         };
 
-        let mut lines = inner(state, root, provider, cursor, false).lines;
+        let mut lines = inner(state, space.root, space.provider, space.cursor, false).lines;
 
         let render_height = lines.len();
         if render_height < self.line_mapping.len() {
@@ -285,13 +292,17 @@ impl View {
     /// Re-render any changed line.
     ///
     /// Cursor positions before and after are unspecified.
+    /// If the flag `has_multiple_spaces` is not set, lines can be cleared with CSI K (3 bytes).
+    /// Otherwise it has to be more meticulous about it.
+    #[allow(clippy::too_many_arguments)]
     pub fn render(
         &mut self,
         f: &mut impl Write,
         force: bool,
-        (root, provider, cursor): (&Node, &dyn Provider, &[usize]),
+        space: ViewSpaceSubset,
         cols: Range<usize>,
-        rows: usize, // tree views all start at row 0
+        rows: usize,               // tree views all start at row 0
+        has_multiple_spaces: bool, // indicates if CSI K can be used to clear lines
         options: &Options,
     ) -> IoResult<()> {
         if force {
@@ -299,7 +310,7 @@ impl View {
         }
 
         let range = self.scroll..self.scroll + rows;
-        let lines = self.render_tree_range((root, provider, cursor), range, options);
+        let lines = self.render_tree_range(space, range, options);
 
         write!(f, "\x1b[;{}H", cols.start + 1)?;
         for (off, line) in lines.iter().enumerate() {
@@ -309,9 +320,13 @@ impl View {
                 // TODO: potential optimizations:
                 //      * trim leading spaces (increment col as needed)
                 //      * use '\r\n' when col is 0
-                // TODO: trim line to available width, cache used width for later clearing
                 write!(f, "\x1b[{};{}H", off + 1, cols.start + 1)?;
-                write!(f, "\x1b[K")?; // temporary hard full-line clear
+                if has_multiple_spaces {
+                    // TODO: trim line to available width, cache used width for clearing
+                    write!(f, "{}", " ".repeat(cols.len()))?;
+                } else {
+                    write!(f, "\x1b[K")?;
+                }
                 write!(f, "{line}\x1b[m")?;
             }
         }
@@ -349,25 +364,21 @@ impl Navigate {
         self.message.previous_height = height;
 
         // update render tree(s)
-        {
-            let col_offset = 0;
-            let cols = term_col;
-            let rows = if self.message.lines.is_empty() {
-                term_row - 2
-            } else {
-                term_row - height - 2
-            };
-
-            self.view.render(
+        let each_avail_col = term_col / self.spaces.len();
+        let avail_rows = if self.message.lines.is_empty() {
+            term_row - 2
+        } else {
+            term_row - height - 2
+        };
+        let has_multiple_spaces = 1 < self.spaces.len();
+        for (k, space) in self.spaces.iter_mut().enumerate() {
+            let avail_cols = k * each_avail_col..(k + 1) * each_avail_col;
+            space.view_render(
                 f,
                 force,
-                (
-                    &self.tree,
-                    self.provider.as_ref(),
-                    &self.cursor.1[..self.cursor.0],
-                ),
-                col_offset..cols,
-                rows,
+                avail_cols,
+                avail_rows,
+                has_multiple_spaces,
                 &self.options,
             )?;
         }
@@ -423,11 +434,13 @@ impl Navigate {
                 )?;
             }
         } else {
-            let path = self.tree.resolve(self.cursor());
             write!(f, "\x1b[{}H\x1b[K", term_row - 1)?;
             // don't render that if there is a completion session
             if self.input.get_prompt().is_none_or(|p| !p.has_compl()) {
-                write!(f, "{}\r\n", self.provider.breadcrumbs(&path[..].into()))?;
+                // show active space breadcrump
+                let space = self.space();
+                let path = space.tree.resolve(space.cursor());
+                write!(f, "{}\r\n", space.provider.breadcrumbs(&path[..].into()))?;
             }
         }
 
