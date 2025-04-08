@@ -120,10 +120,10 @@ m.commands = {
 
 local function request(req)
     return function()
-        local text = treest:prompt(req .. ' ', m.completions.files)
-        if not text then return end
-        local res = treest:provider_request(req, nil, text)
-        if res then treest:message(res) end
+        treest:prompt(req .. ' ', m.completions.files, function(ans)
+            local res = treest:provider_request(req, nil, ans)
+            if res then treest:message(res) end
+        end)
     end
 end
 m.commands.mk = request('mk')
@@ -190,15 +190,15 @@ m.keys = {
     end,
 
     ['!'] = function()
-        local ans = treest:prompt('!', m.completions.files)
-        if not ans then return end
-        local p = assert(io.popen(ans .. ' 2>&1', 'r'))
-        treest:message(assert(p:read('*a')))
-        p:close()
+        treest:prompt('!', m.completions.files, function(ans)
+            local p = assert(io.popen(ans .. ' 2>&1', 'r'))
+            treest:message(assert(p:read('*a')))
+            p:close()
+        end)
     end,
 
-    ['/'] = function() search(treest:prompt('/', function() end), { 'next', 'sat' }) end,
-    ['?'] = function() search(treest:prompt('/', function() end), { 'prev', 'sat' }) end,
+    ['/'] = function() treest:prompt('/', function() end, function(ans) search(ans, { 'next', 'sat' }) end) end,
+    ['?'] = function() treest:prompt('/', function() end, function(ans) search(ans, { 'prev', 'sat' }) end) end,
     ['n'] = function() search(treest:get_register('/'), { 'next', 'sat' }) end,
     ['N'] = function() search(treest:get_register('/'), { 'prev', 'sat' }) end,
 

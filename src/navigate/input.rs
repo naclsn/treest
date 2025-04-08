@@ -60,7 +60,11 @@ pub enum InputTickResponse {
     Noop,
     EndOfInput,
     CallbackMapping(MappingFn),
-    CallbackPrompt(PromptAnsCallback, String),
+    CallbackPrompt {
+        ps: String,
+        then: PromptAnsCallback,
+        ans: String,
+    },
 }
 
 impl Input {
@@ -72,16 +76,16 @@ impl Input {
 
         if let Some((prompt, then)) = self.prompt.take() {
             return match prompt.feed(byte) {
-                PromptState::Again(up, prompt) => {
+                PromptState::Again { up, prompt } => {
                     eprint!("{up}");
                     self.prompt = Some((prompt, then));
                     Noop
                 }
-                PromptState::Final(ans) => {
+                PromptState::Final { ps, ans } => {
                     terminal::cursor(false); // set from back in Navitate::prompt
                     eprint!("\r\x1b[K");
                     if let Some((then, ans)) = Option::zip(then, ans) {
-                        CallbackPrompt(then, ans)
+                        CallbackPrompt { ps, then, ans }
                     } else {
                         Noop
                     }

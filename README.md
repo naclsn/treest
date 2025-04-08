@@ -12,28 +12,19 @@ $ cargo install --path .
 $ treest --help
 ...
 
-$ cargo r -- --help # (without installing)
+$ cargo r -- --help # (same without installing)
 ...
 ```
 
-### todo:
+---
+
+### TODO/wip:
 
 * doc/help situation (`.config/treest.lua`, `require('defaults')` and `treest --lua-meta`)
 * thing too long that cause terminal line wrap (render and prompt)
+* subtrees (actually ll have vertical splits on other trees)
 
-### fixme:
-
-* search can't find last line?
-
----
-
-### ps
-
-https://docs.rs/sysinfo/0.30.13/sysinfo/struct.Process.html
-
-### subtrees
-
-### settings, config, ..
+#### settings, config, ..
 
 - provider-specific
     - [ ] sorting/filtering

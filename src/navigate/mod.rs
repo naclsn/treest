@@ -348,11 +348,13 @@ return treest:_atexit()
         self.registers.entry(name.trim().to_string()).or_default()
     }
 
-    /// Push a new value, that is nothing happens if the old value was equal.
+    /// Push a new value: nothing happens if the old value was equal or the new one is empty.
     pub fn register_push(&mut self, name: &str, new: String) {
-        let v = self.register_entries(name);
-        if v.last().is_none_or(|old| *old != new) {
-            v.push(new);
+        if !new.is_empty() {
+            let v = self.register_entries(name);
+            if v.last().is_none_or(|old| *old != new) {
+                v.push(new);
+            }
         }
     }
 }

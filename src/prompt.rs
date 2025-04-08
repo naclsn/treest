@@ -43,8 +43,8 @@ pub struct Prompt {
 }
 
 pub enum PromptState {
-    Again(String, Prompt),
-    Final(Option<String>),
+    Again { up: String, prompt: Prompt },
+    Final { ps: String, ans: Option<String> },
 }
 
 /// Split `line` in a shell-like manner.
@@ -331,7 +331,7 @@ impl Prompt {
         self.pending[self.pending_at] = byte;
         self.pending_at += 1;
 
-        let mut out = String::new();
+        let mut up = String::new();
 
         match &self.pending[..self.pending_at] {
             b"\x1bb" if 0 < self.at => {
@@ -341,7 +341,7 @@ impl Prompt {
                     .position(|p: &[char]| !p[0].is_alphanumeric() && p[1].is_alphanumeric())
                     .map(|k| k + 1)
                     .unwrap_or(self.at);
-                out.push_str(&format!("\x1b[{by}D"));
+                up.push_str(&format!("\x1b[{by}D"));
                 self.at -= by;
             }
             b"\x1bd" if self.at < self.s.len() => {
@@ -350,7 +350,7 @@ impl Prompt {
                     .position(|p| p[0].is_alphanumeric() && !p[1].is_alphanumeric())
                     .map(|k| k + 1)
                     .unwrap_or(self.s.len() - self.at);
-                out.push_str(&format!("\x1b[{by}P"));
+                up.push_str(&format!("\x1b[{by}P"));
                 self.s.drain(self.at..self.at + by);
             }
             b"\x1bf" if self.at < self.s.len() => {
@@ -359,10 +359,15 @@ impl Prompt {
                     .position(|p| p[0].is_alphanumeric() && !p[1].is_alphanumeric())
                     .map(|k| k + 1)
                     .unwrap_or(self.s.len() - self.at);
-                out.push_str(&format!("\x1b[{by}C"));
+                up.push_str(&format!("\x1b[{by}C"));
                 self.at += by;
             }
-            b"\x1b\x1b" => return PromptState::Final(None),
+            b"\x1b\x1b" => {
+                return PromptState::Final {
+                    ps: self.ps,
+                    ans: None,
+                }
+            }
             b"\x1b\x7f" if 0 < self.at => {
                 let by = self.s[..self.at]
                     .windows(2)
@@ -370,46 +375,57 @@ impl Prompt {
                     .position(|p: &[char]| !p[0].is_alphanumeric() && p[1].is_alphanumeric())
                     .map(|k| k + 1)
                     .unwrap_or(self.at);
-                out.push_str(&format!("\x1b[{by}D\x1b[{by}P"));
+                up.push_str(&format!("\x1b[{by}D\x1b[{by}P"));
                 self.s.drain(self.at - by..self.at);
                 self.at -= by;
             }
 
             [0x01] | b"\x1b[H" if 0 < self.at => {
-                out.push_str(&format!("\x1b[{}D", self.at));
+                up.push_str(&format!("\x1b[{}D", self.at));
                 self.at = 0;
             }
             [0x02] | b"\x1b[D" if 0 < self.at => {
-                out.push('\x08');
+                up.push('\x08');
                 self.at -= 1;
             }
-            [0x03] => return PromptState::Final(None),
+            [0x03] => {
+                return PromptState::Final {
+                    ps: self.ps,
+                    ans: None,
+                }
+            }
             [0x04] | b"\x1b[3~" => {
                 if self.at < self.s.len() {
                     self.s.remove(self.at);
-                    out.push_str("\x1b[P");
+                    up.push_str("\x1b[P");
                 } else if 0 == self.at && self.s.is_empty() {
-                    return PromptState::Final(None);
+                    return PromptState::Final {
+                        ps: self.ps,
+                        ans: None,
+                    };
                 }
             }
             [0x05] | b"\x1b[F" if self.at < self.s.len() => {
-                out.push_str(&format!("\x1b[{}C", self.s.len() - self.at));
+                up.push_str(&format!("\x1b[{}C", self.s.len() - self.at));
                 self.at = self.s.len();
             }
             [0x06] | b"\x1b[C" if self.at < self.s.len() => {
-                out.push(self.s[self.at]);
+                up.push(self.s[self.at]);
                 self.at += 1;
             }
             [.., 0x07] => self.pending_at = 0,
             [0x08 | 127] => {
                 if 0 == self.at {
                     if self.s.is_empty() {
-                        return PromptState::Final(None);
+                        return PromptState::Final {
+                            ps: self.ps,
+                            ans: None,
+                        };
                     }
                 } else {
                     self.at -= 1;
                     self.s.remove(self.at);
-                    out.push_str("\x08\x1b[P");
+                    up.push_str("\x08\x1b[P");
                 }
             }
             [0x09] | b"\x1b[Z" => {
@@ -426,44 +442,44 @@ impl Prompt {
                     } else {
                         *in_hint + hints.len() - 1
                     } % hints.len();
-                    out.push_str("\x1b[A");
+                    up.push_str("\x1b[A");
                     if 2 < hint_pos.len() && hint_pos[1] == hint_pos[2] {
                         if 0 == *in_hint {
-                            out.push_str(&format!("\r\x1b[K\x1b[7m{}\x1b[m", hints[0]));
-                            out.push_str(&format!(" \x1b[4m{}\x1b[m", hints[1]));
-                            out.push_str(&format!(" ... ({} total)", hints.len() - 1));
+                            up.push_str(&format!("\r\x1b[K\x1b[7m{}\x1b[m", hints[0]));
+                            up.push_str(&format!(" \x1b[4m{}\x1b[m", hints[1]));
+                            up.push_str(&format!(" ... ({} total)", hints.len() - 1));
                         } else {
-                            out.push_str(&format!("\r\x1b[K\x1b[4m{}\x1b[m", hints[0]));
-                            out.push_str(&format!(" \x1b[7m{}\x1b[m", hints[*in_hint]));
-                            out.push_str(&format!(" ... ({}/{})", *in_hint, hints.len() - 1));
+                            up.push_str(&format!("\r\x1b[K\x1b[4m{}\x1b[m", hints[0]));
+                            up.push_str(&format!(" \x1b[7m{}\x1b[m", hints[*in_hint]));
+                            up.push_str(&format!(" ... ({}/{})", *in_hint, hints.len() - 1));
                         }
                     } else {
-                        out.push_str(&format!("\x1b[{}G", hint_pos[in_prev] + 1));
-                        out.push_str(&format!("\x1b[4m{}\x1b[m", hints[in_prev]));
-                        out.push_str(&format!("\x1b[{}G", hint_pos[*in_hint] + 1));
-                        out.push_str(&format!("\x1b[7m{}\x1b[m", hints[*in_hint]));
+                        up.push_str(&format!("\x1b[{}G", hint_pos[in_prev] + 1));
+                        up.push_str(&format!("\x1b[4m{}\x1b[m", hints[in_prev]));
+                        up.push_str(&format!("\x1b[{}G", hint_pos[*in_hint] + 1));
+                        up.push_str(&format!("\x1b[7m{}\x1b[m", hints[*in_hint]));
                     }
-                    out.push_str(&format!("\n\r{}", self.ps));
+                    up.push_str(&format!("\n\r{}", self.ps));
                     if 0 < self.at {
-                        out.push_str(&format!("\x1b[{}C", self.at));
+                        up.push_str(&format!("\x1b[{}C", self.at));
                     }
                     self.s
                         .splice(self.at - prev.len()..self.at, hints[*in_hint].chars());
                     if !prev.is_empty() {
-                        out.push_str(&format!("\x1b[{}D", prev.len()));
+                        up.push_str(&format!("\x1b[{}D", prev.len()));
                     }
                     if hints[*in_hint].len() < prev.len() {
                         let diff = prev.len() - hints[*in_hint].len();
-                        out.push_str(&format!("\x1b[{diff}P"));
+                        up.push_str(&format!("\x1b[{diff}P"));
                         self.at -= diff;
                     } else {
                         let diff = hints[*in_hint].len() - prev.len();
                         if 0 != diff && self.at < self.s.len() {
-                            out.push_str(&format!("\x1b[{diff}@"));
+                            up.push_str(&format!("\x1b[{diff}@"));
                         }
                         self.at += diff;
                     }
-                    out.push_str(&hints[*in_hint]);
+                    up.push_str(&hints[*in_hint]);
                     self.keep_compl = true;
                 } else {
                     let mut hints = self
@@ -471,7 +487,7 @@ impl Prompt {
                         .hints(&self.s.iter().collect::<String>(), self.at);
                     hints.retain(|h| !h.is_empty());
                     if hints.is_empty() {
-                        out.push('\x07');
+                        up.push('\x07');
                     } else {
                         hints.sort_unstable();
                         hints.dedup();
@@ -491,15 +507,15 @@ impl Prompt {
                             .find(|k| self.s[self.at - k..self.at] == chars[..*k])
                             .unwrap_or(0);
                         if 0 < chars.len() - common_len {
-                            out.push_str(&format!("\x1b[{}@", chars.len() - common_len));
+                            up.push_str(&format!("\x1b[{}@", chars.len() - common_len));
                         }
                         self.s
                             .splice(self.at..self.at, chars[common_len..].iter().copied());
                         self.at += chars.len() - common_len;
-                        out.extend(&chars[common_len..]);
+                        up.extend(&chars[common_len..]);
                         if 1 < hints.len() {
-                            out.push_str("\r\x1b[A\x1b[K");
-                            out.push_str(&format!("\x1b[4m{common}\x1b[m"));
+                            up.push_str("\r\x1b[A\x1b[K");
+                            up.push_str(&format!("\x1b[4m{common}\x1b[m"));
                             let mut hint_pos = Vec::with_capacity(hints.len());
                             hint_pos.push(0);
                             let mut pos = common.len();
@@ -508,20 +524,20 @@ impl Prompt {
                             }
                             if hints.len() < 16 {
                                 for hint in &hints[1..] {
-                                    out.push_str(&format!(" \x1b[4m{hint}\x1b[m"));
+                                    up.push_str(&format!(" \x1b[4m{hint}\x1b[m"));
                                     pos += 1;
                                     hint_pos.push(pos);
                                     pos += hint.len();
                                 }
                             } else {
-                                out.push_str(&format!(" \x1b[4m{}\x1b[m", hints[1]));
-                                out.push_str(&format!(" ... ({} total)", hints.len() - 1));
+                                up.push_str(&format!(" \x1b[4m{}\x1b[m", hints[1]));
+                                up.push_str(&format!(" ... ({} total)", hints.len() - 1));
                                 pos += 1;
                                 hint_pos.resize_with(hints.len(), || pos);
                             }
-                            out.push_str(&format!("\n\r{}", self.ps));
+                            up.push_str(&format!("\n\r{}", self.ps));
                             if 0 < self.at {
-                                out.push_str(&format!("\x1b[{}C", self.at));
+                                up.push_str(&format!("\x1b[{}C", self.at));
                             }
                             self.compl = Some(ComplSess {
                                 hints,
@@ -533,52 +549,60 @@ impl Prompt {
                     }
                 }
             }
-            [0x0a | 0x0d] => return PromptState::Final(Some(self.s.iter().collect())),
+            [0x0a | 0x0d] => {
+                return PromptState::Final {
+                    ps: self.ps,
+                    ans: Some(self.s.iter().collect()),
+                }
+            }
             [0x0b] => {
                 if self.at < self.s.len() {
-                    out.push_str(&format!("\x1b[{}P", self.s.len() - self.at));
+                    up.push_str(&format!("\x1b[{}P", self.s.len() - self.at));
                     self.s.truncate(self.at);
                 }
             }
             [0x0c] => {
-                out.push_str(&format!("\x1b[G\x1b[K{}", self.ps));
-                out.extend(&self.s);
+                up.push_str(&format!("\x1b[G\x1b[K{}", self.ps));
+                up.extend(&self.s);
                 if self.at < self.s.len() {
-                    out.push_str(&format!("\x1b[{}D", self.s.len() - self.at));
+                    up.push_str(&format!("\x1b[{}D", self.s.len() - self.at));
                 }
             }
             [0x0e] if self.in_hist < self.history.len() - 1 => {
                 if 0 < self.at {
-                    out.push_str(&format!("\x1b[{}D\x1b[K", self.at));
+                    up.push_str(&format!("\x1b[{}D\x1b[K", self.at));
                 }
-                out.push_str("\x1b[K");
+                up.push_str("\x1b[K");
                 self.in_hist += 1;
                 self.s = self.history[self.in_hist].chars().collect();
-                out.extend(&self.s);
+                up.extend(&self.s);
                 self.at = self.s.len();
             }
             [0x0f] => {
                 // TODO: prompt ^O
-                return PromptState::Final(Some(self.s.iter().collect()));
+                return PromptState::Final {
+                    ps: self.ps,
+                    ans: Some(self.s.iter().collect()),
+                };
             }
             [0x10] if 0 < self.in_hist => {
                 if 0 < self.at {
-                    out.push_str(&format!("\x1b[{}D\x1b[K", self.at));
+                    up.push_str(&format!("\x1b[{}D\x1b[K", self.at));
                 }
-                out.push_str("\x1b[K");
+                up.push_str("\x1b[K");
                 if self.history.len() - 1 == self.in_hist {
                     self.history[self.in_hist] = self.s.iter().collect();
                 }
                 self.in_hist -= 1;
                 self.s = self.history[self.in_hist].chars().collect();
-                out.extend(&self.s);
+                up.extend(&self.s);
                 self.at = self.s.len();
             }
             [0x15] => {
                 if 0 < self.at {
-                    out.push_str(&format!("\x1b[{}D\x1b[K", self.at));
+                    up.push_str(&format!("\x1b[{}D\x1b[K", self.at));
                 }
-                out.push_str("\x1b[K");
+                up.push_str("\x1b[K");
                 self.s.drain(..self.at);
                 self.at = 0;
             }
@@ -589,16 +613,18 @@ impl Prompt {
                     .position(|p: &[char]| p[0].is_whitespace() && !p[1].is_whitespace())
                     .map(|k| k + 1)
                     .unwrap_or(self.at);
-                out.push_str(&format!("\x1b[{by}D\x1b[{by}P"));
+                up.push_str(&format!("\x1b[{by}D\x1b[{by}P"));
                 self.s.drain(self.at - by..self.at);
                 self.at -= by;
             }
 
-            b"\x1b" | b"\x1b[" | [0x1b, b'[', b'0'..=b'9'] => return PromptState::Again(out, self),
+            b"\x1b" | b"\x1b[" | [0x1b, b'[', b'0'..=b'9'] => {
+                return PromptState::Again { up, prompt: self }
+            }
             [0x1b, ..] => {
                 self.pending.rotate_left(1);
                 self.pending_at -= 1;
-                return PromptState::Again(out, self);
+                return PromptState::Again { up, prompt: self };
             }
 
             _ => 'insert_one_char: {
@@ -621,10 +647,10 @@ impl Prompt {
                     break 'insert_one_char;
                 };
                 if self.s.len() == self.at {
-                    out.push(c);
+                    up.push(c);
                     self.s.push(c);
                 } else {
-                    out.push_str(&format!("\x1b[@{c}"));
+                    up.push_str(&format!("\x1b[@{c}"));
                     self.s.insert(self.at, c);
                 }
                 self.at += 1;
@@ -634,12 +660,12 @@ impl Prompt {
         self.pending_at = 0;
 
         if !self.keep_compl && self.compl.is_some() {
-            out.push_str("\x1b[A\x1b[2K\n");
+            up.push_str("\x1b[A\x1b[2K\n");
             self.compl = None;
         }
         self.keep_compl = false;
 
-        PromptState::Again(out, self)
+        PromptState::Again { up, prompt: self }
     }
 
     pub fn has_compl(&self) -> bool {
@@ -678,7 +704,7 @@ impl Prompt {
 /// `Prompt::new` and `Prompt::feed`.
 #[allow(
     dead_code,
-    reason = "keeping it for now, surely will forget about it but anyways",
+    reason = "keeping it for now, surely will forget about it but anyways"
 )]
 pub fn prompt(
     ps: &str,
@@ -691,11 +717,11 @@ pub fn prompt(
 
     for byte in input {
         match p.feed(byte) {
-            PromptState::Again(t, np) => {
-                eprint!("{t}");
-                p = np;
+            PromptState::Again { up, prompt } => {
+                eprint!("{up}");
+                p = prompt;
             }
-            PromptState::Final(ans) => return ans,
+            PromptState::Final { ps: _, ans } => return ans,
         }
     }
 

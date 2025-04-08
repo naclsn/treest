@@ -5,7 +5,7 @@ use mlua::{AnyUserData, MetaMethod, UserData, UserDataFields, UserDataMethods};
 use mlua::{BString, Either, Error, Function, Lua, Result, Table, Value};
 
 use crate::lua::help;
-use crate::lua::structs::{Completion, PromptAnsCallback, MappingFn};
+use crate::lua::structs::{Completion, MappingFn, PromptAnsCallback};
 use crate::lua::structs::{IndexPath, Listing, NodeInfo, PromptSplitInfo, Target};
 use crate::lua::structs::{MoveFlags, RequestFlags, ScrollFlags, SearchFlags};
 use crate::navigate::input::InputTickResponse;
@@ -166,7 +166,10 @@ impl Navigate {
             // rem: functions cannot be called here beacause `self` is borrowed mutably
             // (it would cause a BadArgument: UserDataBorrowMutError)
             InputTickResponse::CallbackMapping(action) => Some(action.into()),
-            InputTickResponse::CallbackPrompt(cb, ans) => Some(cb.bind_all(ans)?),
+            InputTickResponse::CallbackPrompt { ps, then, ans } => {
+                self.register_push(&ps, ans.clone());
+                Some(then.bind_all(ans)?)
+            }
         })
     }
 
@@ -717,7 +720,7 @@ fn slice_search<T>(
     let dir = if forward { 1 } else { slice.len() - 1 };
     match (forward, wrapping) {
         (_, true) => 1..slice.len() - 1,
-        (true, false) => 1..slice.len() - (from + 1),
+        (true, false) => 1..slice.len() - from,
         (false, false) => 1..from + 1,
     }
     .map(|k| (from + k * dir) % slice.len())
@@ -747,6 +750,10 @@ mod test {
         assert_eq!(
             super::slice_search(b"abcdefg", 4, |c| b'e' == *c, true, true),
             None,
+        );
+        assert_eq!(
+            super::slice_search(b"abcdefg", 4, |c| b'g' == *c, true, false),
+            Some(6),
         );
         assert_eq!(
             super::slice_search(b"abcdefg", 4, |c| b'c' == *c, false, false),
