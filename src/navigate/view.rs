@@ -1,4 +1,3 @@
-use std::fmt::{Debug, Formatter, Result as FmtResult};
 use std::io::{Result as IoResult, Write};
 use std::ops::Range;
 
@@ -74,29 +73,6 @@ struct RenderingState<'a> {
 
     appearance: &'a Appearance,
     //singlechildline: bool,
-}
-
-impl Debug for RenderingState<'_> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
-        f.debug_struct("RenderingState")
-            .field(
-                "node_path",
-                &self
-                    .node_path
-                    .iter()
-                    .map(|n| n.fragment)
-                    .collect::<Vec<_>>(),
-            )
-            .field("index_path", &self.index_path)
-            .field("indent", &self.indent)
-            .field("visible_range", &self.visible_range)
-            .field("total_height", &self.total_height)
-            .field("lines", &self.lines)
-            .field("line_mapping", &self.line_mapping)
-            .field("was_cursor_line", &self.was_cursor_line)
-            .field("now_cursor_line", &self.now_cursor_line)
-            .finish()
-    }
 }
 
 pub enum ViewJumpBy {
@@ -456,11 +432,14 @@ impl Navigate {
         }
 
         match (force, self.input.get_prompt()) {
-            (true, Some(prompt)) => prompt.render(f),
-            _ => write!(f, "{}", terminal::keyseqstr(self.input.get_pending())),
+            (true, Some(prompt)) => prompt.render(f)?,
+            (_, None) => write!(f, "{}", terminal::keyseqstr(self.input.get_pending()))?,
+            _ => (),
         }
+        Ok(())
     }
 
+    // TODO: `force` is not used for now; remove at some point if really unnecessary
     /// Render the whole mess at once. This one also makes sure the cursor is repositioned.
     pub fn render_buffered(&mut self, f: &mut impl Write, force: bool) -> IoResult<()> {
         let mut buf = vec![b'\x1b', b'7'];

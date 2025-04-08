@@ -2,13 +2,11 @@ use std::cmp::Ordering;
 
 use anyhow::Result;
 
-use crate::tree::NodePath;
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Fragment(pub usize);
+use crate::tree::{Fragment, NodePath};
 
 /// A type that is able to provide a tree structure.
 pub trait Provider {
+    fn provide_root(&self) -> Fragment;
     fn provide(&mut self, path: &NodePath) -> Vec<Fragment>;
 
     fn order(&self, left: &NodePath, right: &NodePath) -> Ordering;
@@ -25,6 +23,8 @@ pub trait Provider {
     fn breadcrumbs(&self, path: &NodePath) -> String {
         self.components(path).join(" ")
     }
+
+    //fn poll_event(&self) -> () {}
 
     /// Request to create a new node at `path`.
     /// `text` comes from user input and its interpretation is provider-dependent.

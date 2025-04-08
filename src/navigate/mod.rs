@@ -57,7 +57,7 @@ impl Navigate {
         provider_name: String,
     ) -> Self {
         Self {
-            tree: Node::new(),
+            tree: Node::new(provider.provide_root()),
             provider,
             provider_name,
             view: View::default(),

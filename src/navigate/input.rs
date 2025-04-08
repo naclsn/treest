@@ -55,7 +55,6 @@ impl Default for Input {
     }
 }
 
-// xxx: wth
 pub enum InputTickResponse {
     Noop,
     EndOfInput,

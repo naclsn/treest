@@ -1,11 +1,35 @@
-use crate::providers::{Fragment, Provider};
+use std::any::Any;
+use std::fmt::{Debug, Formatter, Result as FmtResult};
 
-#[derive(Debug, Clone)]
+use crate::providers::Provider;
+
+pub trait FragmentTrait: Any {
+    fn as_any(&self) -> &dyn Any;
+}
+impl<T: Any> FragmentTrait for T {
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+}
+pub type Fragment = Box<dyn FragmentTrait>;
+
+//#[derive(Debug)]
 pub struct Node {
-    pub fragment: Fragment,
+    fragment: Fragment,
     children: Option<(Vec<Node>, Vec<usize>)>,
     folded: bool,
     marked: bool,
+}
+
+impl Debug for Node {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
+        f.debug_struct("Node")
+            .field("fragment", &format!("{:p}", self.fragment))
+            .field("children", &self.children)
+            .field("folded", &self.folded)
+            .field("marked", &self.marked)
+            .finish()
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -25,13 +49,17 @@ impl<'a> From<&'a [&'a Node]> for NodePath<'a> {
 }
 
 impl Node {
-    pub fn new() -> Self {
+    pub fn new(root: Fragment) -> Self {
         Self {
-            fragment: Fragment(0),
+            fragment: root,
             children: None,
             folded: true,
             marked: false,
         }
+    }
+
+    pub fn fragment<T: 'static>(&self) -> &T {
+        (&*self.fragment).as_any().downcast_ref().unwrap()
     }
 
     pub fn is_loaded(&self) -> bool {

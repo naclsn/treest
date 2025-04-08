@@ -9,12 +9,10 @@ use anyhow::Result;
 use lscolors::{LsColors, Style};
 use thiserror::Error;
 
-use crate::providers::{Fragment, Provider};
-use crate::tree::NodePath;
+use crate::providers::Provider;
+use crate::tree::{Fragment, NodePath};
 
-pub struct Fs {
-    fs_nodes: Vec<FsNode>,
-}
+pub struct Fs(PathBuf);
 
 #[derive(Error, Debug)]
 pub enum FsProviderError {
@@ -186,47 +184,54 @@ impl Display for FsNode {
 }
 
 impl Provider for Fs {
+    fn provide_root(&self) -> Fragment {
+        Box::new(FsNode {
+            kind: Directory,
+            name: self.0.to_string_lossy().trim_end_matches('/').to_string(),
+            meta: self.0.metadata().ok(),
+        })
+    }
+
     fn provide(&mut self, path: &NodePath) -> Vec<Fragment> {
         let mut pb: PathBuf = path
             .head
             .iter()
-            .map(|n| &self.fs_nodes[n.fragment.0].name)
+            .map(|n| &n.fragment::<FsNode>().name)
             .collect();
-        pb.push(&self.fs_nodes[path.tail.fragment.0].name);
+        pb.push(&path.tail.fragment::<FsNode>().name);
 
         let Ok(dir) = fs::read_dir(pb) else {
             return Vec::new();
         };
 
-        dir.filter_map(|d| {
-            let entry = d.ok()?;
+        let mut r = Vec::<Fragment>::new();
+        for entry in dir.filter_map(Result::ok) {
+            let Some(name) = entry.file_name().into_string().ok() else {
+                continue;
+            };
             let meta = entry.metadata().ok();
-            let name = entry.file_name().into_string().ok()?;
-
-            self.fs_nodes.push(FsNode {
+            r.push(Box::new(FsNode {
                 kind: (entry.path(), &meta).into(),
                 name,
                 meta,
-            });
-
-            Some(Fragment(self.fs_nodes.len() - 1))
-        })
-        .collect()
+            }))
+        }
+        r
     }
 
     fn order(&self, left: &NodePath, right: &NodePath) -> Ordering {
-        let left = &self.fs_nodes[left.tail.fragment.0];
-        let right = &self.fs_nodes[right.tail.fragment.0];
+        let left: &FsNode = left.tail.fragment();
+        let right: &FsNode = right.tail.fragment();
         Ord::cmp(&left.name, &right.name)
     }
 
     fn keep(&self, path: &NodePath) -> bool {
-        let node = &self.fs_nodes[path.tail.fragment.0];
+        let node: &FsNode = path.tail.fragment();
         !node.name.starts_with('.')
     }
 
     fn display(&self, path: &NodePath) -> String {
-        let node = &self.fs_nodes[path.tail.fragment.0];
+        let node: &FsNode = path.tail.fragment();
         node.to_string()
     }
 
@@ -234,12 +239,12 @@ impl Provider for Fs {
         path.head
             .iter()
             .chain(std::iter::once(&path.tail))
-            .map(|n| self.fs_nodes[n.fragment.0].name.clone())
+            .map(|n| n.fragment::<FsNode>().name.clone())
             .collect()
     }
 
     fn breadcrumbs(&self, path: &NodePath) -> String {
-        let node = &self.fs_nodes[path.tail.fragment.0];
+        let node: &FsNode = path.tail.fragment();
         let mut r = write_meta(node);
 
         match &node.meta {
@@ -267,13 +272,10 @@ impl Provider for Fs {
             None => r.push_str("        ? ??:??:?? "),
         }
 
-        let path_string: String = path
-            .head
-            .iter()
-            .map(|n| self.fs_nodes[n.fragment.0].to_string())
-            .collect();
-        r.push_str(&path_string);
-        r.push_str(&self.fs_nodes[path.tail.fragment.0].to_string());
+        for n in path.head {
+            r.push_str(&n.fragment::<FsNode>().to_string());
+        }
+        r.push_str(&path.tail.fragment::<FsNode>().to_string());
 
         r
     }
@@ -351,13 +353,7 @@ impl Fs {
         if !root.is_dir() {
             Err(FsProviderError::NotADirectory.into())
         } else {
-            Ok(Self {
-                fs_nodes: vec![FsNode {
-                    kind: Directory,
-                    name: root.to_string_lossy().trim_end_matches('/').to_string(),
-                    meta: root.metadata().ok(),
-                }],
-            })
+            Ok(Self(root))
         }
     }
 }
