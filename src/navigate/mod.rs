@@ -39,6 +39,7 @@ pub struct Navigate {
 
     input: Input,
     term: Option<RestoreWithPanicHook>,
+    force_redraw: bool,
 
     exit: Option<String>,
     message: Message,
@@ -60,6 +61,7 @@ impl Navigate {
 
             input: Input::default(),
             term: terminal::raw_with_panic_hook().ok(),
+            force_redraw: false,
 
             exit: None,
             message: Message::default(),

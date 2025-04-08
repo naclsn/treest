@@ -296,7 +296,10 @@ m.keys = {
     ['{'] = function() treest:message_scroll_up('halfwin') end,
     ['}'] = function() treest:message_scroll_down('halfwin') end,
 
-    ['<C-L>'] = function() treest:message({}) end,
+    ['<C-L>'] = function()
+        treest:message({})
+        treest:force_redraw()
+    end,
 }
 
 m.init = function()

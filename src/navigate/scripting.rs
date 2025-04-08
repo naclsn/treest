@@ -71,6 +71,7 @@ impl UserData for Navigate {
             mut enter();
             mut fold(target);
             fn  folded(target);
+            mut force_redraw();
             fn  get_cursor();
             fn  get_option(name);
             fn  get_register(name);
@@ -151,15 +152,14 @@ impl Navigate {
 
     fn _tick(&mut self) -> Result<Option<Function>> {
         // no redraw if there are still keys that can be processed
-        if !self.input.has_recycle()
-        //|| self.force_redraw TODO: forgot to git push
-        {
-            if let Err(err) = self.render_buffered(&mut io::stderr(), false) {
+        if !self.input.has_recycle() || self.force_redraw {
+            if let Err(err) = self.render_buffered(&mut io::stderr(), self.force_redraw) {
                 // assume unrecoverable situation, bail out
                 self.exit = Some(err.to_string());
                 return Ok(None);
             }
         }
+        self.force_redraw = false;
 
         Ok(match self.input.tick() {
             InputTickResponse::Noop => None,
@@ -200,6 +200,14 @@ impl Navigate {
     /// Return `nil` if the target is not valid.
     fn folded(&self, target: Target) -> Result<Option<bool>> {
         Ok(self.space().get_folded(target))
+    }
+
+    /// Exported in treest.
+    /// Force a redraw, ie the next draw will be a full redraw
+    /// instead of only drawing what is necessary.
+    fn force_redraw(&mut self) -> Result<()> {
+        self.force_redraw = true;
+        Ok(())
     }
 
     /// Exported in treest.
@@ -566,6 +574,7 @@ impl Navigate {
             }
             unsafe { libc::raise(libc::SIGTSTP) };
             self.term = terminal::raw_with_panic_hook().ok();
+            self.force_redraw = true;
 
             terminal::cursor(false);
             if self.options.mouse {

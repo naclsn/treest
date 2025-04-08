@@ -452,13 +452,14 @@ impl Navigate {
         Ok(())
     }
 
-    // TODO: `force` is not used for now; remove at some point if really unnecessary
     /// Render the whole mess at once. This one also makes sure the cursor is repositioned.
     pub fn render_buffered(&mut self, f: &mut impl Write, force: bool) -> IoResult<()> {
-        let mut buf = vec![b'\x1b', b'7'];
+        let mut buf = b"\x1b7".to_vec();
+        if force {
+            buf.extend(b"\x1b[2J");
+        }
         self.render(&mut buf, force)?;
-        buf.push(b'\x1b');
-        buf.push(b'8');
+        buf.extend(b"\x1b8");
         f.write_all(&buf)
     }
 }
