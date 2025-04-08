@@ -165,6 +165,7 @@ mod _listing {
 }
 
 crate::lua_aliased_function! {
+    pub MappingFn: fn();
     pub Completion: fn(line: &str, point: usize) -> Option<Vec<String>>;
     pub PromptAnsCallback: fn(ans: String);
 }

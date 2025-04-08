@@ -1,6 +1,6 @@
 use std::io::{Result as IoResult, Write};
 
-use mlua::{BString, Either, Function, Value};
+use mlua::{BString, Either, Value};
 
 use crate::lua::structs::*;
 use crate::lua::typedoc::{LuaTypeAliasDoc, LuaTypeDoc};

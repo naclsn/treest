@@ -5,7 +5,7 @@ use mlua::{AnyUserData, MetaMethod, UserData, UserDataFields, UserDataMethods};
 use mlua::{BString, Either, Error, Function, Lua, Result, Table, Value};
 
 use crate::lua::help;
-use crate::lua::structs::{Completion, PromptAnsCallback};
+use crate::lua::structs::{Completion, PromptAnsCallback, MappingFn};
 use crate::lua::structs::{IndexPath, Listing, NodeInfo, PromptSplitInfo, Target};
 use crate::lua::structs::{MoveFlags, RequestFlags, ScrollFlags, SearchFlags};
 use crate::navigate::input::InputTickResponse;
@@ -61,13 +61,13 @@ impl UserData for Navigate {
         fields.add_field_method_get("mouse_event_pos", |_, nav| {
             Ok(nav.input.get_pending_mouse_info())
         });
-        fields.add_field_method_get("prompt_ans", |_, nav| Ok(nav.prompt_ans.clone()));
     }
 
     fn add_methods<M: UserDataMethods<Self>>(methods: &mut M) {
+        methods.add_method_mut("_atexit", |_, this, ()| this._atexit());
+        methods.add_method_mut("_tick", |_, this, ()| this._tick());
+
         make_methods! { methods;
-            mut _atexit();
-            mut _tick();
             mut enter();
             mut fold(target);
             fn  folded(target);
@@ -155,22 +155,18 @@ impl Navigate {
             return Ok(None);
         }
 
-        self.prompt_ans = None;
-
         Ok(match self.input.tick() {
             InputTickResponse::Noop => None,
             InputTickResponse::EndOfInput => {
                 // assume unrecoverable situation, bail out
-                self.exit = Some("EOF".to_string());
+                self.exit = Some("end of input".to_string());
                 None
             }
-            // rem: cannot call here beacause `self` is borrowed mut
-            // (would cause a BadArgument: UserDataBorrowMutError)
-            InputTickResponse::Callback(action) => Some(action),
-            InputTickResponse::CallbackWithArg(prompt_cb, ans) => {
-                self.prompt_ans = Some(ans);
-                Some(prompt_cb)
-            }
+
+            // rem: functions cannot be called here beacause `self` is borrowed mutably
+            // (it would cause a BadArgument: UserDataBorrowMutError)
+            InputTickResponse::CallbackMapping(action) => Some(action.into()),
+            InputTickResponse::CallbackPrompt(cb, ans) => Some(cb.bind_all(ans)?),
         })
     }
 
@@ -252,7 +248,7 @@ impl Navigate {
     /// Exported in treest.
     /// Add a mapping from a key sequence to a callback action.
     /// See also `treest:unmap`.
-    fn map(&mut self, seq: String, cb: Function) -> Result<()> {
+    fn map(&mut self, seq: String, cb: MappingFn) -> Result<()> {
         let seq = terminal::keytrans(&seq).map_err(|err| transpose_keytranserror(&seq, err))?;
         self.input.add_mapping(seq, cb);
         Ok(())
@@ -261,7 +257,7 @@ impl Navigate {
     /// Exported in treest.
     /// Retrieve a mapping from a key sequence, returning its action callback.
     /// Result will be `nil` if `seq` wasn't mapped (see `treest:map`).
-    fn mapped(&self, seq: String) -> Result<Option<Function>> {
+    fn mapped(&self, seq: String) -> Result<Option<MappingFn>> {
         let seq = terminal::keytrans(&seq).map_err(|err| transpose_keytranserror(&seq, err))?;
         Ok(self.input.get_mapping(seq).cloned())
     }
@@ -308,7 +304,7 @@ impl Navigate {
     /// Exported in treest.
     /// Remove a mapping from a key sequence, returning its previously associated action callback.
     /// Result will be `nil` if `seq` wasn't mapped (see `treest:mapped`).
-    fn unmap(&mut self, seq: String) -> Result<Option<Function>> {
+    fn unmap(&mut self, seq: String) -> Result<Option<MappingFn>> {
         let seq = terminal::keytrans(&seq).map_err(|err| transpose_keytranserror(&seq, err))?;
         Ok(self.input.pop_mapping(seq))
     }
@@ -368,7 +364,9 @@ impl Navigate {
 
     /// Exported in treest.
     /// Prompt the user for a line of input.
-    /// The result is stored in the register given by `ps`.
+    /// The result is stored in the register given by `ps` as well as given
+    /// in argument to the callback function. If the prompt was discarded
+    /// then the callback is not called and registers are not updated.
     /// History is also taken from the previous values of the register.
     /// The `point` argument to the `completion` function is 0-base.
     /// See also `treest:set_register` for direct register access.

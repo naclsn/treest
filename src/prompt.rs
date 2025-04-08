@@ -44,8 +44,7 @@ pub struct Prompt {
 
 pub enum PromptState {
     Again(String, Prompt),
-    Abort,
-    Final(String),
+    Final(Option<String>),
 }
 
 /// Split `line` in a shell-like manner.
@@ -294,6 +293,7 @@ pub fn lua_tokens_split(line: &str, point: Option<usize>) -> PromptSplitInfo {
     PromptSplitInfo { parts, in_part }
 }
 
+// TODO: account for term width
 impl Prompt {
     /// Create a new interractive (readline-like) editing session.
     ///
@@ -362,7 +362,7 @@ impl Prompt {
                 out.push_str(&format!("\x1b[{by}C"));
                 self.at += by;
             }
-            b"\x1b\x1b" => return PromptState::Abort,
+            b"\x1b\x1b" => return PromptState::Final(None),
             b"\x1b\x7f" if 0 < self.at => {
                 let by = self.s[..self.at]
                     .windows(2)
@@ -383,13 +383,13 @@ impl Prompt {
                 out.push('\x08');
                 self.at -= 1;
             }
-            [0x03] => return PromptState::Abort,
+            [0x03] => return PromptState::Final(None),
             [0x04] | b"\x1b[3~" => {
                 if self.at < self.s.len() {
                     self.s.remove(self.at);
                     out.push_str("\x1b[P");
                 } else if 0 == self.at && self.s.is_empty() {
-                    return PromptState::Abort;
+                    return PromptState::Final(None);
                 }
             }
             [0x05] | b"\x1b[F" if self.at < self.s.len() => {
@@ -404,7 +404,7 @@ impl Prompt {
             [0x08 | 127] => {
                 if 0 == self.at {
                     if self.s.is_empty() {
-                        return PromptState::Abort;
+                        return PromptState::Final(None);
                     }
                 } else {
                     self.at -= 1;
@@ -533,7 +533,7 @@ impl Prompt {
                     }
                 }
             }
-            [0x0a | 0x0d] => return PromptState::Final(self.s.iter().collect()),
+            [0x0a | 0x0d] => return PromptState::Final(Some(self.s.iter().collect())),
             [0x0b] => {
                 if self.at < self.s.len() {
                     out.push_str(&format!("\x1b[{}P", self.s.len() - self.at));
@@ -559,7 +559,7 @@ impl Prompt {
             }
             [0x0f] => {
                 // TODO: prompt ^O
-                return PromptState::Final(self.s.iter().collect());
+                return PromptState::Final(Some(self.s.iter().collect()));
             }
             [0x10] if 0 < self.in_hist => {
                 if 0 < self.at {
@@ -654,7 +654,6 @@ impl Prompt {
     ///
     /// If there is a completion hint line, it will also be re-rendered (it is located above).
     pub fn render(&self, f: &mut impl Write) -> IoResult<()> {
-
         /*
         out.push_str(&format!("\x1b[G\x1b[K{}", self.ps));
         out.extend(&self.s);
@@ -668,14 +667,6 @@ impl Prompt {
     }
 }
 
-// TODO: this should be moved into navigate so it can integrate better with:
-//      * watchers updates (think eg inotify for fs-based)
-//      * key mapping? tho we dont have mode mapping and dont plan to
-//      * redrawing the breadcrumbs line after completion session
-//      * base inputs and outputs on the same instance of the same streams
-//      * term width
-//      * enough persistence for ^O maybe
-//      * ... idk
 /// A readline-like prompt.
 ///
 /// The cursor is expected to be on the first column already. `ps` is the prompt, it is used
@@ -685,6 +676,10 @@ impl Prompt {
 ///
 /// This is the simplest implementation of the loop, for more control over it use
 /// `Prompt::new` and `Prompt::feed`.
+#[allow(
+    dead_code,
+    reason = "keeping it for now, surely will forget about it but anyways",
+)]
 pub fn prompt(
     ps: &str,
     input: impl IntoIterator<Item = u8>,
@@ -700,8 +695,7 @@ pub fn prompt(
                 eprint!("{t}");
                 p = np;
             }
-            PromptState::Abort => return None,
-            PromptState::Final(ans) => return Some(ans),
+            PromptState::Final(ans) => return ans,
         }
     }
 

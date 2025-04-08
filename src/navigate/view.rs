@@ -364,7 +364,8 @@ impl Navigate {
         if self.input.get_prompt().is_none() {
             write!(f, "\x1b[J")?;
         } else {
-            write!(f, "{}", "\x1b[J".repeat(self.message.previous_height))?;
+            // if there is a prompt, can't just clear to end of screen, have to clear each line
+            write!(f, "{}", "\x1b[K\n".repeat(self.message.previous_height))?;
         }
         let len = self.message.lines.len();
         let msh = self.options.messageheight as usize;

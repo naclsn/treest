@@ -2,9 +2,7 @@ use std::fmt::{Debug, Formatter, Result as FmtResult};
 use std::io::{self, Bytes, Read, Result as IoResult, Stdin};
 use std::iter::MapWhile;
 
-use mlua::Function;
-
-use crate::lua::structs::{PendingMouseInfo, PromptAnsCallback};
+use crate::lua::structs::{MappingFn, PendingMouseInfo, PromptAnsCallback};
 use crate::prompt::{Prompt, PromptState};
 use crate::terminal;
 
@@ -21,7 +19,7 @@ pub struct Input {
     prompt: Option<(Prompt, Option<PromptAnsCallback>)>,
 }
 
-struct Mapping(Vec<u8>, Function);
+struct Mapping(Vec<u8>, MappingFn);
 
 impl Debug for Mapping {
     fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
@@ -61,8 +59,8 @@ impl Default for Input {
 pub enum InputTickResponse {
     Noop,
     EndOfInput,
-    Callback(Function),
-    CallbackWithArg(Function, String),
+    CallbackMapping(MappingFn),
+    CallbackPrompt(PromptAnsCallback, String),
 }
 
 impl Input {
@@ -79,12 +77,11 @@ impl Input {
                     self.prompt = Some((prompt, then));
                     Noop
                 }
-                PromptState::Abort => Noop,
                 PromptState::Final(ans) => {
                     terminal::cursor(false); // set from back in Navitate::prompt
                     eprint!("\r\x1b[K");
-                    if let Some(then) = then {
-                        CallbackWithArg(then.into(), ans)
+                    if let Some((then, ans)) = Option::zip(then, ans) {
+                        CallbackPrompt(then, ans)
                     } else {
                         Noop
                     }
@@ -138,7 +135,7 @@ impl Input {
                     let r = &map.1;
                     self.pending.clear();
                     self.recycle = Some(byte);
-                    Callback(r.clone())
+                    CallbackMapping(r.clone())
                 } else {
                     self.pending.clear();
                     Noop
@@ -147,7 +144,7 @@ impl Input {
 
             [single] if self.mappings[single].0.len() == self.pending.len() => {
                 self.pending.clear();
-                Callback(self.mappings[single].1.clone())
+                CallbackMapping(self.mappings[single].1.clone())
             }
 
             _ => Noop,
@@ -170,7 +167,7 @@ impl Input {
         self.prompt = Some((prompt, then));
     }
 
-    pub fn add_mapping(&mut self, sequence: Vec<u8>, action: Function) {
+    pub fn add_mapping(&mut self, sequence: Vec<u8>, action: MappingFn) {
         if sequence.is_empty() {
             return;
         }
@@ -180,14 +177,14 @@ impl Input {
         self.mappings.push(Mapping(sequence, action));
     }
 
-    pub fn get_mapping(&self, sequence: Vec<u8>) -> Option<&Function> {
+    pub fn get_mapping(&self, sequence: Vec<u8>) -> Option<&MappingFn> {
         self.mappings
             .iter()
             .find(|map| sequence == map.0)
             .map(|map| &map.1)
     }
 
-    pub fn pop_mapping(&mut self, sequence: Vec<u8>) -> Option<Function> {
+    pub fn pop_mapping(&mut self, sequence: Vec<u8>) -> Option<MappingFn> {
         let k = self.mappings.iter().position(|map| sequence == map.0)?;
         if let Some(a) = self
             .pending_reachable

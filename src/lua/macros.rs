@@ -166,16 +166,27 @@ macro_rules! lua_aliased_function {
         #[derive(Debug, Clone)]
         $vis struct $ty(::mlua::Function);
 
-        impl $ty {
-            #[allow(unused_parens)]
-            pub fn call(&self, $($ar: $aty),*) -> ::mlua::Result<($($rty)?)> {
-                self.0.call(($($ar),*))
-            }
-        }
-
         impl From<$ty> for ::mlua::Function {
             fn from(value: $ty) -> Self {
                 value.0
+            }
+        }
+
+        impl $ty {
+            #[allow(dead_code, unused_parens)]
+            pub fn call(&self, $($ar: $aty),*) -> ::mlua::Result<($($rty)?)> {
+                self.0.call(($($ar),*))
+            }
+
+            #[allow(dead_code, unused_parens)]
+            pub fn bind_all(&self, $($ar: $aty),*) -> ::mlua::Result<::mlua::Function> {
+                self.0.bind(($($ar),*))
+            }
+        }
+
+        impl ::mlua::IntoLua for $ty {
+            fn into_lua(self, lua: &::mlua::Lua) -> ::mlua::Result<::mlua::Value> {
+                Function::into_lua(self.0, lua)
             }
         }
 
