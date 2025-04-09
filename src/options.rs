@@ -10,6 +10,7 @@ use thiserror::Error;
 
 use crate::lua::help;
 use crate::navigate::Navigate;
+use crate::provider;
 
 #[derive(Error, Debug)]
 pub enum OptionsError {
@@ -88,7 +89,7 @@ impl Options {
                 }
 
                 "--list" | "-l" => {
-                    for name in providers::NAMES {
+                    for name in provider::NAMES {
                         println!("{name}");
                     }
                     process::exit(3);
@@ -137,7 +138,7 @@ impl Options {
                     r.provider_arg = arg;
                 }
                 name if 1 == pos_count => {
-                    if !providers::NAMES.contains(&name) {
+                    if !provider::NAMES.contains(&name) {
                         return Err(OptionsError::NotProvider(arg));
                     }
                     pos_count += 1;
@@ -149,7 +150,7 @@ impl Options {
         }
 
         if 1 == pos_count {
-            let Some(name) = providers::guess(&r.provider_arg) else {
+            let Some(name) = provider::guess(&r.provider_arg) else {
                 return Err(OptionsError::ProviderNeeded);
             };
             r.provider_name = name.into();
@@ -178,7 +179,9 @@ impl Options {
     }
 
     pub fn instanciate(self) -> Result<Navigate> {
-        providers::select(&self.provider_arg, &self.provider_name)
-            .map(|prov| Navigate::new(self.user_script, prov, self.provider_name))
+        let mut nav = Navigate::new(self.user_script);
+        let provider = provider::select(&self.provider_arg, &self.provider_name)?;
+        nav.push_space(provider, self.provider_name);
+        Ok(nav)
     }
 }

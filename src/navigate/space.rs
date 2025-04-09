@@ -28,12 +28,13 @@ impl Space {
         }
     }
 
-    pub fn spin_up_poller_thread(space: Arc<Mutex<Self>>) {
+    pub fn spin_up_poller_thread(self) -> Arc<Mutex<Self>> {
+        let r = Arc::new(Mutex::new(self));
+        let space = r.clone();
         thread::spawn(move || {
             let Some(poller) = space.lock().unwrap().provider.event_poller() else {
                 return;
             };
-
             while {
                 let ev = poller(); // blocks
                 space
@@ -43,6 +44,7 @@ impl Space {
                     .is_some()
             } {}
         });
+        r
     }
 
     /// This runs in the polling thread.
@@ -64,6 +66,12 @@ impl Space {
         } else {
             Ok(())
         }
+    }
+
+    /// Specific borrows needed in `treest:provider_request` because
+    /// it cannot be analyzed by the borrow checker through the MutexGuard.
+    pub fn tree_and_mut_provider(&mut self) -> (&Node, &mut dyn Provider) {
+        (&self.tree, &mut *self.provider)
     }
 
     pub fn provider_name(&self) -> &str {

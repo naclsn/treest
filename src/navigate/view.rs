@@ -373,7 +373,7 @@ impl Navigate {
         let has_multiple_spaces = 1 < self.spaces.len();
         for (k, space) in self.spaces.iter_mut().enumerate() {
             let avail_cols = k * each_avail_col..(k + 1) * each_avail_col;
-            space.view_render(
+            space.lock().unwrap().view_render(
                 f,
                 force,
                 avail_cols,

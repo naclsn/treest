@@ -318,10 +318,11 @@ impl Navigate {
     /// Exported in treest.
     /// Retrieve node information at a given display line (or 'row'), or `nil` if there is none.
     fn node_at_line(&self, line: usize) -> Result<Option<NodeInfo>> {
-        Ok(self.space().view.path_for(line).and_then(|path| {
-            self.space()
-                .retrieve_node_info(Target::TrustedPath(path.clone()))
-        }))
+        let space = self.space();
+        Ok(space
+            .view
+            .path_for(line)
+            .and_then(|path| space.retrieve_node_info(Target::TrustedPath(path.clone()))))
     }
 
     /// Exported in treest.
@@ -435,8 +436,11 @@ impl Navigate {
         target: Target,
         text: Option<String>,
     ) -> Result<Option<Vec<String>>> {
-        let space = self.space_mut();
-        let path = space.tree.resolve(&space.target_to_path(target));
+        let mut space = self.space_mut();
+        let index_path = space.target_to_path(target);
+        let (tree, provider) = space.tree_and_mut_provider();
+
+        let path = tree.resolve(&index_path);
         let path = &path[..].into();
 
         if !matches!(req.request, "rm" | "vi") && text.is_none() {
@@ -448,15 +452,14 @@ impl Navigate {
             });
         }
 
-        let p = &mut space.provider;
         let (r, ev) = match req.request {
-            "mk" => p.request_mk(path, text.unwrap()).map(|ev| (None, ev)),
-            "cp" => p.request_cp(path, text.unwrap()).map(|ev| (None, ev)),
-            "rm" => p.request_rm(path).map(|ev| (None, ev)),
-            "mv" => p.request_mv(path, text.unwrap()).map(|ev| (None, ev)),
-            "ch" => p.request_ch(path, text.unwrap()).map(|ev| (None, ev)),
-            "vi" => p.request_vi(path).map(|v| (Some(v), None)),
-            "ex" => p.request_ex(path, text.unwrap()).map(|p| (Some(p.0), p.1)),
+            "mk" => provider.request_mk(path, text.unwrap()).map(|ev| (None, ev)),
+            "cp" => provider.request_cp(path, text.unwrap()).map(|ev| (None, ev)),
+            "rm" => provider.request_rm(path).map(|ev| (None, ev)),
+            "mv" => provider.request_mv(path, text.unwrap()).map(|ev| (None, ev)),
+            "ch" => provider.request_ch(path, text.unwrap()).map(|ev| (None, ev)),
+            "vi" => provider.request_vi(path).map(|v| (Some(v), None)),
+            "ex" => provider.request_ex(path, text.unwrap()).map(|p| (Some(p.0), p.1)),
             _ => unreachable!(),
         }
         .map_err(Error::external)?;
@@ -494,20 +497,21 @@ impl Navigate {
     /// Exported in treest.
     /// Search for a sibling node with `q` in its text.
     fn search_level(&self, q: String, flags: SearchFlags) -> Result<Option<IndexPath>> {
-        if self.space().is_cursor_root() {
+        let space = self.space();
+        if space.is_cursor_root() {
             return Ok(None);
         };
-        let [parent_path @ .., current] = self.space().cursor() else {
+        let [parent_path @ .., current] = space.cursor() else {
             unreachable!();
         };
-        let parent = self.space().tree.resolve(parent_path);
+        let parent = space.tree.resolve(parent_path);
         let chs = parent.last().unwrap().children().unwrap();
 
         let Some(found) = slice_search(
             &chs,
             *current,
             |node| {
-                self.space()
+                space
                     .provider
                     .display(&NodePath {
                         head: &parent,
@@ -603,14 +607,16 @@ impl Navigate {
     /// Exported in treest.
     /// Move the view down, revealing any hidden lines at the bottom.
     fn view_down(&mut self, by: ScrollFlags) -> Result<()> {
-        ViewJumpBy::new_by(by.amount).view_down(&mut self.space_mut().view);
+        let mut space = self.space_mut();
+        ViewJumpBy::new_by(by.amount).view_down(&mut space.view);
         Ok(())
     }
 
     /// Exported in treest.
     /// Move the view up, revealing any hidden lines at the top.
     fn view_up(&mut self, by: ScrollFlags) -> Result<()> {
-        ViewJumpBy::new_by(by.amount).view_up(&mut self.space_mut().view);
+        let mut space = self.space_mut();
+        ViewJumpBy::new_by(by.amount).view_up(&mut space.view);
         Ok(())
     }
 }

@@ -1,7 +1,9 @@
 use std::collections::BTreeMap;
 use std::fs::File;
 use std::io::{BufRead, BufReader, Write};
+use std::ops::{Deref, DerefMut};
 use std::path::PathBuf;
+use std::sync::{Arc, Mutex};
 
 use anyhow::Result;
 use mlua::{Function, Lua, LuaOptions, StdLib, Table};
@@ -33,7 +35,7 @@ pub struct Message {
 }
 
 pub struct Navigate {
-    spaces: Vec<Space>,
+    spaces: Vec<Arc<Mutex<Space>>>,
 
     user_script: Option<PathBuf>,
 
@@ -49,18 +51,14 @@ pub struct Navigate {
 }
 
 impl Navigate {
-    pub fn new(
-        user_script: Option<PathBuf>,
-        provider: Box<dyn Provider>,
-        provider_name: String,
-    ) -> Self {
+    pub fn new(user_script: Option<PathBuf>) -> Self {
         Self {
-            spaces: vec![Space::new(provider, provider_name)],
+            spaces: Vec::new(),
 
             user_script,
 
             input: Input::default(),
-            term: terminal::raw_with_panic_hook().ok(),
+            term: None,
             force_redraw: false,
 
             exit: None,
@@ -71,12 +69,17 @@ impl Navigate {
         }
     }
 
-    pub fn space(&self) -> &Space {
-        &self.spaces[0]
+    pub fn push_space(&mut self, provider: Box<dyn Provider>, provider_name: String) {
+        let space = Space::new(provider, provider_name);
+        self.spaces.push(Space::spin_up_poller_thread(space));
     }
 
-    pub fn space_mut(&mut self) -> &mut Space {
-        &mut self.spaces[0]
+    pub fn space(&self) -> impl Deref<Target = Space> + use<'_> {
+        self.spaces[0].lock().unwrap()
+    }
+
+    pub fn space_mut(&mut self) -> impl DerefMut<Target = Space> + use<'_> {
+        self.spaces[0].lock().unwrap()
     }
 
     /// Load the registers from `~/.cache/treest.hist`.
@@ -138,6 +141,10 @@ impl Navigate {
                 _ = self.load_registers(&mut BufReader::new(f));
             }
         }
+
+        // this could be delayed even more, but `self` in moved into lua
+        // so it would need eg `treest:_lateinit`
+        self.term = terminal::raw_with_panic_hook().ok();
 
         let lua = unsafe {
             Lua::unsafe_new_with(StdLib::ALL, LuaOptions::default().catch_rust_panics(false))
