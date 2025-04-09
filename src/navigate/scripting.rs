@@ -93,6 +93,7 @@ impl UserData for Navigate {
             fn  provider_name();
             mut provider_request(req, target, text);
             mut quit(text);
+            mut raw_keys(keys);
             mut search_deep(q, flags);
             fn  search_level(q, flags);
             mut set_cursor(target);
@@ -149,10 +150,15 @@ impl Navigate {
     }
 
     fn _tick(&mut self) -> Result<Option<Function>> {
-        if let Err(err) = self.render_buffered(&mut io::stderr(), false) {
-            // assume unrecoverable situation, bail out
-            self.exit = Some(err.to_string());
-            return Ok(None);
+        // no redraw if there are still keys that can be processed
+        if !self.input.has_recycle()
+        //|| self.force_redraw TODO: forgot to git push
+        {
+            if let Err(err) = self.render_buffered(&mut io::stderr(), false) {
+                // assume unrecoverable situation, bail out
+                self.exit = Some(err.to_string());
+                return Ok(None);
+            }
         }
 
         Ok(match self.input.tick() {
@@ -454,6 +460,16 @@ impl Navigate {
     /// Only `nil` is considered a normal exit situation.
     fn quit(&mut self, text: Option<String>) -> Result<()> {
         self.exit = text.or(Some(String::new()));
+        Ok(())
+    }
+
+    /// Exported in treest.
+    /// Send a raw sequence of keys as if typed.
+    /// This is rarely the surest and most efficient way to go about it,
+    /// but certainly the easiest and most practical.
+    fn raw_keys(&mut self, seq: String) -> Result<()> {
+        let seq = terminal::keytrans(&seq).map_err(|err| transpose_keytranserror(&seq, err))?;
+        self.input.recycle(seq);
         Ok(())
     }
 

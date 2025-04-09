@@ -57,6 +57,7 @@ m.completions = {
     for_command = {},
 }
 
+---@type table<string, fun(arg:string, bang:boolean)>
 m.commands = {
     help = function(arg) treest:message(help(arg) or ("no help for " .. arg)) end,
 
@@ -78,7 +79,8 @@ m.commands = {
 
     eval = function(arg)
         local ok, err = load(arg)
-        if ok then
+        if ok
+        then
             _ = ok()
             return
         end
@@ -116,6 +118,26 @@ m.commands = {
 
         if show[1] then treest:message(show) end
     end,
+
+    map = function(arg)
+        -- note: there cannot be spaces in lhs
+        ---@type string, string?
+        local lhs, rhs = arg:match('^%s*(%S+)%s(.*)%s*$')
+        if not rhs or '' == rhs
+        then
+            lhs = arg:match('^%s*(%S+)%s*$') or arg
+            local is = treest:mapped(lhs)
+            treest:message(is and tostring(is) or ("no mapping for " .. lhs))
+        else
+            rhs:keytrans() -- assert it's a valid sequence once before mapping
+            treest:map(lhs, function() treest:raw_keys(rhs) end)
+        end
+    end,
+
+    unmap = function(arg)
+        local lhs = arg:match('^%s*(%S+)%s*$') or arg
+        if not treest:unmap(lhs) then treest:message("no mapping for " .. lhs) end
+    end,
 }
 
 local function request(req)
@@ -144,11 +166,12 @@ alias('help', 'h')
 alias('quit', 'q')
 alias('suspend', 'sus', 'stop', 'st')
 alias('set', 'se')
+alias('unmap', 'unm')
 
 local function complete(func, ...)
     for _, com in pairs { ... } do m.completions.for_command[com] = func end
 end
-complete(m.completions.files, 'mk', 'cp', 'rm', 'ch', 'vi', 'ex') -- idk
+complete(m.completions.files, 'mk', 'cp', 'rm', 'ch', 'vi', 'ex')
 complete(m.completions.script, 'echo', 'ec', 'eval', 'ev', 'let', 'call', 'cal', 'help')
 
 local function search(q, flags)

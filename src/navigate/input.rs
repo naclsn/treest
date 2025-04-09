@@ -1,3 +1,4 @@
+use std::collections::VecDeque;
 use std::fmt::{Debug, Formatter, Result as FmtResult};
 use std::io::{self, Bytes, Read, Result as IoResult, Stdin};
 use std::iter::MapWhile;
@@ -9,7 +10,7 @@ use crate::terminal;
 type IoResultU8Ok = fn(IoResult<u8>) -> Option<u8>;
 pub struct Input {
     input: MapWhile<Bytes<Stdin>, IoResultU8Ok>,
-    recycle: Option<u8>,
+    recycle: VecDeque<u8>,
 
     pending: Vec<u8>,
     pending_mouse_info: PendingMouseInfo,
@@ -30,7 +31,10 @@ impl Debug for Mapping {
 impl Debug for Input {
     fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
         f.debug_struct("Input")
-            .field("recycle", &self.recycle.map(|b| terminal::keyseqstr(&[b])))
+            .field(
+                "recycle",
+                &terminal::keyseqstr(&self.recycle.iter().copied().collect::<Vec<_>>()),
+            )
             .field("pending", &terminal::keyseqstr(&self.pending))
             .field("pending_mouse_info", &self.pending_mouse_info)
             .field("mappings", &self.mappings)
@@ -43,7 +47,7 @@ impl Default for Input {
     fn default() -> Self {
         Self {
             input: io::stdin().bytes().map_while(Result::ok),
-            recycle: None,
+            recycle: VecDeque::new(),
 
             pending: Vec::default(),
             pending_mouse_info: PendingMouseInfo { col: 0, row: 0 },
@@ -69,7 +73,7 @@ pub enum InputTickResponse {
 impl Input {
     pub fn tick(&mut self) -> InputTickResponse {
         use InputTickResponse::*;
-        let Some(byte) = self.recycle.take().or_else(|| self.input.next()) else {
+        let Some(byte) = self.recycle.pop_front().or_else(|| self.input.next()) else {
             return EndOfInput;
         };
 
@@ -137,7 +141,7 @@ impl Input {
                 {
                     let r = &map.1;
                     self.pending.clear();
-                    self.recycle = Some(byte);
+                    self.recycle.push_back(byte);
                     CallbackMapping(r.clone())
                 } else {
                     self.pending.clear();
@@ -152,6 +156,14 @@ impl Input {
 
             _ => Noop,
         }
+    }
+
+    pub fn recycle(&mut self, seq: impl IntoIterator<Item = u8>) {
+        self.recycle.extend(seq);
+    }
+
+    pub fn has_recycle(&self) -> bool {
+        !self.recycle.is_empty()
     }
 
     pub fn get_pending(&self) -> &[u8] {
