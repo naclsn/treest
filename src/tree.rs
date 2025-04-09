@@ -1,7 +1,7 @@
 use std::any::Any;
 use std::fmt::{Debug, Formatter, Result as FmtResult};
 
-use crate::providers::Provider;
+use crate::provider::Provider;
 
 pub trait FragmentTrait: Any + Send {
     fn as_any(&self) -> &dyn Any;

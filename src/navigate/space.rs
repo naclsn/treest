@@ -6,7 +6,7 @@ use std::thread;
 use crate::lua::structs::{IndexPath, NodeInfo, Target};
 use crate::navigate::options::Options;
 use crate::navigate::view::{View, ViewSpaceSubset};
-use crate::providers::{Event, Provider};
+use crate::provider::{Event, Provider};
 use crate::tree::Node;
 
 pub struct Space {

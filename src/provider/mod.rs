@@ -77,7 +77,11 @@ pub trait Provider: Send {
     }
     /// Arbitrary provider request extension. `path` may or may not be relevant.
     /// `text` comes from user input and its interpretation is provider-dependent.
-    fn request_ex(&mut self, path: &NodePath, text: String) -> Result<(Vec<String>, Option<Event>)> {
+    fn request_ex(
+        &mut self,
+        path: &NodePath,
+        text: String,
+    ) -> Result<(Vec<String>, Option<Event>)> {
         _ = (path, text);
         Ok((Vec::new(), None))
     }

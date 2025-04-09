@@ -1,5 +1,5 @@
 use std::fs::File;
-use std::io;
+use std::io::{self, Write};
 
 use mlua::{AnyUserData, MetaMethod, UserData, UserDataFields, UserDataMethods};
 use mlua::{BString, Either, Error, Function, Lua, Result, Table, Value};
@@ -153,7 +153,13 @@ impl Navigate {
     fn _tick(&mut self) -> Result<Option<Function>> {
         // no redraw if there are still keys that can be processed
         if !self.input.has_recycle() || self.force_redraw {
-            if let Err(err) = self.render_buffered(&mut io::stderr(), self.force_redraw) {
+            let mut buf = b"\x1b7".to_vec();
+            if self.force_redraw {
+                buf.extend(b"\x1b[2J");
+            }
+            self.render(&mut buf, self.force_redraw)?;
+            buf.extend(b"\x1b8");
+            if let Err(err) = io::stderr().write_all(&buf) {
                 // assume unrecoverable situation, bail out
                 self.exit = Some(err.to_string());
                 return Ok(None);

@@ -2,7 +2,7 @@ mod lua;
 mod navigate;
 mod options;
 mod prompt;
-mod providers;
+mod provider;
 mod terminal;
 mod tree;
 

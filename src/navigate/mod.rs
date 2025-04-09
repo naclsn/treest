@@ -18,7 +18,7 @@ use crate::navigate::input::Input;
 use crate::navigate::options::Options;
 use crate::navigate::space::Space;
 use crate::navigate::view::ViewJumpBy;
-use crate::providers::Provider;
+use crate::provider::Provider;
 use crate::terminal::{self, RestoreWithPanicHook};
 
 #[derive(Error, Debug)]

@@ -10,7 +10,6 @@ use thiserror::Error;
 
 use crate::lua::help;
 use crate::navigate::Navigate;
-use crate::providers;
 
 #[derive(Error, Debug)]
 pub enum OptionsError {

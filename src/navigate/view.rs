@@ -3,7 +3,7 @@ use std::ops::Range;
 
 use crate::navigate::options::Options;
 use crate::navigate::{IndexPath, Navigate};
-use crate::providers::Provider;
+use crate::provider::Provider;
 use crate::terminal;
 use crate::tree::Node;
 
@@ -450,16 +450,5 @@ impl Navigate {
             _ => (),
         }
         Ok(())
-    }
-
-    /// Render the whole mess at once. This one also makes sure the cursor is repositioned.
-    pub fn render_buffered(&mut self, f: &mut impl Write, force: bool) -> IoResult<()> {
-        let mut buf = b"\x1b7".to_vec();
-        if force {
-            buf.extend(b"\x1b[2J");
-        }
-        self.render(&mut buf, force)?;
-        buf.extend(b"\x1b8");
-        f.write_all(&buf)
     }
 }

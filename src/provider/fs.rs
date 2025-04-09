@@ -9,7 +9,7 @@ use anyhow::Result;
 use lscolors::{LsColors, Style};
 use thiserror::Error;
 
-use crate::providers::{Event, Provider};
+use crate::provider::{Event, Provider};
 use crate::tree::{Fragment, NodePath};
 
 pub struct Fs(PathBuf);
