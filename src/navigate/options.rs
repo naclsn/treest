@@ -1,3 +1,6 @@
+// TODO: global and local options
+//   local options proxy to a shared global options
+
 use mlua::Either;
 
 use crate::terminal;

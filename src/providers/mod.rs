@@ -4,8 +4,12 @@ use anyhow::Result;
 
 use crate::tree::{Fragment, NodePath};
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Event {}
+pub type EventPoller = Box<dyn Fn() -> Event>;
+
 /// A type that is able to provide a tree structure.
-pub trait Provider {
+pub trait Provider: Send {
     fn provide_root(&self) -> Fragment;
     fn provide(&mut self, path: &NodePath) -> Vec<Fragment>;
 
@@ -24,39 +28,47 @@ pub trait Provider {
         self.components(path).join(" ")
     }
 
-    // TODO: fn poll_event(&self) -> () {}
+    /// blocking
+    fn event_poller(&mut self) -> Option<EventPoller> {
+        None
+    }
+    /// is notified of an event its event poller emitted
+    /// mainly as an occasion to update said poller
+    fn event_occured(&mut self, ev: &Event) {
+        _ = ev;
+    }
 
     /// Request to create a new node at `path`.
     /// `text` comes from user input and its interpretation is provider-dependent.
-    fn request_mk(&mut self, path: &NodePath, text: String) -> Result<()> {
+    fn request_mk(&mut self, path: &NodePath, text: String) -> Result<Option<Event>> {
         _ = (path, text);
-        Ok(())
+        Ok(None)
     }
     /// Request to copy an existing node at `path`.
     /// `text` comes from user input and its interpretation is provider-dependent.
-    fn request_cp(&mut self, path: &NodePath, text: String) -> Result<()> {
+    fn request_cp(&mut self, path: &NodePath, text: String) -> Result<Option<Event>> {
         _ = (path, text);
-        Ok(())
+        Ok(None)
     }
     /// Request to remove an existing node at `path`.
-    fn request_rm(&mut self, path: &NodePath) -> Result<()> {
+    fn request_rm(&mut self, path: &NodePath) -> Result<Option<Event>> {
         _ = (path,);
-        Ok(())
+        Ok(None)
     }
     /// Request to move an existing node at `path`.
     /// `text` comes from user input and its interpretation is provider-dependent.
     /// The default implementation uses `request_cp` and `request_rm` which might be undesirable.
-    fn request_mv(&mut self, path: &NodePath, text: String) -> Result<()> {
+    fn request_mv(&mut self, path: &NodePath, text: String) -> Result<Option<Event>> {
         self.request_cp(path, text)?;
         self.request_rm(path)?;
-        Ok(())
+        Ok(None)
     }
     /// Request to "change" an existing node at `path`.
     /// The meaning is provider- and input- dependent.
     /// `text` comes from user input and its interpretation is provider-dependent.
-    fn request_ch(&mut self, path: &NodePath, text: String) -> Result<()> {
+    fn request_ch(&mut self, path: &NodePath, text: String) -> Result<Option<Event>> {
         _ = (path, text);
-        Ok(())
+        Ok(None)
     }
     /// Request to visualise more content / information about an existing node at `path`.
     fn request_vi(&mut self, path: &NodePath) -> Result<Vec<String>> {
@@ -65,9 +77,9 @@ pub trait Provider {
     }
     /// Arbitrary provider request extension. `path` may or may not be relevant.
     /// `text` comes from user input and its interpretation is provider-dependent.
-    fn request_ex(&mut self, path: &NodePath, text: String) -> Result<Vec<String>> {
+    fn request_ex(&mut self, path: &NodePath, text: String) -> Result<(Vec<String>, Option<Event>)> {
         _ = (path, text);
-        Ok(Vec::new())
+        Ok((Vec::new(), None))
     }
 }
 

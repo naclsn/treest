@@ -9,7 +9,7 @@ use anyhow::Result;
 use lscolors::{LsColors, Style};
 use thiserror::Error;
 
-use crate::providers::Provider;
+use crate::providers::{Event, Provider};
 use crate::tree::{Fragment, NodePath};
 
 pub struct Fs(PathBuf);
@@ -280,54 +280,58 @@ impl Provider for Fs {
         r
     }
 
-    fn request_mk(&mut self, path: &NodePath, text: String) -> Result<()> {
-        Ok(writeln!(
+    fn request_mk(&mut self, path: &NodePath, text: String) -> Result<Option<Event>> {
+        writeln!(
             File::options()
                 .append(true)
                 .open("./would.notquite.sh")
                 .unwrap(),
             "mk {:?} {text:?}",
             self.components(path).join("/"),
-        )?)
+        )?;
+        Ok(None)
     }
 
-    fn request_cp(&mut self, path: &NodePath, text: String) -> Result<()> {
-        Ok(writeln!(
+    fn request_cp(&mut self, path: &NodePath, text: String) -> Result<Option<Event>> {
+        writeln!(
             File::options()
                 .append(true)
                 .open("./would.notquite.sh")
                 .unwrap(),
             "cp {:?} {text:?}",
             self.components(path).join("/"),
-        )?)
+        )?;
+        Ok(None)
     }
 
-    fn request_rm(&mut self, path: &NodePath) -> Result<()> {
-        Ok(writeln!(
+    fn request_rm(&mut self, path: &NodePath) -> Result<Option<Event>> {
+        writeln!(
             File::options()
                 .append(true)
                 .open("./would.notquite.sh")
                 .unwrap(),
             "rm {:?}",
             self.components(path).join("/"),
-        )?)
+        )?;
+        Ok(None)
     }
 
-    fn request_mv(&mut self, path: &NodePath, text: String) -> Result<()> {
+    fn request_mv(&mut self, path: &NodePath, text: String) -> Result<Option<Event>> {
         self.request_cp(path, text)?;
         self.request_rm(path)?;
-        Ok(())
+        Ok(None)
     }
 
-    fn request_ch(&mut self, path: &NodePath, text: String) -> Result<()> {
-        Ok(writeln!(
+    fn request_ch(&mut self, path: &NodePath, text: String) -> Result<Option<Event>> {
+        writeln!(
             File::options()
                 .append(true)
                 .open("./would.notquite.sh")
                 .unwrap(),
             "ch {:?} {text:?}",
             self.components(path).join("/"),
-        )?)
+        )?;
+        Ok(None)
     }
 
     fn request_vi(&mut self, path: &NodePath) -> Result<Vec<String>> {
@@ -338,9 +342,13 @@ impl Provider for Fs {
             .collect())
     }
 
-    fn request_ex(&mut self, path: &NodePath, text: String) -> Result<Vec<String>> {
+    fn request_ex(
+        &mut self,
+        path: &NodePath,
+        text: String,
+    ) -> Result<(Vec<String>, Option<Event>)> {
         _ = (path, text);
-        Ok(Vec::new())
+        Ok((Vec::new(), None))
     }
 }
 

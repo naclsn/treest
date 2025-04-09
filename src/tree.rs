@@ -3,10 +3,10 @@ use std::fmt::{Debug, Formatter, Result as FmtResult};
 
 use crate::providers::Provider;
 
-pub trait FragmentTrait: Any {
+pub trait FragmentTrait: Any + Send {
     fn as_any(&self) -> &dyn Any;
 }
-impl<T: Any> FragmentTrait for T {
+impl<T: Any + Send> FragmentTrait for T {
     fn as_any(&self) -> &dyn Any {
         self
     }

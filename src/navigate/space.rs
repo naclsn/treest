@@ -1,10 +1,12 @@
-use std::io::{Result as IoResult, Write};
+use std::io::{self, Result as IoResult, Write};
 use std::ops::Range;
+use std::sync::{Arc, Mutex};
+use std::thread;
 
 use crate::lua::structs::{IndexPath, NodeInfo, Target};
 use crate::navigate::options::Options;
 use crate::navigate::view::{View, ViewSpaceSubset};
-use crate::providers::Provider;
+use crate::providers::{Event, Provider};
 use crate::tree::Node;
 
 pub struct Space {
@@ -23,6 +25,44 @@ impl Space {
             provider_name,
             view: View::default(),
             cursor: (0, IndexPath::default()),
+        }
+    }
+
+    pub fn spin_up_poller_thread(space: Arc<Mutex<Self>>) {
+        thread::spawn(move || {
+            let Some(poller) = space.lock().unwrap().provider.event_poller() else {
+                return;
+            };
+
+            while {
+                let ev = poller(); // blocks
+                space
+                    .lock()
+                    .ok()
+                    .and_then(|mut sp| sp.process_event(&ev).ok())
+                    .is_some()
+            } {}
+        });
+    }
+
+    /// This runs in the polling thread.
+    ///
+    /// It circle backs the event to the provider, perform the actual
+    /// update on the tree (lazily as possible) and re-render only if
+    /// it cannot be sure it is not necessary.
+    fn process_event(&mut self, ev: &Event) -> IoResult<()> {
+        self.provider.event_occured(&ev);
+
+        let need_render = todo!("process_event({ev:?})"); // TODO: actual tree update
+
+        if need_render {
+            let mut buf = b"\x1b7".to_vec();
+            self.view_render(&mut buf, false, todo!(), todo!(), todo!(), todo!())
+                .unwrap(); // unwrap: render to a vec
+            buf.extend(b"\x1b8");
+            io::stderr().write_all(&buf)
+        } else {
+            Ok(())
         }
     }
 

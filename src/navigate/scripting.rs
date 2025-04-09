@@ -434,24 +434,20 @@ impl Navigate {
             });
         }
 
-        match req.request {
-            "mk" => space.provider.request_mk(path, text.unwrap()),
-            "cp" => space.provider.request_cp(path, text.unwrap()),
-            "rm" => space.provider.request_rm(path),
-            "mv" => space.provider.request_mv(path, text.unwrap()),
-            "ch" => space.provider.request_ch(path, text.unwrap()),
-            _ => {
-                return match req.request {
-                    "vi" => space.provider.request_vi(path),
-                    "ex" => space.provider.request_ex(path, text.unwrap()),
-                    _ => unreachable!(),
-                }
-                .map_err(Error::external)
-                .map(Some)
-            }
+        let p = &mut space.provider;
+        let (r, ev) = match req.request {
+            "mk" => p.request_mk(path, text.unwrap()).map(|ev| (None, ev)),
+            "cp" => p.request_cp(path, text.unwrap()).map(|ev| (None, ev)),
+            "rm" => p.request_rm(path).map(|ev| (None, ev)),
+            "mv" => p.request_mv(path, text.unwrap()).map(|ev| (None, ev)),
+            "ch" => p.request_ch(path, text.unwrap()).map(|ev| (None, ev)),
+            "vi" => p.request_vi(path).map(|v| (Some(v), None)),
+            "ex" => p.request_ex(path, text.unwrap()).map(|p| (Some(p.0), p.1)),
+            _ => unreachable!(),
         }
-        .map_err(Error::external)
-        .map(|()| None)
+        .map_err(Error::external)?;
+
+        Ok(r)
     }
 
     /// Exported in treest.
