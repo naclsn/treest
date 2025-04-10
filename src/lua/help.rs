@@ -66,6 +66,7 @@ pub fn gen_lua_meta(f: &mut impl Write) -> IoResult<()> {
         NodeInfo,
         PendingMouseInfo,
         PromptSplitInfo,
+        ProviderFlags,
         RequestFlags,
         ScrollFlags,
         SearchFlags,

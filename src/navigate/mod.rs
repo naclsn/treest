@@ -69,6 +69,7 @@ impl Navigate {
         }
     }
 
+    // TODO: phase out
     pub fn push_space(&mut self, provider: Box<dyn Provider>, provider_name: String) {
         let space = Space::new(provider, provider_name);
         self.spaces.push(Space::spin_up_poller_thread(space));

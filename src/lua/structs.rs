@@ -98,6 +98,7 @@ mod _index_path {
     }
 
     impl LuaTypeDoc for IndexPath {
+        #[inline]
         fn lua_type_doc() -> String {
             "integer[]".to_string()
         }
@@ -126,12 +127,14 @@ mod _target {
     }
 
     impl LuaTypeDoc for Target {
+        #[inline]
         fn lua_type_doc() -> String {
             "Target".to_string()
         }
     }
 
     impl LuaTypeAliasDoc for Target {
+        #[inline]
         fn lua_type_doc_alias_to() -> String {
             "integer[]?".to_string()
         }
@@ -163,6 +166,7 @@ mod _listing {
     }
 
     impl LuaTypeDoc for Listing {
+        #[inline]
         fn lua_type_doc() -> String {
             "fun():string?".to_string()
         }

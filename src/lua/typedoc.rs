@@ -129,6 +129,7 @@ impl_lua_type_doc! { "{{ [{}]: boolean }}" for
 //    <T: mlua::FromLua> T,
 //}
 impl<T: LuaTypeDoc + ?Sized> LuaTypeDoc for &T {
+    #[inline]
     fn lua_type_doc() -> String {
         T::lua_type_doc()
     }

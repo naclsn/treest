@@ -180,7 +180,7 @@ impl Options {
 
     pub fn instanciate(self) -> Result<Navigate> {
         let mut nav = Navigate::new(self.user_script);
-        let provider = provider::select(&self.provider_arg, &self.provider_name).unwrap()?;
+        let provider = provider::select(&self.provider_arg, &self.provider_name)?;
         nav.push_space(provider, self.provider_name);
         Ok(nav)
     }

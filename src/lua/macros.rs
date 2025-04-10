@@ -43,12 +43,14 @@ macro_rules! struct_lua_conversion {
         }
 
         impl $crate::lua::typedoc::LuaTypeDoc for $ty {
+            #[inline]
             fn lua_type_doc() -> String {
                 stringify!($ty).to_string()
             }
         }
 
         impl $crate::lua::typedoc::LuaTypeAliasDoc for $ty {
+            #[inline]
             fn lua_type_doc_alias_to() -> String {
                 format!(
                     "{{ {} }}",
@@ -134,12 +136,14 @@ macro_rules! flags_lua_conversion {
         }
 
         impl $crate::lua::typedoc::LuaTypeDoc for $ty {
+            #[inline]
             fn lua_type_doc() -> String {
                 stringify!($ty).to_string()
             }
         }
 
         impl $crate::lua::typedoc::LuaTypeAliasDoc for $ty {
+            #[inline]
             fn lua_type_doc_alias_to() -> String {
                 let mut r = format!(
                     "({})[]",
@@ -197,6 +201,7 @@ macro_rules! lua_aliased_function {
         }
 
         impl $crate::lua::typedoc::LuaTypeDoc for $ty {
+            #[inline]
             fn lua_type_doc() -> String {
                 format!(
                     "fun({})",

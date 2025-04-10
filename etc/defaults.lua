@@ -61,30 +61,52 @@ m.completions = {
 m.commands = {
     help = function(arg) treest:message(help(arg) or ("no help for " .. arg)) end,
 
-    quit = function() treest:quit() end,
     cquit = function(arg) treest:quit(0 < #arg and arg or "!") end,
+    qall = function() treest:quit() end,
     suspend = function() treest:suspend() end,
+
+    quit = function()
+        treest:space_close()
+        -- TODO:
+        -- if last then treest:quit() end
+    end,
+
+    edit = function(arg)
+        ---@type string?
+        local name
+        local st, ed = arg:find('%+%l+%s*$')
+        if st and ed then arg, name = arg:sub(1, st - 1), arg:sub(st, ed) end
+        local aarg = arg:match('^%s*(.-)%s*$')
+        if not aarg then return end -- TODO: force reload
+        treest:space_open(aarg, name)
+    end,
 
     echo = function(arg, bang)
         local ok, err = load('return ' .. arg)
-        if ok
-        then
-            _ = ok()
-            if bang and nil == _ then return end
-            treest:message((bang and debug.pretty or tostring)(_))
-            return
-        end
-        treest:message(err)
+        if not ok then return treest:message(err) end
+        _ = ok()
+        if bang and nil == _ then return end
+        treest:message((bang and debug.pretty or tostring)(_))
     end,
 
     eval = function(arg)
         local ok, err = load(arg)
-        if ok
+        if not ok then return treest:message(err) end
+        _ = ok()
+    end,
+
+    func = function(arg)
+        if arg:find('%(')
         then
+            local ok, err = load('function ' .. arg)
+            if not ok then return treest:message(err) end
             _ = ok()
-            return
+        else
+            local ok, err = load('return ' .. arg)
+            if not ok then return treest:message(err) end
+            _ = ok()
+            treest:message(tostring(_))
         end
-        treest:message(err)
     end,
 
     set = function(arg)
@@ -138,11 +160,6 @@ m.commands = {
         local lhs = arg:match('^%s*(%S+)%s*$') or arg
         if not treest:unmap(lhs) then treest:message("no mapping for " .. lhs) end
     end,
-
-    edit = function(arg)
-        --function treest:space_open(arg, name?, placement_hint?) end
-        --function treest:space_close(placement?) end
-    end,
 }
 
 ---@param req RequestFlags
@@ -176,13 +193,15 @@ local function alias(com, ...)
 end
 alias('cquit', 'cq')
 alias('echo', 'ec')
-alias('eval', 'ev', 'let', 'local', 'call', 'cal')
-alias('help', 'h')
-alias('quit', 'q')
-alias('suspend', 'sus', 'stop', 'st')
-alias('set', 'se')
-alias('unmap', 'unm')
 alias('edit', 'ed', 'e', 'split', 'sp', 'vsplit', 'vs')
+alias('eval', 'ev', 'let', 'local', 'call', 'cal')
+alias('function', 'func', 'fu')
+alias('help', 'h')
+alias('qall', 'qa')
+alias('quit', 'q')
+alias('set', 'se')
+alias('suspend', 'sus', 'stop', 'st')
+alias('unmap', 'unm')
 
 local function complete(func, ...)
     for _, com in pairs { ... } do m.completions.for_command[com] = func end

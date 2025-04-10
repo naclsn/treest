@@ -626,9 +626,7 @@ impl Navigate {
             Some(ProviderFlags { name }) => name,
             None => provider::guess(&arg).unwrap(),
         };
-        let provider = provider::select(&arg, provider_name)
-            .unwrap()
-            .map_err(Error::external)?;
+        let provider = provider::select(&arg, provider_name).map_err(Error::external)?;
         let space = Space::new(provider, provider_name.to_string());
         let at = placement_hint.unwrap_or(self.spaces.len()); // TODO: current
         self.spaces.insert(at, space.spin_up_poller_thread());

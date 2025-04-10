@@ -368,4 +368,8 @@ impl Fs {
             Ok(Self(root))
         }
     }
+
+    pub fn guess(arg: impl AsRef<Path>) -> bool {
+        arg.as_ref().is_dir()
+    }
 }
