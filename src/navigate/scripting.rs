@@ -7,11 +7,13 @@ use mlua::{BString, Either, Error, Function, Lua, Result, Table, Value};
 use crate::lua::help;
 use crate::lua::structs::{Completion, MappingFn, PromptAnsCallback};
 use crate::lua::structs::{IndexPath, Listing, NodeInfo, PromptSplitInfo, Target};
-use crate::lua::structs::{MoveFlags, RequestFlags, ScrollFlags, SearchFlags};
+use crate::lua::structs::{MoveFlags, ProviderFlags, RequestFlags, ScrollFlags, SearchFlags};
 use crate::navigate::input::InputTickResponse;
 use crate::navigate::options::Options;
+use crate::navigate::space::Space;
 use crate::navigate::{Navigate, ViewJumpBy};
 use crate::prompt::{self, Prompt};
+use crate::provider;
 use crate::terminal::{self, KeyTransError};
 use crate::tree::NodePath;
 
@@ -101,6 +103,9 @@ impl UserData for Navigate {
             mut set_cursor(target);
             mut set_option(name, value);
             mut set_register(name, value);
+            mut space_close(placement);
+            fn  space_guess(arg);
+            mut space_open(arg, name, placement_hint);
             mut suspend();
             mut unfold(target);
             mut unmap(seq);
@@ -584,6 +589,49 @@ impl Navigate {
     /// The `name` is always trimmed of leading and trailing whitespaces.
     fn set_register(&mut self, name: String, value: String) -> Result<()> {
         self.register_push(&name, value);
+        Ok(())
+    }
+
+    /// Exported in treest.
+    /// Close the space at `placement` (current if `nil`).
+    fn space_close(&mut self, placement: Option<usize>) -> Result<()> {
+        let at = placement.unwrap_or(self.spaces.len()) - 1; // TODO: current
+        self.spaces.remove(at);
+        Ok(())
+    }
+
+    /// Exported in treest.
+    /// Try to guess the name of a provider for `arg`.
+    fn space_guess(&self, arg: String) -> Result<Option<String>> {
+        Ok(provider::guess(&arg).map(String::from))
+    }
+
+    /// Exported in treest.
+    /// Open a new space given `arg`.
+    ///
+    /// `name` may be needed if the provider cannot be guessed
+    /// (see `treest:space_guess` for this).
+    ///
+    /// `placement_hint` is a 1-base index of where to place the new
+    /// space. By default it will be the current space's placement.
+    /// The new space will be placed after (ie to the right of).
+    /// 0 can be used to place the new space left-most.
+    fn space_open(
+        &mut self,
+        arg: String,
+        name: Option<ProviderFlags>,
+        placement_hint: Option<usize>,
+    ) -> Result<()> {
+        let provider_name = match name {
+            Some(ProviderFlags { name }) => name,
+            None => provider::guess(&arg).unwrap(),
+        };
+        let provider = provider::select(&arg, provider_name)
+            .unwrap()
+            .map_err(Error::external)?;
+        let space = Space::new(provider, provider_name.to_string());
+        let at = placement_hint.unwrap_or(self.spaces.len()); // TODO: current
+        self.spaces.insert(at, space.spin_up_poller_thread());
         Ok(())
     }
 

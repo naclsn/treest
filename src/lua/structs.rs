@@ -30,6 +30,11 @@ crate::flags_lua_conversion! {
         pub wrapping: "wrap" | "sat",
     }
 
+    pub struct ProviderFlags {
+        // updated manually...
+        pub name: "fs",
+    }
+
     pub struct RequestFlags {
         pub request: "mk" | "cp" | "rm" | "mv" | "ch" | "vi" | "ex",
     }

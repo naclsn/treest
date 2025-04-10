@@ -107,13 +107,13 @@ macro_rules! providers {
             None
         }
 
-        pub fn select(arg: &str, name: &str) -> Result<Box<dyn Provider>> {
+        pub fn select(arg: &str, name: &str) -> Option<Result<Box<dyn Provider>>> {
             match name {
-                $(stringify!($nm) => $nm::$ty::new(arg).map(|p| {
+                $(stringify!($nm) => Some($nm::$ty::new(arg).map(|p| {
                     let p: Box<dyn Provider> = Box::new(p);
                     p
-                }),)+
-                _ => unreachable!(),
+                })),)+
+                _ => None,
             }
         }
     }
@@ -128,3 +128,4 @@ providers! {
     //xml: Xml       if |path: &str| [".xml", ".htm", ".html"].iter().any(|&ext| path.ends_with(ext)),
     //yaml: Yaml     if |path: &str| [".yaml", ".yml"].iter().any(|&ext| path.ends_with(ext)),
 }
+// lua::structs::ProviderFlags is updated manually...

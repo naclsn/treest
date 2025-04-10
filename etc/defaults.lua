@@ -140,7 +140,8 @@ m.commands = {
     end,
 
     edit = function(arg)
-        treest:push_space()
+        --function treest:space_open(arg, name?, placement_hint?) end
+        --function treest:space_close(placement?) end
     end,
 }
 
@@ -175,19 +176,24 @@ local function alias(com, ...)
 end
 alias('cquit', 'cq')
 alias('echo', 'ec')
-alias('eval', 'ev', 'let', 'call', 'cal')
+alias('eval', 'ev', 'let', 'local', 'call', 'cal')
 alias('help', 'h')
 alias('quit', 'q')
 alias('suspend', 'sus', 'stop', 'st')
 alias('set', 'se')
 alias('unmap', 'unm')
-alias('edit', 'e', 'ed')
+alias('edit', 'ed', 'e', 'split', 'sp', 'vsplit', 'vs')
 
 local function complete(func, ...)
     for _, com in pairs { ... } do m.completions.for_command[com] = func end
 end
-complete(m.completions.files, 'mk', 'cp', 'rm', 'ch', 'vi', 'ex')
-complete(m.completions.script, 'echo', 'ec', 'eval', 'ev', 'let', 'call', 'cal', 'help')
+complete(m.completions.files,
+    'edit', 'ed', 'e', 'split', 'sp', 'vsplit', 'vs',
+    'mk', 'cp', 'rm', 'ch', 'vi', 'ex')
+complete(m.completions.script,
+    'echo', 'ec',
+    'eval', 'ev', 'let', 'local', 'call', 'cal',
+    'help')
 
 local function search(q, flags)
     if not q then return end
