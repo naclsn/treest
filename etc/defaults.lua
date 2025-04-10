@@ -73,7 +73,7 @@ m.commands = {
         --then
         --    treest:quit()
         --else
-            treest:force_redraw()
+        treest:force_redraw()
         --end
     end,
 
@@ -81,8 +81,8 @@ m.commands = {
         -- TODO(wip)
         --if has spaces
         --then
-            treest:space_close()
-            treest:force_redraw()
+        treest:space_close()
+        treest:force_redraw()
         --end
     end,
 
@@ -139,18 +139,18 @@ m.commands = {
             elseif '!' == op:sub(#op)
             then
                 op = op:sub(1, #op - 1)
-                val = not treest:get_option(op)
+                val = not treest:option_get(op)
             elseif '?' == op:sub(#op)
             then
                 op = op:sub(1, #op - 1)
-                show[#show + 1], val = op .. '=' .. tostring(treest:get_option(op))
+                show[#show + 1], val = op .. '=' .. tostring(treest:option_get(op))
             elseif eq
             then
                 val = op:sub(eq + 1)
                 op = op:sub(1, eq)
             end
 
-            if nil ~= val then treest:set_option(op, val) end
+            if nil ~= val then treest:option_set(op, val) end
         end
 
         if show[1] then treest:message(show) end
@@ -163,17 +163,17 @@ m.commands = {
         if not rhs or '' == rhs
         then
             lhs = arg:match('^%s*(%S+)%s*$') or arg
-            local is = treest:mapped(lhs)
+            local is = treest:key_mapped(lhs)
             treest:message(is and tostring(is) or ("no mapping for " .. lhs))
         else
-            rhs:keytrans() -- assert it's a valid sequence once before mapping
-            treest:map(lhs, function() treest:raw_keys(rhs) end)
+            rhs:key_trans() -- assert it's a valid sequence once before mapping
+            treest:key_map(lhs, function() treest:key_raw(rhs) end)
         end
     end,
 
     unmap = function(arg)
         local lhs = arg:match('^%s*(%S+)%s*$') or arg
-        if not treest:unmap(lhs) then treest:message("no mapping for " .. lhs) end
+        if not treest:key_unmap(lhs) then treest:message("no mapping for " .. lhs) end
     end,
 }
 
@@ -187,9 +187,9 @@ local function request(req)
     return function(arg)
         if '' == arg
         then
-            local path = treest:join_components(treest:node().components)
+            local path = treest:provider_join_components(treest:node_info().components)
             local xps = req .. ' \x1b[37m' .. path .. '\x1b[m '
-            treest:prompt(xps, m.completions.files, request_do)
+            treest:register_prompt(xps, m.completions.files, request_do)
         else
             request_do(arg)
         end
@@ -235,10 +235,10 @@ local function search(q, flags)
     local found = treest:search_level(q, flags)
     if not found
     then
-        treest:message("not found: " .. treest:get_register('/'))
+        treest:message("not found: " .. treest:register_get('/'))
     else
         treest:message(nil)
-        treest:set_cursor(found)
+        treest:cursor_set(found)
         return found
     end
 end
@@ -249,7 +249,7 @@ m.keys = {
     ['<C-Z>'] = function() treest:suspend() end,
 
     [':'] = function()
-        treest:prompt(':', function(line, point)
+        treest:register_prompt(':', function(line, point)
             local com = line:sub(1, point):match('(%w+)%s')
             if not com then return m.completions.commands(line, point) end
             local comp = m.completions.for_command[com]
@@ -269,17 +269,17 @@ m.keys = {
     end,
 
     ['!'] = function()
-        treest:prompt('!', m.completions.files, function(ans)
+        treest:register_prompt('!', m.completions.files, function(ans)
             local p = assert(io.popen(ans .. ' 2>&1', 'r'))
             treest:message(assert(p:read('*a')))
             p:close()
         end)
     end,
 
-    ['/'] = function() treest:prompt('/', function() end, function(ans) search(ans, { 'next', 'sat' }) end) end,
-    ['?'] = function() treest:prompt('/', function() end, function(ans) search(ans, { 'prev', 'sat' }) end) end,
-    ['n'] = function() search(treest:get_register('/'), { 'next', 'sat' }) end,
-    ['N'] = function() search(treest:get_register('/'), { 'prev', 'sat' }) end,
+    ['/'] = function() treest:register_prompt('/', function() end, function(ans) search(ans, { 'next', 'sat' }) end) end,
+    ['?'] = function() treest:register_prompt('/', function() end, function(ans) search(ans, { 'prev', 'sat' }) end) end,
+    ['n'] = function() search(treest:register_get('/'), { 'next', 'sat' }) end,
+    ['N'] = function() search(treest:register_get('/'), { 'prev', 'sat' }) end,
 
     ['<C-E>'] = function() treest:view_down('line') end,
     ['<C-Y>'] = function() treest:view_up('line') end,
@@ -288,45 +288,45 @@ m.keys = {
     ['<C-F>'] = function() treest:view_down('win') end,
     ['<C-B>'] = function() treest:view_up('win') end,
 
-    ['l'] = function() treest:enter() end,
-    ['h'] = function() treest:leave() end,
-    ['j'] = function() treest:next('sat') end,
-    ['k'] = function() treest:prev('sat') end,
+    ['l'] = function() treest:node_enter() end,
+    ['h'] = function() treest:node_leave() end,
+    ['j'] = function() treest:node_next('sat') end,
+    ['k'] = function() treest:node_prev('sat') end,
 
-    ['L'] = function() treest:unfold() end,
-    ['H'] = function() treest:fold() end,
+    ['L'] = function() treest:node_unfold() end,
+    ['H'] = function() treest:node_fold() end,
     ['<CR>'] = function()
-        if treest:folded()
+        if treest:node_folded()
         then
-            treest:unfold()
+            treest:node_unfold()
         else
-            treest:fold()
+            treest:node_fold()
         end
     end,
 
     ['<Space>'] = function()
-        if treest:marked()
+        if treest:node_marked()
         then
-            treest:unmark()
+            treest:node_unmark()
         else
-            treest:mark()
+            treest:node_mark()
         end
-        treest:next('sat')
+        treest:node_next('sat')
     end,
 
     ['<LeftMouse>'] = function()
-        local node = treest:node_at_line(treest.mouse_event_pos.row)
+        local node = treest:node_info_at_line(treest.mouse_event_pos.row)
         if not node then return end
-        treest:set_cursor(node.path)
+        treest:cursor_set(node.path)
     end,
     ['<RightMouse>'] = function()
-        local node = treest:node_at_line(treest.mouse_event_pos.row)
+        local node = treest:node_info_at_line(treest.mouse_event_pos.row)
         if not node then return end
-        if treest:folded(node.path)
+        if treest:node_folded(node.path)
         then
-            treest:unfold(node.path)
+            treest:node_unfold(node.path)
         else
-            treest:fold(node.path)
+            treest:node_fold(node.path)
         end
     end,
 
@@ -359,10 +359,10 @@ m.keys = {
 }
 
 m.init = function()
-    treest:set_option('mouse', true)
-    treest:set_option('altscreen', true)
-    for seq, cb in pairs(m.keys) do treest:map(seq, cb) end
-    treest:unfold()
+    treest:option_set('mouse', true)
+    treest:option_set('altscreen', true)
+    for seq, cb in pairs(m.keys) do treest:key_map(seq, cb) end
+    treest:node_unfold()
 end
 
 return m

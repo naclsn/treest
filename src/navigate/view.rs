@@ -369,7 +369,7 @@ impl Navigate {
                 "                 --- hellooooo ---",
                 "",
                 "type :q<Enter>    to exit",
-                "type :help<Enter> for missing help",
+                "type :help<Enter> for (nonexistent) help",
                 "type :e .<Enter>  to open a space on the directory",
             ];
             let longest = GREETING.iter().map(|l| l.len()).max().unwrap();
