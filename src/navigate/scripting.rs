@@ -107,8 +107,13 @@ impl UserData for Navigate {
             fn search_deep(q, flags) mut;
             fn search_level(q, flags);
             fn space_close(placement) mut;
+            fn space_count();
+            fn space_current();
             fn space_guess(arg);
+            fn space_next(flags) mut;
             fn space_open(arg, name, placement_hint) mut;
+            fn space_prev(flags) mut;
+            fn space_swap(with, placement) mut;
             fn suspend() mut;
             fn view_down(by) mut;
             fn view_up(by) mut;
@@ -462,7 +467,7 @@ impl Navigate {
         text: Option<String>,
     ) -> Result<Option<Vec<String>>> {
         if !matches!(req.request, "rm" | "vi") && text.is_none() {
-            // copied to match mlua's `FromLua for String`
+            // matches mlua's `FromLua for String`
             return Err(Error::FromLuaConversionError {
                 from: "nil",
                 to: "string".to_string(),
@@ -488,6 +493,10 @@ impl Navigate {
             _ => unreachable!(),
         }
         .map_err(Error::external)?;
+
+        if let Some(ev) = ev {
+            todo!("{ev:?}");
+        }
 
         Ok(r)
     }
@@ -622,17 +631,43 @@ impl Navigate {
     }
 
     /// Exported in treest.
-    /// Close the space at `placement` (current if `nil`).
+    /// Close the space at `placement` (1-base, current if `nil`).
     fn space_close(&mut self, placement: Option<usize>) -> Result<()> {
-        let at = placement.unwrap_or(self.spaces.len()) - 1; // TODO: current
+        let at = placement.unwrap_or(self.current_space + 1) - 1;
         self.remove_space(at);
         Ok(())
+    }
+
+    /// Exported in treest.
+    /// Current number of open spaces.
+    fn space_count(&self) -> Result<usize> {
+        Ok(self.spaces.len())
+    }
+
+    /// Exported in treest.
+    /// Current space index (1-base).
+    fn space_current(&self) -> Result<usize> {
+        Ok(self.current_space + 1)
     }
 
     /// Exported in treest.
     /// Try to guess the name of a provider for `arg`.
     fn space_guess(&self, arg: String) -> Result<Option<String>> {
         Ok(provider::guess(&arg).map(String::from))
+    }
+
+    /// Exported in treest.
+    /// Move cursor to the next (right) space.
+    ///
+    /// When flag is 'sat' and it's the rightmost space, nothing happens.
+    /// 'wrap' will instead go back to leftmost space.
+    fn space_next(&mut self, flags: MoveFlags) -> Result<()> {
+        self.current_space = match flags.wrapping {
+            "wrap" => (self.current_space + 1) % self.spaces.len(),
+            "sat" => std::cmp::max(self.current_space + 1, self.spaces.len() - 1),
+            _ => unreachable!(),
+        };
+        Ok(())
     }
 
     /// Exported in treest.
@@ -656,8 +691,33 @@ impl Navigate {
             None => provider::guess(&arg).unwrap(),
         };
         let provider = provider::select(&arg, provider_name).map_err(Error::external)?;
-        let at = placement_hint.unwrap_or(self.spaces.len()); // TODO: current
+        let at = placement_hint.unwrap_or(self.current_space);
         self.insert_space(at, provider, provider_name.to_string());
+        Ok(())
+    }
+
+    /// Exported in treest.
+    /// Move cursor to the previous (left) space.
+    ///
+    /// When flag is 'sat' and it's the leftmost space, nothing happens.
+    /// 'wrap' will instead go back to rightmost space.
+    fn space_prev(&mut self, flags: MoveFlags) -> Result<()> {
+        self.current_space = match flags.wrapping {
+            "wrap" => (self.current_space + self.spaces.len() - 1) % self.spaces.len(),
+            "sat" => self.current_space.saturating_sub(1),
+            _ => unreachable!(),
+        };
+        Ok(())
+    }
+
+    /// Exported in treest.
+    /// Swap with an other spaces.
+    ///
+    /// If both arguments `with` and `placement` are provided, swap these instead of current.
+    /// All are 1-base.
+    fn space_swap(&mut self, with: usize, placement: Option<usize>) -> Result<()> {
+        let at = placement.unwrap_or(self.current_space + 1) - 1;
+        self.swap_spaces(at, with);
         Ok(())
     }
 

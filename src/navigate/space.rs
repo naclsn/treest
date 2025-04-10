@@ -39,7 +39,7 @@ impl Space {
         let space = Arc::new(Mutex::new(space));
 
         let moved = space.clone();
-        thread::spawn(move || {
+        _ = thread::spawn(move || {
             let Some(poller) = moved.lock().unwrap().provider.event_poller() else {
                 return;
             };
@@ -47,12 +47,13 @@ impl Space {
                 // blocks
                 let ev = poller();
                 // TODO: debounce if appears necessary
-                let ok = moved
+                if !moved
                     .lock()
                     .ok()
                     .and_then(|mut sp| sp.process_event(&ev).ok())
-                    .is_some();
-                if !ok {
+                    .is_some()
+                {
+                    // assume unrecoverable situation, bail out
                     break;
                 }
             }

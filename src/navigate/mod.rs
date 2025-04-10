@@ -36,6 +36,7 @@ pub struct Message {
 
 pub struct Navigate {
     spaces: Vec<Arc<Mutex<Space>>>,
+    current_space: usize,
 
     user_script: Option<PathBuf>,
 
@@ -53,7 +54,8 @@ pub struct Navigate {
 impl Navigate {
     pub fn new(user_script: Option<PathBuf>) -> Self {
         Self {
-            spaces: Vec::new(),
+            spaces: vec![todo!("scratch space")],
+            current_space: 0,
 
             user_script,
 
@@ -70,12 +72,20 @@ impl Navigate {
     }
 
     pub fn insert_space(&mut self, at: usize, provider: Box<dyn Provider>, provider_name: String) {
+        if at <= self.current_space {
+            self.current_space += 1;
+        }
         self.spaces.insert(at, Space::new(provider, provider_name));
     }
 
     pub fn remove_space(&mut self, at: usize) {
-        let space = self.spaces.remove(at);
-        // TODO: space.stop_poller_thread();
+        if at <= self.current_space {
+            self.current_space -= 1;
+        }
+        self.spaces.remove(at); // space dropped now
+        if self.spaces.is_empty() {
+            todo!("insert scratch space")
+        }
     }
 
     pub fn swap_spaces(&mut self, at: usize, with: usize) {
@@ -83,11 +93,11 @@ impl Navigate {
     }
 
     pub fn space(&self) -> impl Deref<Target = Space> + use<'_> {
-        self.spaces[0].lock().unwrap()
+        self.spaces[self.current_space].lock().unwrap()
     }
 
     pub fn space_mut(&mut self) -> impl DerefMut<Target = Space> + use<'_> {
-        self.spaces[0].lock().unwrap()
+        self.spaces[self.current_space].lock().unwrap()
     }
 
     /// Load the registers from `~/.cache/treest.hist`.
