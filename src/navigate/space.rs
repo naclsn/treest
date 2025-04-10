@@ -17,8 +17,14 @@ pub struct Space {
     pub cursor: (usize, IndexPath),
 }
 
+impl Drop for Space {
+    fn drop(&mut self) {
+        // TODO: stop poller thread
+    }
+}
+
 impl Space {
-    pub fn new(provider: Box<dyn Provider>, provider_name: String) -> Self {
+    pub fn new_without_poller_thread(provider: Box<dyn Provider>, provider_name: String) -> Self {
         Self {
             tree: Node::new(provider.provide_root()),
             provider,
@@ -28,23 +34,31 @@ impl Space {
         }
     }
 
-    pub fn spin_up_poller_thread(self) -> Arc<Mutex<Self>> {
-        let r = Arc::new(Mutex::new(self));
-        let space = r.clone();
+    pub fn new(provider: Box<dyn Provider>, provider_name: String) -> Arc<Mutex<Self>> {
+        let space = Self::new_without_poller_thread(provider, provider_name);
+        let space = Arc::new(Mutex::new(space));
+
+        let moved = space.clone();
         thread::spawn(move || {
-            let Some(poller) = space.lock().unwrap().provider.event_poller() else {
+            let Some(poller) = moved.lock().unwrap().provider.event_poller() else {
                 return;
             };
-            while {
-                let ev = poller(); // blocks
-                space
+            loop {
+                // blocks
+                let ev = poller();
+                // TODO: debounce if appears necessary
+                let ok = moved
                     .lock()
                     .ok()
                     .and_then(|mut sp| sp.process_event(&ev).ok())
-                    .is_some()
-            } {}
+                    .is_some();
+                if !ok {
+                    break;
+                }
+            }
         });
-        r
+
+        space
     }
 
     /// This runs in the polling thread.

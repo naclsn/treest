@@ -364,23 +364,48 @@ impl Navigate {
         self.message.previous_height = height;
 
         // update render tree(s)
-        let each_avail_col = term_col / self.spaces.len();
-        let avail_rows = if self.message.lines.is_empty() {
-            term_row - 2
+        if self.spaces.is_empty() {
+            const GREETING: &[&str] = &[
+                "                 --- hellooooo ---",
+                "",
+                "type :q<Enter>    to exit",
+                "type :help<Enter> for missing help",
+                "type :e .<Enter>  to open a space on the directory",
+            ];
+            let longest = GREETING.iter().map(|l| l.len()).max().unwrap();
+            if GREETING.len() < term_row && longest < term_col {
+                let top = (term_row - GREETING.len()) / 2;
+                let left = (term_col - longest) / 2;
+                for (k, line) in GREETING.iter().enumerate() {
+                    write!(f, "\x1b[{};{}H{}", top + k, left, line)?;
+                }
+            } else {
+                write!(
+                    f,
+                    "\x1b[{};{}Hsmal .)-(.",
+                    term_row / 2,
+                    7.max(term_col / 2) - 6,
+                )?;
+            }
         } else {
-            term_row - height - 2
-        };
-        let has_multiple_spaces = 1 < self.spaces.len();
-        for (k, space) in self.spaces.iter_mut().enumerate() {
-            let avail_cols = k * each_avail_col..(k + 1) * each_avail_col;
-            space.lock().unwrap().view_render(
-                f,
-                force,
-                avail_cols,
-                avail_rows,
-                has_multiple_spaces,
-                &self.options,
-            )?;
+            let each_avail_col = term_col / self.spaces.len();
+            let avail_rows = if self.message.lines.is_empty() {
+                term_row - 2
+            } else {
+                term_row - height - 2
+            };
+            let has_multiple_spaces = 1 < self.spaces.len();
+            for (k, space) in self.spaces.iter_mut().enumerate() {
+                let avail_cols = k * each_avail_col..(k + 1) * each_avail_col;
+                space.lock().unwrap().view_render(
+                    f,
+                    force,
+                    avail_cols,
+                    avail_rows,
+                    has_multiple_spaces,
+                    &self.options,
+                )?;
+            }
         }
 
         // render message and -- {} lines -- or breadcrumbs (message is always re-rendered)
@@ -433,7 +458,7 @@ impl Navigate {
                     }
                 )?;
             }
-        } else {
+        } else if !self.spaces.is_empty() {
             write!(f, "\x1b[{}H\x1b[K", term_row - 1)?;
             // don't render that if there is a completion session
             if self.input.get_prompt().is_none_or(|p| !p.has_compl()) {
@@ -442,6 +467,8 @@ impl Navigate {
                 let path = space.tree.resolve(space.cursor());
                 write!(f, "{}\r\n", space.provider.breadcrumbs(&path[..].into()))?;
             }
+        } else {
+            write!(f, "\x1b[{}H", term_row)?;
         }
 
         match (force, self.input.get_prompt()) {

@@ -66,9 +66,24 @@ m.commands = {
     suspend = function() treest:suspend() end,
 
     quit = function()
+        --if not has spaces then treest:quit() end
         treest:space_close()
-        -- TODO:
-        -- if last then treest:quit() end
+        -- TODO(wip)
+        --if last
+        --then
+        --    treest:quit()
+        --else
+            treest:force_redraw()
+        --end
+    end,
+
+    unload = function()
+        -- TODO(wip)
+        --if has spaces
+        --then
+            treest:space_close()
+            treest:force_redraw()
+        --end
     end,
 
     edit = function(arg)
@@ -201,6 +216,7 @@ alias('qall', 'qa')
 alias('quit', 'q')
 alias('set', 'se')
 alias('suspend', 'sus', 'stop', 'st')
+alias('unload', 'bd', 'bdel', 'bdelete', 'bun', 'bunload')
 alias('unmap', 'unm')
 
 local function complete(func, ...)

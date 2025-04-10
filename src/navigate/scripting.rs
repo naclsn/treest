@@ -10,7 +10,6 @@ use crate::lua::structs::{IndexPath, Listing, NodeInfo, PromptSplitInfo, Target}
 use crate::lua::structs::{MoveFlags, ProviderFlags, RequestFlags, ScrollFlags, SearchFlags};
 use crate::navigate::input::InputTickResponse;
 use crate::navigate::options::Options;
-use crate::navigate::space::Space;
 use crate::navigate::{Navigate, ViewJumpBy};
 use crate::prompt::{self, Prompt};
 use crate::provider;
@@ -596,7 +595,7 @@ impl Navigate {
     /// Close the space at `placement` (current if `nil`).
     fn space_close(&mut self, placement: Option<usize>) -> Result<()> {
         let at = placement.unwrap_or(self.spaces.len()) - 1; // TODO: current
-        self.spaces.remove(at);
+        self.remove_space(at);
         Ok(())
     }
 
@@ -627,9 +626,8 @@ impl Navigate {
             None => provider::guess(&arg).unwrap(),
         };
         let provider = provider::select(&arg, provider_name).map_err(Error::external)?;
-        let space = Space::new(provider, provider_name.to_string());
         let at = placement_hint.unwrap_or(self.spaces.len()); // TODO: current
-        self.spaces.insert(at, space.spin_up_poller_thread());
+        self.insert_space(at, provider, provider_name.to_string());
         Ok(())
     }
 

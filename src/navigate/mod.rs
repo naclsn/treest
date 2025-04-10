@@ -69,10 +69,17 @@ impl Navigate {
         }
     }
 
-    // TODO: phase out
-    pub fn push_space(&mut self, provider: Box<dyn Provider>, provider_name: String) {
-        let space = Space::new(provider, provider_name);
-        self.spaces.push(Space::spin_up_poller_thread(space));
+    pub fn insert_space(&mut self, at: usize, provider: Box<dyn Provider>, provider_name: String) {
+        self.spaces.insert(at, Space::new(provider, provider_name));
+    }
+
+    pub fn remove_space(&mut self, at: usize) {
+        let space = self.spaces.remove(at);
+        // TODO: space.stop_poller_thread();
+    }
+
+    pub fn swap_spaces(&mut self, at: usize, with: usize) {
+        self.spaces.swap(at, with);
     }
 
     pub fn space(&self) -> impl Deref<Target = Space> + use<'_> {
