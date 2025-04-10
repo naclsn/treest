@@ -205,7 +205,9 @@ return treest:_atexit()
         self.message.scroll = 0;
     }
 
-    /// Dirrect access to a register's history.
+    /// Direct access to a register's history.
+    ///
+    /// `name` is trimmed of leading and trailing whitespaces.
     pub fn register_entries(&mut self, name: &str) -> &mut Vec<String> {
         self.registers.entry(name.trim().to_string()).or_default()
     }

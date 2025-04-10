@@ -16,23 +16,29 @@ pub trait Provider: Send {
     fn order(&self, left: &NodePath, right: &NodePath) -> Ordering;
     fn keep(&self, path: &NodePath) -> bool;
 
+    /// display of a single node at path
+    /// may be sgr stylized and decorated
     fn display(&self, path: &NodePath) -> String;
-    fn components(&self, path: &NodePath) -> Vec<String> {
-        let mut r: Vec<_> = (0..path.head.len())
+    /// each must be plain and undecorated
+    fn components(&self, path: &NodePath) -> Vec<String>;
+    /// essentially an undecorated, non sgr stylized, no additional text version of breadcrumbs
+    fn join(&self, components: &[String]) -> String;
+
+    /// the default impl calls `display` for each components and joins with ""
+    /// may be overridden to have additional text and sgr styling
+    fn breadcrumbs(&self, path: &NodePath) -> String {
+        let r: String = (0..path.head.len())
             .map(|k| self.display(&path.head[..=k].into()))
             .collect();
-        r.push(self.display(path));
-        r
-    }
-    fn breadcrumbs(&self, path: &NodePath) -> String {
-        self.components(path).join(" ")
+        r + &self.display(path)
     }
 
-    /// blocking
+    /// returns a blocking function
     fn event_poller(&mut self) -> Option<EventPoller> {
         None
     }
     /// is notified of an event its event poller emitted
+    /// event may also be caused by a request
     /// mainly as an occasion to update said poller
     fn event_occured(&mut self, ev: &Event) {
         _ = ev;

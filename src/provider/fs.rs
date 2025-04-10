@@ -243,6 +243,10 @@ impl Provider for Fs {
             .collect()
     }
 
+    fn join(&self, components: &[String]) -> String {
+        components.join("/")
+    }
+
     fn breadcrumbs(&self, path: &NodePath) -> String {
         let node: &FsNode = path.tail.fragment();
         let mut r = write_meta(node);

@@ -76,6 +76,7 @@ impl UserData for Navigate {
             fn  get_option(name);
             fn  get_register(name);
             fn  get_register_hist(name);
+            fn  join_components(components);
             mut leave();
             fn  list_options();
             fn  list_registers();
@@ -178,9 +179,10 @@ impl Navigate {
             // rem: functions cannot be called here beacause `self` is borrowed mutably
             // (it would cause a BadArgument: UserDataBorrowMutError)
             InputTickResponse::CallbackMapping(action) => Some(action.into()),
-            InputTickResponse::CallbackPrompt { ps, then, ans } => {
-                self.register_push(&ps, ans.clone());
-                Some(then.bind_all(ans)?)
+            InputTickResponse::CallbackPrompt { ps, callback, ans } => {
+                let sps = &ps[..ps.bytes().position(|c| b'\x1b' == c).unwrap_or(ps.len())];
+                self.register_push(sps, ans.clone());
+                Some(callback.bind_all(ans)?)
             }
         })
     }
@@ -243,13 +245,23 @@ impl Navigate {
 
     /// Exported in treest.
     /// Get the values taken by a register or nil if it doesn't exist.
+    ///
     /// This includes the current value which will be the last entry.
     fn get_register_hist(&self, name: String) -> Result<Option<Vec<String>>> {
         Ok(self.registers.get(&name).cloned())
     }
 
     /// Exported in treest.
+    /// Let the provider join the given components.
+    ///
+    /// Components may be obtained with `treest:node`.
+    fn join_components(&self, components: Vec<String>) -> Result<String> {
+        Ok(self.space().provider.join(&components))
+    }
+
+    /// Exported in treest.
     /// Try to leave the node at cursor (ie relative motion).
+    ///
     /// Nothing happens if the cursor is already at root node.
     fn leave(&mut self) -> Result<()> {
         self.space_mut().cursor_leave();
@@ -388,17 +400,25 @@ impl Navigate {
 
     /// Exported in treest.
     /// Prompt the user for a line of input.
+    ///
     /// The result is stored in the register given by `ps` as well as given
     /// in argument to the callback function. If the prompt was discarded
     /// then the callback is not called and registers are not updated.
+    ///
     /// History is also taken from the previous values of the register.
     /// The `point` argument to the `completion` function is 0-base.
+    ///
     /// See also `treest:set_register` for direct register access.
+    ///
+    /// There is a special case for the handling of `ps` as a register name:
+    /// if `ps` contains the byte 0x1b (escape), only the text before it
+    /// is used in setting the register. The whole string will still be used
+    /// for the actual prompt.
     fn prompt(
         &mut self,
         ps: String,
         completion: Completion,
-        then: Option<PromptAnsCallback>,
+        callback: Option<PromptAnsCallback>,
     ) -> Result<()> {
         terminal::cursor(true); // reset again in Input::tick
         eprint!("{ps}");
@@ -414,7 +434,7 @@ impl Navigate {
                         .unwrap_or_default()
                 }),
             ),
-            then,
+            callback,
         );
         Ok(())
     }
@@ -436,13 +456,6 @@ impl Navigate {
         target: Target,
         text: Option<String>,
     ) -> Result<Option<Vec<String>>> {
-        let mut space = self.space_mut();
-        let index_path = space.target_to_path(target);
-        let (tree, provider) = space.tree_and_mut_provider();
-
-        let path = tree.resolve(&index_path);
-        let path = &path[..].into();
-
         if !matches!(req.request, "rm" | "vi") && text.is_none() {
             // copied to match mlua's `FromLua for String`
             return Err(Error::FromLuaConversionError {
@@ -452,14 +465,21 @@ impl Navigate {
             });
         }
 
+        let mut space = self.space_mut();
+        let index_path = space.target_to_path(target);
+        let (tree, p) = space.tree_and_mut_provider();
+
+        let path = tree.resolve(&index_path);
+        let path = &path[..].into();
+
         let (r, ev) = match req.request {
-            "mk" => provider.request_mk(path, text.unwrap()).map(|ev| (None, ev)),
-            "cp" => provider.request_cp(path, text.unwrap()).map(|ev| (None, ev)),
-            "rm" => provider.request_rm(path).map(|ev| (None, ev)),
-            "mv" => provider.request_mv(path, text.unwrap()).map(|ev| (None, ev)),
-            "ch" => provider.request_ch(path, text.unwrap()).map(|ev| (None, ev)),
-            "vi" => provider.request_vi(path).map(|v| (Some(v), None)),
-            "ex" => provider.request_ex(path, text.unwrap()).map(|p| (Some(p.0), p.1)),
+            "mk" => p.request_mk(path, text.unwrap()).map(|ev| (None, ev)),
+            "cp" => p.request_cp(path, text.unwrap()).map(|ev| (None, ev)),
+            "rm" => p.request_rm(path).map(|ev| (None, ev)),
+            "mv" => p.request_mv(path, text.unwrap()).map(|ev| (None, ev)),
+            "ch" => p.request_ch(path, text.unwrap()).map(|ev| (None, ev)),
+            "vi" => p.request_vi(path).map(|v| (Some(v), None)),
+            "ex" => p.request_ex(path, text.unwrap()).map(|p| (Some(p.0), p.1)),
             _ => unreachable!(),
         }
         .map_err(Error::external)?;
@@ -558,7 +578,10 @@ impl Navigate {
 
     /// Exported in treest.
     /// Set the value of a register.
+    ///
     /// Registers are also set when using `treest:prompt`.
+    ///
+    /// The `name` is always trimmed of leading and trailing whitespaces.
     fn set_register(&mut self, name: String, value: String) -> Result<()> {
         self.register_push(&name, value);
         Ok(())

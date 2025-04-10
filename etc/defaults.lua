@@ -138,14 +138,28 @@ m.commands = {
         local lhs = arg:match('^%s*(%S+)%s*$') or arg
         if not treest:unmap(lhs) then treest:message("no mapping for " .. lhs) end
     end,
+
+    edit = function(arg)
+        treest:push_space()
+    end,
 }
 
+---@param req RequestFlags
 local function request(req)
-    return function()
-        treest:prompt(req .. ' ', m.completions.files, function(ans)
-            local res = treest:provider_request(req, nil, ans)
-            if res then treest:message(res) end
-        end)
+    ---@param ans string
+    local function request_do(ans)
+        local res = treest:provider_request(req, nil, ans)
+        if res then treest:message(res) end
+    end
+    return function(arg)
+        if '' == arg
+        then
+            local path = treest:join_components(treest:node().components)
+            local xps = req .. ' \x1b[37m' .. path .. '\x1b[m '
+            treest:prompt(xps, m.completions.files, request_do)
+        else
+            request_do(arg)
+        end
     end
 end
 m.commands.mk = request('mk')
@@ -167,6 +181,7 @@ alias('quit', 'q')
 alias('suspend', 'sus', 'stop', 'st')
 alias('set', 'se')
 alias('unmap', 'unm')
+alias('edit', 'e', 'ed')
 
 local function complete(func, ...)
     for _, com in pairs { ... } do m.completions.for_command[com] = func end

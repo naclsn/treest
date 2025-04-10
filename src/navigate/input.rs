@@ -65,7 +65,7 @@ pub enum InputTickResponse {
     CallbackMapping(MappingFn),
     CallbackPrompt {
         ps: String,
-        then: PromptAnsCallback,
+        callback: PromptAnsCallback,
         ans: String,
     },
 }
@@ -77,18 +77,18 @@ impl Input {
             return EndOfInput;
         };
 
-        if let Some((prompt, then)) = self.prompt.take() {
+        if let Some((prompt, callback)) = self.prompt.take() {
             return match prompt.feed(byte) {
                 PromptState::Again { up, prompt } => {
                     eprint!("{up}");
-                    self.prompt = Some((prompt, then));
+                    self.prompt = Some((prompt, callback));
                     Noop
                 }
                 PromptState::Final { ps, ans } => {
                     terminal::cursor(false); // set from back in Navitate::prompt
                     eprint!("\r\x1b[K");
-                    if let Some((then, ans)) = Option::zip(then, ans) {
-                        CallbackPrompt { ps, then, ans }
+                    if let Some((callback, ans)) = Option::zip(callback, ans) {
+                        CallbackPrompt { ps, callback, ans }
                     } else {
                         Noop
                     }
@@ -178,8 +178,8 @@ impl Input {
         self.prompt.as_ref().map(|(prompt, _)| prompt)
     }
 
-    pub fn set_prompt(&mut self, prompt: Prompt, then: Option<PromptAnsCallback>) {
-        self.prompt = Some((prompt, then));
+    pub fn set_prompt(&mut self, prompt: Prompt, callback: Option<PromptAnsCallback>) {
+        self.prompt = Some((prompt, callback));
     }
 
     pub fn add_mapping(&mut self, sequence: Vec<u8>, action: MappingFn) {
