@@ -13,7 +13,6 @@ impl<T: Any + Send> FragmentTrait for T {
 }
 pub type Fragment = Box<dyn FragmentTrait>;
 
-//#[derive(Debug)]
 pub struct Node {
     fragment: Fragment,
     children: Option<(Vec<Node>, Vec<usize>)>,
@@ -49,9 +48,9 @@ impl<'a> From<&'a [&'a Node]> for NodePath<'a> {
 }
 
 impl Node {
-    pub fn new(root: Fragment) -> Self {
+    pub fn new(fragment: Fragment) -> Self {
         Self {
-            fragment: root,
+            fragment,
             children: None,
             folded: true,
             marked: false,
@@ -60,6 +59,10 @@ impl Node {
 
     pub fn fragment<T: 'static>(&self) -> &T {
         (*self.fragment).as_any().downcast_ref().unwrap()
+    }
+
+    pub fn fragment_any(&self) -> &Fragment {
+        &self.fragment
     }
 
     pub fn is_loaded(&self) -> bool {

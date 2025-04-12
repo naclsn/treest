@@ -1,13 +1,13 @@
 use std::io::{self, Result as IoResult, Write};
 use std::ops::Range;
 use std::sync::{Arc, Mutex};
-use std::thread;
+use std::thread::Builder;
 
 use crate::lua::structs::{IndexPath, NodeInfo, Target};
 use crate::navigate::options::Options;
 use crate::navigate::view::{View, ViewSpaceSubset};
-use crate::provider::{Event, Provider};
-use crate::tree::Node;
+use crate::provider::{Event, EventKind, Notif, NotifKind, Provider};
+use crate::tree::{Fragment, Node, NodePath};
 
 pub struct Space {
     pub tree: Node,
@@ -24,7 +24,7 @@ impl Drop for Space {
 }
 
 impl Space {
-    pub fn new_without_poller_thread(provider: Box<dyn Provider>, provider_name: String) -> Self {
+    fn new_without_poller_thread(provider: Box<dyn Provider>, provider_name: String) -> Self {
         Self {
             tree: Node::new(provider.provide_root()),
             provider,
@@ -35,28 +35,34 @@ impl Space {
     }
 
     pub fn new(provider: Box<dyn Provider>, provider_name: String) -> Arc<Mutex<Self>> {
-        let space = Self::new_without_poller_thread(provider, provider_name);
+        let space = Self::new_without_poller_thread(provider, provider_name.clone());
         let space = Arc::new(Mutex::new(space));
+        return space;
 
         let moved = space.clone();
-        _ = thread::spawn(move || {
+        _ = Builder::new().name(provider_name.clone()).spawn(move || {
+            crate::log!("thread {provider_name}: spawned");
             let Some(poller) = moved.lock().unwrap().provider.event_poller() else {
+                crate::log!("thread {provider_name}: no poller");
                 return;
             };
+            crate::log!("thread {provider_name}: poller loop");
             loop {
                 // blocks
-                let ev = poller();
+                let event = poller();
                 // TODO: debounce if appears necessary
                 if !moved
                     .lock()
                     .ok()
-                    .and_then(|mut sp| sp.process_event(&ev).ok())
+                    .and_then(|mut space| space.process_event(event).ok())
                     .is_some()
                 {
                     // assume unrecoverable situation, bail out
+                    crate::log!("thread {provider_name}: something when wrong");
                     break;
                 }
             }
+            crate::log!("thread {provider_name}: exiting");
         });
 
         space
@@ -67,20 +73,85 @@ impl Space {
     /// It circle backs the event to the provider, perform the actual
     /// update on the tree (lazily as possible) and re-render only if
     /// it cannot be sure it is not necessary.
-    fn process_event(&mut self, ev: &Event) -> IoResult<()> {
-        self.provider.event_occured(&ev);
-
-        let need_render = todo!("process_event({ev:?})"); // TODO: actual tree update
-
-        if need_render {
-            let mut buf = b"\x1b7".to_vec();
-            self.view_render(&mut buf, false, todo!(), todo!(), todo!(), todo!())
-                .unwrap(); // unwrap: render to a vec
-            buf.extend(b"\x1b8");
-            io::stderr().write_all(&buf)
-        } else {
-            Ok(())
+    fn process_event(&mut self, event: Event) -> IoResult<()> {
+        fn path_trans<'a>(
+            tree: &'a Node,
+            provider: &dyn Provider,
+            path: &[Fragment],
+            backing_head: &'a mut Vec<&'a Node>,
+        ) -> Option<(&'a [&'a Node], &'a Node)> {
+            path.iter()
+                .try_fold(tree, |node, frag| {
+                    backing_head.push(node);
+                    node.children()?
+                        .iter()
+                        .copied()
+                        .find(|node| provider.compare(node.fragment_any(), frag))
+                })
+                .map(|tail| (&backing_head[..], tail))
         }
+        let mut a = Vec::new(); // backing for event path
+        let mut b = Vec::new(); // backing for motify dest
+        let mut maybe_dest = None;
+
+        let path = {
+            let Some((head, tail)) = path_trans(&self.tree, &*self.provider, &event.path, &mut a)
+            else {
+                return Ok(());
+            };
+            NodePath { head: &head, tail }
+        };
+        let notif = Notif {
+            path: &path,
+            kind: match &event.kind {
+                EventKind::Create(frag) => NotifKind::Create(frag),
+                EventKind::Modify(dest, frag) => NotifKind::Modify(
+                    {
+                        if let Some(path) = dest {
+                            let Some((head, tail)) =
+                                path_trans(&self.tree, &*self.provider, &path, &mut b)
+                            else {
+                                return Ok(());
+                            };
+                            maybe_dest = Some(NodePath { head: &head, tail })
+                        }
+                        maybe_dest.as_ref()
+                    },
+                    frag.as_ref(),
+                ),
+                EventKind::Remove => NotifKind::Remove,
+                EventKind::Reload => NotifKind::Reload,
+            },
+        };
+
+        self.provider.event_occured(&event, &notif);
+
+        match event.kind {
+            EventKind::Create(frag) => {
+                crate::log!("event: create {path:?} {:?}", Node::new(frag));
+            }
+            EventKind::Modify(_, frag) => {
+                if let Some(frag) = frag {
+                    crate::log!("event: modify {path:?} {maybe_dest:?} Some({frag:p})");
+                } else {
+                    crate::log!("event: modify {path:?} {maybe_dest:?} None");
+                }
+            }
+            EventKind::Remove => {
+                crate::log!("event: remove {path:?}");
+            }
+            EventKind::Reload => {
+                crate::log!("event: reload {path:?}");
+            }
+        };
+
+        return Ok(());
+
+        let mut buf = b"\x1b7".to_vec();
+        self.view_render(&mut buf, false, todo!(), todo!(), todo!(), todo!())
+            .unwrap(); // unwrap: render to a vec
+        buf.extend(b"\x1b8");
+        io::stderr().write_all(&buf)
     }
 
     /// Specific borrows needed in `treest:provider_request` because

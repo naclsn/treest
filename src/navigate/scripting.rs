@@ -495,7 +495,7 @@ impl Navigate {
         .map_err(Error::external)?;
 
         if let Some(ev) = ev {
-            todo!("{ev:?}");
+            todo!("ev:?");
         }
 
         Ok(r)

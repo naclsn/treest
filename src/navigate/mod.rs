@@ -20,6 +20,7 @@ use crate::navigate::input::Input;
 use crate::navigate::options::Options;
 use crate::navigate::space::Space;
 use crate::navigate::view::ViewJumpBy;
+use crate::provider::scratch::Scratch;
 use crate::provider::Provider;
 use crate::terminal::{self, RestoreWithPanicHook};
 
@@ -54,7 +55,10 @@ pub struct Navigate {
 impl Navigate {
     pub fn new(user_script: Option<PathBuf>) -> Self {
         Self {
-            spaces: vec![todo!("scratch space")],
+            spaces: vec![Space::new(
+                Box::new(Scratch::new("[Scratch]").unwrap()),
+                "scratch".to_string(),
+            )],
             current_space: 0,
 
             user_script,
@@ -79,13 +83,20 @@ impl Navigate {
     }
 
     pub fn remove_space(&mut self, at: usize) {
-        if at <= self.current_space {
+        if 0 < self.current_space && at <= self.current_space {
             self.current_space -= 1;
         }
         self.spaces.remove(at); // space dropped now
         if self.spaces.is_empty() {
-            todo!("insert scratch space")
+            self.spaces.push(Space::new(
+                Box::new(Scratch::new("[Scratch]").unwrap()),
+                "scratch".to_string(),
+            ))
         }
+    }
+
+    pub fn replace_space(&mut self, at: usize, provider: Box<dyn Provider>, provider_name: String) {
+        self.spaces[at] = Space::new(provider, provider_name);
     }
 
     pub fn swap_spaces(&mut self, at: usize, with: usize) {

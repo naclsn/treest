@@ -247,6 +247,10 @@ impl Provider for Fs {
         components.join("/")
     }
 
+    fn compare(&self, in_tree: &Fragment, in_event: &Fragment) -> bool {
+        todo!()
+    }
+
     fn breadcrumbs(&self, path: &NodePath) -> String {
         let node: &FsNode = path.tail.fragment();
         let mut r = write_meta(node);

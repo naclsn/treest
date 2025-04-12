@@ -3,6 +3,9 @@ name = "treest"
 version = "0.1.0"
 edition = "2021"
 
+[features]
+log = [] # log file is hard-coded to be /tmp/treest.log
+
 [target."cfg(unix)".dependencies]
 libc = "0.2.171"
 
