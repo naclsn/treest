@@ -17,7 +17,7 @@ mod view;
 
 use crate::lua::structs::IndexPath;
 use crate::navigate::input::Input;
-use crate::navigate::options::Options;
+use crate::navigate::options::GlobalOptions;
 use crate::navigate::space::Space;
 use crate::navigate::view::ViewJumpBy;
 use crate::provider::scratch::Scratch;
@@ -48,16 +48,18 @@ pub struct Navigate {
     exit: Option<String>,
     message: Message,
 
-    options: Options,
+    options: GlobalOptions, // shared accross spaces, only mutated from navigate in main thread
     registers: BTreeMap<String, Vec<String>>,
 }
 
 impl Navigate {
     pub fn new(user_script: Option<PathBuf>) -> Self {
+        let options = GlobalOptions::default();
         Self {
             spaces: vec![Space::new(
                 Box::new(Scratch::new("[Scratch]").unwrap()),
                 "scratch".to_string(),
+                options.make_ref(),
             )],
             current_space: 0,
 
@@ -70,7 +72,7 @@ impl Navigate {
             exit: None,
             message: Message::default(),
 
-            options: Options::default(),
+            options,
             registers: BTreeMap::default(),
         }
     }
@@ -79,7 +81,10 @@ impl Navigate {
         if at <= self.current_space {
             self.current_space += 1;
         }
-        self.spaces.insert(at, Space::new(provider, provider_name));
+        self.spaces.insert(
+            at,
+            Space::new(provider, provider_name, self.options.make_ref()),
+        );
     }
 
     pub fn remove_space(&mut self, at: usize) {
@@ -91,12 +96,13 @@ impl Navigate {
             self.spaces.push(Space::new(
                 Box::new(Scratch::new("[Scratch]").unwrap()),
                 "scratch".to_string(),
+                self.options.make_ref(),
             ))
         }
     }
 
     pub fn replace_space(&mut self, at: usize, provider: Box<dyn Provider>, provider_name: String) {
-        self.spaces[at] = Space::new(provider, provider_name);
+        self.spaces[at] = Space::new(provider, provider_name, self.options.make_ref());
     }
 
     pub fn swap_spaces(&mut self, at: usize, with: usize) {

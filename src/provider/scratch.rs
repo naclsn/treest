@@ -2,7 +2,7 @@ use std::cmp::Ordering;
 
 use anyhow::Result;
 
-use crate::provider::{Event, EventPoller, Provider};
+use crate::provider::Provider;
 use crate::tree::{Fragment, NodePath};
 
 pub struct Scratch;
@@ -43,14 +43,16 @@ impl Provider for Scratch {
     }
 
     fn compare(&self, in_tree: &Fragment, in_event: &Fragment) -> bool {
-        todo!()
+        let a: &String = in_tree.as_any().downcast_ref().unwrap();
+        let b: &String = in_event.as_any().downcast_ref().unwrap();
+        a == b
     }
 
+    /*
     fn request_mk(&mut self, path: &NodePath, text: String) -> Result<Option<Event>> {
         todo!()
     }
 
-    /*
     fn request_cp(&mut self, path: &NodePath, text: String) -> Result<Option<Event>> {
         todo!()
     }
@@ -82,7 +84,7 @@ impl Provider for Scratch {
 }
 
 impl Scratch {
-    pub fn new(arg: &str) -> Result<Self> {
+    pub fn new(_arg: &str) -> Result<Self> {
         Ok(Self)
     }
 

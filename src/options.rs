@@ -182,8 +182,7 @@ impl Options {
         let mut nav = Navigate::new(self.user_script);
         {
             let provider = provider::select(&self.provider_arg, &self.provider_name)?;
-            nav.insert_space(1, provider, self.provider_name);
-            nav.remove_space(0);
+            nav.replace_space(0, provider, self.provider_name);
         }
         Ok(nav)
     }

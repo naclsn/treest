@@ -248,7 +248,10 @@ impl Provider for Fs {
     }
 
     fn compare(&self, in_tree: &Fragment, in_event: &Fragment) -> bool {
-        todo!()
+        let in_tree: &FsNode = in_tree.as_any().downcast_ref().unwrap();
+        // TODO: say
+        let in_event: &String = in_event.as_any().downcast_ref().unwrap();
+        &in_tree.name == in_event
     }
 
     fn breadcrumbs(&self, path: &NodePath) -> String {

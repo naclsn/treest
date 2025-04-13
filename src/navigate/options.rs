@@ -1,5 +1,6 @@
 // TODO: global and local options
-//   local options proxy to a shared global options
+use std::ops::{Deref, DerefMut};
+use std::sync::{Arc, Mutex};
 
 use mlua::Either;
 
@@ -62,7 +63,7 @@ macro_rules! make_options {
 }
 
 make_options! {
-    pub struct Options {
+    pub struct GlobalOptionsImpl {
         /// "pretty" to use box-drawing characters, or "ascii" for more limited font/terminal/render/..
         pub appearance|appea: String = "pretty",
         /// put single-child on the same line as parent (TODO: not supported yet)
@@ -79,6 +80,32 @@ make_options! {
         pub mouse|mouse: bool {|v| {terminal::mouse(v); v}} = false,
         /// toggle alt-screen; this is set to true in defaults.lua `init`
         pub altscreen|mcup: bool {|v| {terminal::altscreen(v); v}} = false,
+    }
+}
+
+#[derive(Default)]
+pub struct GlobalOptions(Arc<Mutex<GlobalOptionsImpl>>);
+pub struct GlobalOptionsRef(Arc<Mutex<GlobalOptionsImpl>>);
+
+impl GlobalOptions {
+    pub fn lock_mut(&mut self) -> impl DerefMut<Target = GlobalOptionsImpl> + use<'_> {
+        self.0.lock().unwrap()
+    }
+    pub fn make_ref(&self) -> GlobalOptionsRef {
+        GlobalOptionsRef(self.0.clone())
+    }
+
+    pub fn help(name: &str) -> Option<&'static [&'static str]> {
+        GlobalOptionsImpl::help(name)
+    }
+    pub fn list() -> &'static [&'static str] {
+        GlobalOptionsImpl::list()
+    }
+}
+
+impl GlobalOptionsRef {
+    pub fn lock(&self) -> impl Deref<Target = GlobalOptionsImpl> + use<'_> {
+        self.0.lock().unwrap()
     }
 }
 

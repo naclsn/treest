@@ -1,7 +1,7 @@
 use std::io::{Result as IoResult, Write};
 use std::ops::Range;
 
-use crate::navigate::options::Options;
+use crate::navigate::options::GlobalOptionsRef;
 use crate::navigate::{IndexPath, Navigate};
 use crate::provider::Provider;
 use crate::terminal;
@@ -56,6 +56,10 @@ pub struct View {
     cursor_line: usize,
     visible_height: usize,
     total_height: usize,
+
+    cols: Range<usize>,
+    rows: usize,               // tree views all start at row 0
+    has_multiple_spaces: bool, // indicates if CSI K can be used to clear lines
 }
 
 /// Parts of the `Space` needed by the `View` for rendering.
@@ -142,6 +146,12 @@ impl ViewJumpBy {
 }
 
 impl View {
+    pub fn update(&mut self, cols: Range<usize>, rows: usize, has_multiple_spaces: bool) {
+        self.cols = cols;
+        self.rows = rows;
+        self.has_multiple_spaces = has_multiple_spaces;
+    }
+
     pub fn path_for(&self, line: usize) -> Option<&IndexPath> {
         self.line_mapping.get(line)
     }
@@ -151,7 +161,7 @@ impl View {
         &mut self,
         space: ViewSpaceSubset,
         visible_range: Range<usize>,
-        options: &Options,
+        options: &GlobalOptionsRef,
     ) -> Vec<Option<String>> {
         fn inner<'a>(
             mut state: RenderingState<'a>,
@@ -255,25 +265,29 @@ impl View {
         self.visible_height = visible_range.len();
         self.total_height = 0;
 
-        let state = RenderingState {
-            node_path: Vec::new(),
-            index_path: IndexPath::default(),
-            indent: Vec::new(),
+        let state = {
+            let options = options.lock();
 
-            visible_range,
-            total_height: &mut self.total_height,
-            lines: Vec::new(),
+            RenderingState {
+                node_path: Vec::new(),
+                index_path: IndexPath::default(),
+                indent: Vec::new(),
 
-            line_mapping: &mut self.line_mapping,
-            was_cursor_line: self.cursor_line,
-            now_cursor_line: &mut self.cursor_line,
+                visible_range,
+                total_height: &mut self.total_height,
+                lines: Vec::new(),
 
-            appearance: match options.appearance.as_str() {
-                "pretty" => &PRETTY,
-                "ascii" => &ASCII,
-                _ => unreachable!(),
-            },
-            //singlechildline: options.singlechildline,
+                line_mapping: &mut self.line_mapping,
+                was_cursor_line: self.cursor_line,
+                now_cursor_line: &mut self.cursor_line,
+
+                appearance: match options.appearance.as_str() {
+                    "pretty" => &PRETTY,
+                    "ascii" => &ASCII,
+                    _ => unreachable!(),
+                },
+                //singlechildline: options.singlechildline,
+            }
         };
 
         let mut lines = inner(state, space.root, space.provider, space.cursor, false).lines;
@@ -300,19 +314,16 @@ impl View {
         f: &mut impl Write,
         force: bool,
         space: ViewSpaceSubset,
-        cols: Range<usize>,
-        rows: usize,               // tree views all start at row 0
-        has_multiple_spaces: bool, // indicates if CSI K can be used to clear lines
-        options: &Options,
+        options: &GlobalOptionsRef,
     ) -> IoResult<()> {
         if force {
             self.line_mapping.clear();
         }
 
-        let range = self.scroll..self.scroll + rows;
+        let range = self.scroll..self.scroll + self.rows;
         let lines = self.render_tree_range(space, range, options);
 
-        write!(f, "\x1b[;{}H", cols.start + 1)?;
+        write!(f, "\x1b[;{}H", self.cols.start + 1)?;
         for (off, line) in lines.iter().enumerate() {
             // None truly means "don't touch the line, it's good as is"
             // Some means replace with this, (TODO) clearing existing as needed
@@ -320,10 +331,10 @@ impl View {
                 // TODO: potential optimizations:
                 //      * trim leading spaces (increment col as needed)
                 //      * use '\r\n' when col is 0
-                write!(f, "\x1b[{};{}H", off + 1, cols.start + 1)?;
-                if has_multiple_spaces {
+                write!(f, "\x1b[{};{}H", off + 1, self.cols.start + 1)?;
+                if self.has_multiple_spaces {
                     // TODO: trim line to available width, cache used width for clearing
-                    write!(f, "{}", " ".repeat(cols.len()))?;
+                    write!(f, "{}", " ".repeat(self.cols.len()))?;
                 } else {
                     write!(f, "\x1b[K")?;
                 }
@@ -350,6 +361,17 @@ impl Navigate {
             .map(|t| (t.col as usize, t.row as usize))
             .unwrap_or((80, 24));
 
+        // retrieve all options needed early and release lock right away
+        let (messageheight, appearance, messagescrollbar) = {
+            let options = self.options.make_ref();
+            let options = options.lock();
+            (
+                options.messageheight,
+                options.appearance.clone(),
+                options.messagescrollbar,
+            )
+        };
+
         // clear message from previous render
         write!(f, "\x1b[{}H", term_row - self.message.previous_height - 1)?;
         if self.input.get_prompt().is_none() {
@@ -359,27 +381,19 @@ impl Navigate {
             write!(f, "{}", "\x1b[K\n".repeat(self.message.previous_height))?;
         }
         let len = self.message.lines.len();
-        let msh = self.options.messageheight as usize;
+        let msh = messageheight as usize;
         let height = std::cmp::min(len, msh);
         self.message.previous_height = height;
 
         let each_avail_col = term_col / self.spaces.len();
-        let avail_rows = if self.message.lines.is_empty() {
-            term_row - 2
-        } else {
-            term_row - height - 2
-        };
+        let avail_rows = term_row - height - 2;
         let has_multiple_spaces = 1 < self.spaces.len();
         for (k, space) in self.spaces.iter_mut().enumerate() {
             let avail_cols = k * each_avail_col..(k + 1) * each_avail_col;
-            space.lock().unwrap().view_render(
-                f,
-                force,
-                avail_cols,
-                avail_rows,
-                has_multiple_spaces,
-                &self.options,
-            )?;
+            let mut space = space.lock().unwrap();
+            space.view_update(avail_cols, avail_rows, has_multiple_spaces);
+            // XXX/TODO: main thread will repeatedly acquire lock on options
+            space.view_render(f, force)?;
         }
 
         // render message and -- {} lines -- or breadcrumbs (message is always re-rendered)
@@ -389,7 +403,7 @@ impl Navigate {
             let top = self.message.scroll * msh / len;
             let bot = std::cmp::min(top + msh * msh / len, height - 1);
 
-            let appearance = match self.options.appearance.as_str() {
+            let appearance = match appearance.as_str() {
                 "pretty" => PRETTY,
                 "ascii" => ASCII,
                 _ => unreachable!(),
@@ -397,7 +411,7 @@ impl Navigate {
 
             let visible_range = self.message.scroll..self.message.scroll + height;
             for (k, line) in self.message.lines[visible_range].iter().enumerate() {
-                if self.options.messagescrollbar {
+                if messagescrollbar {
                     let sb = if k < top {
                         appearance.scroll_before
                     } else if top == k && 0 == top {

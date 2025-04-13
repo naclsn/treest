@@ -9,7 +9,7 @@ use crate::lua::structs::{Completion, MappingFn, PromptAnsCallback};
 use crate::lua::structs::{IndexPath, Listing, NodeInfo, PromptSplitInfo, Target};
 use crate::lua::structs::{MoveFlags, ProviderFlags, RequestFlags, ScrollFlags, SearchFlags};
 use crate::navigate::input::InputTickResponse;
-use crate::navigate::options::Options;
+use crate::navigate::options::GlobalOptions;
 use crate::navigate::{Navigate, ViewJumpBy};
 use crate::prompt::{self, Prompt};
 use crate::provider;
@@ -113,6 +113,7 @@ impl UserData for Navigate {
             fn space_next(flags) mut;
             fn space_open(arg, name, placement_hint) mut;
             fn space_prev(flags) mut;
+            fn space_replace(arg, name, placement) mut;
             fn space_swap(with, placement) mut;
             fn suspend() mut;
             fn view_down(by) mut;
@@ -282,7 +283,7 @@ impl Navigate {
     /// Exported in treest.
     /// Move the message view down, revealing any hidden lines at the bottom.
     fn message_scroll_down(&mut self, by: ScrollFlags) -> Result<()> {
-        let msh = self.options.messageheight as usize;
+        let msh = self.options.make_ref().lock().messageheight as usize;
         ViewJumpBy::new_by(by.amount).down(
             &mut self.message.scroll,
             msh,
@@ -296,7 +297,7 @@ impl Navigate {
     fn message_scroll_up(&mut self, by: ScrollFlags) -> Result<()> {
         ViewJumpBy::new_by(by.amount).up(
             &mut self.message.scroll,
-            self.options.messageheight as usize,
+            self.options.make_ref().lock().messageheight as usize,
             0,
         );
         Ok(())
@@ -409,18 +410,25 @@ impl Navigate {
     ///
     /// See `treest:option_list` for a list of the available option names.
     fn option_get(&self, name: String) -> Result<Either<String, Either<isize, bool>>> {
-        self.options.get(&name).ok_or(Error::BadArgument {
-            to: Some("get_option".to_string()),
-            pos: 2,
-            name: Some("name".to_string()),
-            cause: Error::RuntimeError(format!("no option {name:?}")).into(),
-        })
+        self.options
+            .make_ref()
+            .lock()
+            .get(&name)
+            .ok_or(Error::BadArgument {
+                to: Some("option_get".to_string()),
+                pos: 2,
+                name: Some("name".to_string()),
+                cause: Error::RuntimeError(format!("no option '{name:?}'")).into(),
+            })
     }
 
     /// Exported in treest.
     /// List the available options (*names* only).
     fn option_list(&self) -> Result<Vec<String>> {
-        Ok(Options::list().iter().map(|s| s.to_string()).collect())
+        Ok(GlobalOptions::list()
+            .iter()
+            .map(|s| s.to_string())
+            .collect())
     }
 
     /// Exported in treest.
@@ -432,12 +440,15 @@ impl Navigate {
         name: String,
         value: Either<String, Either<isize, bool>>,
     ) -> Result<()> {
-        self.options.set(&name, value).ok_or(Error::BadArgument {
-            to: Some("set_option".to_string()),
-            pos: 2,
-            name: Some("name".to_string()),
-            cause: Error::RuntimeError(format!("no option {name:?}")).into(),
-        })
+        self.options
+            .lock_mut()
+            .set(&name, value)
+            .ok_or(Error::BadArgument {
+                to: Some("option_set".to_string()),
+                pos: 2,
+                name: Some("name".to_string()),
+                cause: Error::RuntimeError(format!("no option '{name:?}'")).into(),
+            })
     }
 
     /// Exported in treest.
@@ -657,7 +668,7 @@ impl Navigate {
     }
 
     /// Exported in treest.
-    /// Move cursor to the next (right) space.
+    /// Move focus to the next (right) space.
     ///
     /// When flag is 'sat' and it's the rightmost space, nothing happens.
     /// 'wrap' will instead go back to leftmost space.
@@ -688,7 +699,13 @@ impl Navigate {
     ) -> Result<()> {
         let provider_name = match name {
             Some(ProviderFlags { name }) => name,
-            None => provider::guess(&arg).unwrap(),
+            None => provider::guess(&arg).ok_or(Error::BadArgument {
+                to: Some("space_open".to_string()),
+                pos: 3,
+                name: Some("name".to_string()),
+                cause: Error::RuntimeError("provider could not be guessed, name is needed".into())
+                    .into(),
+            })?,
         };
         let provider = provider::select(&arg, provider_name).map_err(Error::external)?;
         let at = placement_hint.unwrap_or(self.current_space);
@@ -697,7 +714,7 @@ impl Navigate {
     }
 
     /// Exported in treest.
-    /// Move cursor to the previous (left) space.
+    /// Move focus to the previous (left) space.
     ///
     /// When flag is 'sat' and it's the leftmost space, nothing happens.
     /// 'wrap' will instead go back to rightmost space.
@@ -707,6 +724,35 @@ impl Navigate {
             "sat" => self.current_space.saturating_sub(1),
             _ => unreachable!(),
         };
+        Ok(())
+    }
+
+    /// Exported in treest.
+    /// Open a new space and replace the existing one at `placement` (or current if `nil`).
+    ///
+    /// `name` may be needed if the provider cannot be guessed
+    /// (see `treest:space_guess` for this).
+    ///
+    /// This is somewhat equivalent to using bot `treest:space_close` and `treest:space_open`.
+    fn space_replace(
+        &mut self,
+        arg: String,
+        name: Option<ProviderFlags>,
+        placement: Option<usize>,
+    ) -> Result<()> {
+        let provider_name = match name {
+            Some(ProviderFlags { name }) => name,
+            None => provider::guess(&arg).ok_or(Error::BadArgument {
+                to: Some("space_replace".to_string()),
+                pos: 3,
+                name: Some("name".to_string()),
+                cause: Error::RuntimeError("provider could not be guessed, name is needed".into())
+                    .into(),
+            })?,
+        };
+        let provider = provider::select(&arg, provider_name).map_err(Error::external)?;
+        let at = placement.unwrap_or(self.current_space);
+        self.replace_space(at, provider, provider_name.to_string());
         Ok(())
     }
 
@@ -729,11 +775,17 @@ impl Navigate {
     fn suspend(&mut self) -> Result<()> {
         #[cfg(not(windows))]
         {
+            let options = self.options.make_ref();
+            let (mouse, altscreen) = {
+                let o = options.lock();
+                (o.mouse, o.altscreen)
+            };
+
             terminal::cursor(true);
-            if self.options.mouse {
+            if mouse {
                 terminal::mouse(false);
             }
-            if self.options.altscreen {
+            if altscreen {
                 terminal::altscreen(false);
             }
 
@@ -744,11 +796,12 @@ impl Navigate {
             self.term = terminal::raw_with_panic_hook().ok();
             self.force_redraw = true;
 
+            // sanely assume these options weren't changed in the mean time
             terminal::cursor(false);
-            if self.options.mouse {
+            if mouse {
                 terminal::mouse(true);
             }
-            if self.options.altscreen {
+            if altscreen {
                 terminal::altscreen(true);
             }
         }
@@ -790,7 +843,7 @@ or call the `help(<subject>)` lua function
 
         "*" => {
             let functions = help::HELP.iter().map(|ex| format!("{}()", ex.name));
-            let options = Options::list().iter().map(|op| format!("'{op}'"));
+            let options = GlobalOptions::list().iter().map(|op| format!("'{op}'"));
             let mut all: Vec<_> = functions.chain(options).collect();
             all.sort_unstable();
             Some(all.join("\n") + "\n")
@@ -814,9 +867,8 @@ or call the `help(<subject>)` lua function
             Some(r)
         }
 
-        o if o.starts_with("'") => {
-            Options::help(&o.strip_suffix("'").unwrap_or(o)[1..]).map(|ln| ln.join("\n") + "\n")
-        }
+        o if o.starts_with("'") => GlobalOptions::help(&o.strip_suffix("'").unwrap_or(o)[1..])
+            .map(|ln| ln.join("\n") + "\n"),
 
         _ => None,
     })

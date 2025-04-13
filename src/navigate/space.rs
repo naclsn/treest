@@ -4,7 +4,7 @@ use std::sync::{Arc, Mutex};
 use std::thread::Builder;
 
 use crate::lua::structs::{IndexPath, NodeInfo, Target};
-use crate::navigate::options::Options;
+use crate::navigate::options::GlobalOptionsRef;
 use crate::navigate::view::{View, ViewSpaceSubset};
 use crate::provider::{Event, EventKind, Notif, NotifKind, Provider};
 use crate::tree::{Fragment, Node, NodePath};
@@ -15,6 +15,7 @@ pub struct Space {
     provider_name: String,
     pub view: View,
     pub cursor: (usize, IndexPath),
+    pub options: GlobalOptionsRef,
 }
 
 impl Drop for Space {
@@ -24,18 +25,27 @@ impl Drop for Space {
 }
 
 impl Space {
-    fn new_without_poller_thread(provider: Box<dyn Provider>, provider_name: String) -> Self {
+    fn new_without_poller_thread(
+        provider: Box<dyn Provider>,
+        provider_name: String,
+        options: GlobalOptionsRef,
+    ) -> Self {
         Self {
             tree: Node::new(provider.provide_root()),
             provider,
             provider_name,
             view: View::default(),
             cursor: (0, IndexPath::default()),
+            options,
         }
     }
 
-    pub fn new(provider: Box<dyn Provider>, provider_name: String) -> Arc<Mutex<Self>> {
-        let space = Self::new_without_poller_thread(provider, provider_name.clone());
+    pub fn new(
+        provider: Box<dyn Provider>,
+        provider_name: String,
+        options: GlobalOptionsRef,
+    ) -> Arc<Mutex<Self>> {
+        let space = Self::new_without_poller_thread(provider, provider_name.clone(), options);
         let space = Arc::new(Mutex::new(space));
         return space;
 
@@ -148,8 +158,7 @@ impl Space {
         return Ok(());
 
         let mut buf = b"\x1b7".to_vec();
-        self.view_render(&mut buf, false, todo!(), todo!(), todo!(), todo!())
-            .unwrap(); // unwrap: render to a vec
+        self.view_render(&mut buf, false).unwrap(); // unwrap: render to a vec
         buf.extend(b"\x1b8");
         io::stderr().write_all(&buf)
     }
@@ -164,23 +173,19 @@ impl Space {
         &self.provider_name
     }
 
+    /// Delegate to `View::update` for both borrow and privacy reasons.
+    pub fn view_update(&mut self, cols: Range<usize>, rows: usize, has_multiple_spaces: bool) {
+        self.view.update(cols, rows, has_multiple_spaces);
+    }
+
     /// Delegate to `View::render` for both borrow and privacy reasons.
-    pub fn view_render(
-        &mut self,
-        f: &mut impl Write,
-        force: bool,
-        cols: Range<usize>,
-        rows: usize,
-        has_multiple_spaces: bool,
-        options: &Options,
-    ) -> IoResult<()> {
+    pub fn view_render(&mut self, f: &mut impl Write, force: bool) -> IoResult<()> {
         let sub = ViewSpaceSubset {
             root: &self.tree,
-            provider: self.provider.as_ref(),
+            provider: &*self.provider,
             cursor: &self.cursor.1[..self.cursor.0],
         };
-        self.view
-            .render(f, force, sub, cols, rows, has_multiple_spaces, options)
+        self.view.render(f, force, sub, &self.options)
     }
 
     pub fn cursor(&self) -> &[usize] {
