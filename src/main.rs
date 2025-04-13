@@ -14,24 +14,26 @@ macro_rules! include_etc {
 }
 
 mod log {
-    pub(crate) fn log(_fmt: std::fmt::Arguments) {
+    pub(crate) fn log(_file: &str, _line: u32, _column: u32, _fmt: std::fmt::Arguments) {
         #[cfg(feature = "log")]
         {
-            use std::{fs::File, io::Write, sync::OnceLock};
+            use std::{fs::File, io::Write, sync::OnceLock, thread};
             static LOG: OnceLock<File> = OnceLock::new();
-            _ = LOG
-                .get_or_init(|| std::fs::File::create("/tmp/treest.log").unwrap())
-                .write_fmt(_fmt);
+            let mut log = LOG.get_or_init(|| std::fs::File::create("/tmp/treest.log").unwrap());
+            let this = thread::current();
+            _ = writeln!(log, "{_file}:{_line}:{_column} in {:?}", this.name());
+            _ = log.write_fmt(_fmt);
+            _ = writeln!(log);
         }
     }
 }
 #[macro_export]
 macro_rules! log {
     ($fmt:expr) => {
-        $crate::log::log(format_args!($fmt))
+        $crate::log::log(file!(), line!(), column!(), format_args!($fmt))
     };
     ($fmt:expr, $($args:tt)*) => {
-        $crate::log::log(format_args!($fmt, $($args)*))
+        $crate::log::log(file!(), line!(), column!(), format_args!($fmt, $($args)*))
     };
 }
 

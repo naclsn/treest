@@ -47,32 +47,32 @@ impl Space {
     ) -> Arc<Mutex<Self>> {
         let space = Self::new_without_poller_thread(provider, provider_name.clone(), options);
         let space = Arc::new(Mutex::new(space));
-        return space;
 
         let moved = space.clone();
-        _ = Builder::new().name(provider_name.clone()).spawn(move || {
-            crate::log!("thread {provider_name}: spawned");
+        _ = Builder::new().name(provider_name).spawn(move || {
+            crate::log!("spawned");
             let Some(poller) = moved.lock().unwrap().provider.event_poller() else {
-                crate::log!("thread {provider_name}: no poller");
+                crate::log!("no poller");
                 return;
             };
-            crate::log!("thread {provider_name}: poller loop");
             loop {
+                crate::log!("poller loop");
                 // blocks
                 let event = poller();
+                crate::log!("got event {event:?}");
                 // TODO: debounce if appears necessary
-                if !moved
+                if moved
                     .lock()
                     .ok()
                     .and_then(|mut space| space.process_event(event).ok())
-                    .is_some()
+                    .is_none()
                 {
                     // assume unrecoverable situation, bail out
-                    crate::log!("thread {provider_name}: something when wrong");
+                    crate::log!("something when wrong");
                     break;
                 }
             }
-            crate::log!("thread {provider_name}: exiting");
+            crate::log!("exiting");
         });
 
         space
@@ -83,7 +83,7 @@ impl Space {
     /// It circle backs the event to the provider, perform the actual
     /// update on the tree (lazily as possible) and re-render only if
     /// it cannot be sure it is not necessary.
-    fn process_event(&mut self, event: Event) -> IoResult<()> {
+    pub fn process_event(&mut self, event: Event) -> IoResult<()> {
         fn path_trans<'a>(
             tree: &'a Node,
             provider: &dyn Provider,
@@ -101,15 +101,16 @@ impl Space {
                 .map(|tail| (&backing_head[..], tail))
         }
         let mut a = Vec::new(); // backing for event path
-        let mut b = Vec::new(); // backing for motify dest
+        let mut b = Vec::new(); // backing for modify dest
         let mut maybe_dest = None;
 
         let path = {
             let Some((head, tail)) = path_trans(&self.tree, &*self.provider, &event.path, &mut a)
             else {
+                crate::log!("event: can't translate (broken path?)");
                 return Ok(());
             };
-            NodePath { head: &head, tail }
+            NodePath { head, tail }
         };
         let notif = Notif {
             path: &path,
@@ -119,11 +120,12 @@ impl Space {
                     {
                         if let Some(path) = dest {
                             let Some((head, tail)) =
-                                path_trans(&self.tree, &*self.provider, &path, &mut b)
+                                path_trans(&self.tree, &*self.provider, path, &mut b)
                             else {
+                                crate::log!("event: can't translate (broken dest path?)");
                                 return Ok(());
                             };
-                            maybe_dest = Some(NodePath { head: &head, tail })
+                            maybe_dest = Some(NodePath { head, tail })
                         }
                         maybe_dest.as_ref()
                     },
@@ -134,8 +136,10 @@ impl Space {
             },
         };
 
+        crate::log!("event: notif {notif:?}");
         self.provider.event_occured(&event, &notif);
 
+        // TODO: todo
         match event.kind {
             EventKind::Create(frag) => {
                 crate::log!("event: create {path:?} {:?}", Node::new(frag));
@@ -154,8 +158,6 @@ impl Space {
                 crate::log!("event: reload {path:?}");
             }
         };
-
-        return Ok(());
 
         let mut buf = b"\x1b7".to_vec();
         self.view_render(&mut buf, false).unwrap(); // unwrap: render to a vec

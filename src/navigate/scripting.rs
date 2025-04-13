@@ -506,7 +506,7 @@ impl Navigate {
         .map_err(Error::external)?;
 
         if let Some(ev) = ev {
-            todo!("ev:?");
+            space.process_event(ev).map_err(Error::external)?;
         }
 
         Ok(r)

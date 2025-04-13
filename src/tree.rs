@@ -13,22 +13,18 @@ impl<T: Any + Send> FragmentTrait for T {
 }
 pub type Fragment = Box<dyn FragmentTrait>;
 
+impl Debug for Fragment {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
+        write!(f, "{self:p}")
+    }
+}
+
+#[derive(Debug)]
 pub struct Node {
     fragment: Fragment,
     children: Option<(Vec<Node>, Vec<usize>)>,
     folded: bool,
     marked: bool,
-}
-
-impl Debug for Node {
-    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
-        f.debug_struct("Node")
-            .field("fragment", &format!("{:p}", self.fragment))
-            .field("children", &self.children)
-            .field("folded", &self.folded)
-            .field("marked", &self.marked)
-            .finish()
-    }
 }
 
 #[derive(Debug, Clone)]
