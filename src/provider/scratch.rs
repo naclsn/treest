@@ -2,7 +2,7 @@ use std::cmp::Ordering;
 
 use anyhow::Result;
 
-use crate::provider::Provider;
+use crate::provider::{Event, EventKind, Provider};
 use crate::tree::{Fragment, NodePath};
 
 pub struct Scratch;
@@ -48,11 +48,17 @@ impl Provider for Scratch {
         a == b
     }
 
-    /*
     fn request_mk(&mut self, path: &NodePath, text: String) -> Result<Option<Event>> {
-        todo!()
+        Ok(Some(Event {
+            path: path
+                .iter_all()
+                .map(|n| Box::new(n.fragment::<String>().clone()) as _)
+                .collect(),
+            kind: EventKind::Create(Box::new(text)),
+        }))
     }
 
+    /*
     fn request_cp(&mut self, path: &NodePath, text: String) -> Result<Option<Event>> {
         todo!()
     }

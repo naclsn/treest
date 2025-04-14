@@ -43,6 +43,12 @@ impl<'a> From<&'a [&'a Node]> for NodePath<'a> {
     }
 }
 
+impl<'a> NodePath<'a> {
+    pub fn iter_all(&self) -> impl Iterator<Item = &'a Node> {
+        self.head.iter().copied().chain(std::iter::once(self.tail))
+    }
+}
+
 impl Node {
     pub fn new(fragment: Fragment) -> Self {
         Self {

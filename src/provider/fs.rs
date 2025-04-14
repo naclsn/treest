@@ -204,19 +204,17 @@ impl Provider for Fs {
             return Vec::new();
         };
 
-        let mut r = Vec::<Fragment>::new();
-        for entry in dir.filter_map(Result::ok) {
-            let Some(name) = entry.file_name().into_string().ok() else {
-                continue;
-            };
-            let meta = entry.metadata().ok();
-            r.push(Box::new(FsNode {
-                kind: (entry.path(), &meta).into(),
-                name,
-                meta,
-            }))
-        }
-        r
+        dir.filter_map(Result::ok)
+            .filter_map(|entry| {
+                let name = entry.file_name().into_string().ok()?;
+                let meta = entry.metadata().ok();
+                Some(Box::new(FsNode {
+                    kind: (entry.path(), &meta).into(),
+                    name,
+                    meta,
+                }) as _)
+            })
+            .collect()
     }
 
     fn order(&self, left: &NodePath, right: &NodePath) -> Ordering {
