@@ -6,7 +6,7 @@ use std::thread::Builder;
 use crate::lua::structs::{IndexPath, NodeInfo, Target};
 use crate::navigate::options::GlobalOptionsRef;
 use crate::navigate::view::{View, ViewSpaceSubset};
-use crate::provider::{Event, EventKind, Notif, NotifKind, Provider};
+use crate::provider::{Event, EventKind, Provider};
 use crate::tree::{Fragment, Node, NodePath};
 
 pub struct Space {
@@ -88,56 +88,39 @@ impl Space {
             tree: &'a Node,
             provider: &dyn Provider,
             path: &[Fragment],
-            backing_head: &'a mut Vec<&'a Node>,
-        ) -> Option<(&'a [&'a Node], &'a Node)> {
-            path.iter()
-                .try_fold(tree, |node, frag| {
-                    backing_head.push(node);
-                    node.children()?
-                        .iter()
-                        .copied()
-                        .find(|node| provider.compare(node.fragment_any(), frag))
-                })
-                .map(|tail| (&backing_head[..], tail))
+        ) -> Option<Vec<&'a Node>> {
+            let mut r = Vec::new();
+            let tail = path.iter().try_fold(tree, |node, frag| {
+                r.push(node);
+                node.children()?
+                    .iter()
+                    .copied()
+                    .find(|node| provider.compare(node.fragment_any(), frag))
+            })?;
+            r.push(tail);
+            Some(r)
         }
-        let mut a = Vec::new(); // backing for event path
-        let mut b = Vec::new(); // backing for modify dest
-        let mut maybe_dest = None;
 
-        let path = {
-            let Some((head, tail)) = path_trans(&self.tree, &*self.provider, &event.path, &mut a)
-            else {
-                crate::log!("event: can't translate (broken path?)");
-                return Ok(());
-            };
-            NodePath { head, tail }
-        };
-        let notif = Notif {
-            path: &path,
-            kind: match &event.kind {
-                EventKind::Create(frag) => NotifKind::Create(frag),
-                EventKind::Modify(dest, frag) => NotifKind::Modify(
-                    {
-                        if let Some(path) = dest {
-                            let Some((head, tail)) =
-                                path_trans(&self.tree, &*self.provider, path, &mut b)
-                            else {
-                                crate::log!("event: can't translate (broken dest path?)");
-                                return Ok(());
-                            };
-                            maybe_dest = Some(NodePath { head, tail })
-                        }
-                        maybe_dest.as_ref()
-                    },
-                    frag.as_ref(),
-                ),
-                EventKind::Remove => NotifKind::Remove,
-                EventKind::Reload => NotifKind::Reload,
-            },
+        let Some(path) = path_trans(&self.tree, &*self.provider, &event.path) else {
+            crate::log!("event: can't translate (broken path?)");
+            return Ok(());
         };
 
-        crate::log!("event: notif {notif:?}");
-        self.provider.event_occured(&event, &notif);
+        let maybe_dest = match &event.kind {
+            EventKind::Modify(Some(dest), _) | EventKind::Copies(Some(dest), _) => {
+                let Some(dest) = path_trans(&self.tree, &*self.provider, dest) else {
+                    crate::log!("event: can't translate (broken dest path?)");
+                    return Ok(());
+                };
+                Some(dest)
+            }
+            _ => None,
+        };
+
+        self.provider.event_occured(&event);
+
+        let path: NodePath = path[..].into();
+        let maybe_dest: Option<NodePath> = maybe_dest.as_ref().map(|v| v[..].into());
 
         // TODO: todo
         match event.kind {
@@ -149,6 +132,13 @@ impl Space {
                     crate::log!("event: modify {path:?} {maybe_dest:?} Some({frag:p})");
                 } else {
                     crate::log!("event: modify {path:?} {maybe_dest:?} None");
+                }
+            }
+            EventKind::Copies(_, frag) => {
+                if let Some(frag) = frag {
+                    crate::log!("event: copies {path:?} {maybe_dest:?} Some({frag:p})");
+                } else {
+                    crate::log!("event: copies {path:?} {maybe_dest:?} None");
                 }
             }
             EventKind::Remove => {

@@ -18,34 +18,16 @@ pub enum EventKind {
     Create(Fragment),
     /// modify (only the node itself, stays loaded if it was, no re-loading, may have a from-to)
     Modify(Option<Vec<Fragment>>, Option<Fragment>),
+    /// copies (deep copy, would be same -but not quite- as each remove + create)
+    Copies(Option<Vec<Fragment>>, Option<Fragment>),
     /// remove
     Remove,
-    /// reload (remove for each contained, re-load may be lazily
+    /// reload (remove for each contained, re-load may be lazy
     ///         ie same -but not quite- as remove + create + loading if it was
     ///         ie same -but not quite- as remove each + create each)
     Reload,
 }
 pub type EventPoller = Box<dyn Fn() -> Event>;
-
-/// a notif is _somewhat_ a borrowed event
-#[derive(Debug)]
-pub struct Notif<'a> {
-    pub path: &'a NodePath<'a>,
-    pub kind: NotifKind<'a>,
-}
-#[derive(Debug)]
-pub enum NotifKind<'a> {
-    /// create (brand new node, folded and not loaded)
-    Create(&'a Fragment),
-    /// modify (only the node itself, stays loaded if it was, no re-loading, may have a from-to)
-    Modify(Option<&'a NodePath<'a>>, Option<&'a Fragment>),
-    /// remove
-    Remove,
-    /// reload (remove for each contained, re-load may be lazily
-    ///         ie same -but not quite- as remove + create + loading if it was
-    ///         ie same -but not quite- as remove each + create each)
-    Reload,
-}
 
 /// A type that is able to provide a tree structure.
 pub trait Provider: Send {
@@ -85,8 +67,8 @@ pub trait Provider: Send {
     /// is notified of an event its event poller emitted
     /// event may also be caused by a request
     /// mainly as an occasion to update said poller
-    fn event_occured(&mut self, event: &Event, notif: &Notif) {
-        _ = (event, notif);
+    fn event_occured(&mut self, event: &Event) {
+        _ = (event,);
     }
 
     /// Request to create a new node at `path`.

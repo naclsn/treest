@@ -58,15 +58,22 @@ impl Provider for Scratch {
         }))
     }
 
-    /*
     fn request_cp(&mut self, path: &NodePath, text: String) -> Result<Option<Event>> {
-        todo!()
+        Ok(Some(Event {
+            path: path
+                .head
+                .iter()
+                .map(|n| Box::new(n.fragment::<String>().clone()) as _)
+                .collect(),
+            kind: EventKind::Create(Box::new(text)),
+        }))
     }
 
     fn request_rm(&mut self, path: &NodePath) -> Result<Option<Event>> {
         todo!()
     }
 
+    /*
     fn request_mv(&mut self, path: &NodePath, text: String) -> Result<Option<Event>> {
         todo!()
     }
