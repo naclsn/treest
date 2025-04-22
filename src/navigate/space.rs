@@ -1,13 +1,13 @@
 use std::io::{self, Result as IoResult, Write};
-use std::ops::Range;
-use std::sync::{Arc, Mutex};
+use std::ops::{Deref, Range};
+use std::sync::{Arc, Mutex, MutexGuard};
 use std::thread::Builder;
 
 use crate::lua::structs::{IndexPath, NodeInfo, Target};
 use crate::navigate::options::GlobalOptionsRef;
 use crate::navigate::view::{View, ViewSpaceSubset};
 use crate::provider::{Event, EventKind, Provider};
-use crate::tree::{Fragment, Node, NodePath};
+use crate::tree::{Fragment, Node};
 
 pub struct Space {
     pub tree: Node,
@@ -16,6 +16,25 @@ pub struct Space {
     pub view: View,
     pub cursor: (usize, IndexPath),
     pub options: GlobalOptionsRef,
+}
+
+/// give the EventPoller access to the root node
+/// so it can build and return an event
+pub struct Bidoof<'a>(&'a Mutex<Space>);
+pub struct BidoofGuard<'a>(MutexGuard<'a, Space>);
+
+impl Bidoof<'_> {
+    pub fn root(&self) -> BidoofGuard<'_> {
+        BidoofGuard(self.0.lock().unwrap())
+    }
+}
+
+impl Deref for BidoofGuard<'_> {
+    type Target = Node;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0.tree
+    }
 }
 
 impl Drop for Space {
@@ -58,13 +77,22 @@ impl Space {
             loop {
                 crate::log!("poller loop");
                 // blocks
-                let event = poller();
+                let event = poller(Bidoof(&moved));
                 crate::log!("got event {event:?}");
                 // TODO: debounce if appears necessary
+
                 if moved
                     .lock()
                     .ok()
-                    .and_then(|mut space| space.process_event(event).ok())
+                    .and_then(|mut space| {
+                        space.process_event(event);
+
+                        // TODO: for now will always redraw
+                        let mut buf = b"\x1b7".to_vec();
+                        space.view_render(&mut buf, false).unwrap(); // unwrap: render to a vec
+                        buf.extend(b"\x1b8");
+                        io::stderr().write_all(&buf).ok()
+                    })
                     .is_none()
                 {
                     // assume unrecoverable situation, bail out
@@ -78,81 +106,29 @@ impl Space {
         space
     }
 
-    /// This runs in the polling thread.
-    ///
-    /// It circle backs the event to the provider, perform the actual
-    /// update on the tree (lazily as possible) and re-render only if
-    /// it cannot be sure it is not necessary.
-    pub fn process_event(&mut self, event: Event) -> IoResult<()> {
-        fn path_trans<'a>(
-            tree: &'a Node,
-            provider: &dyn Provider,
-            path: &[Fragment],
-        ) -> Option<Vec<&'a Node>> {
-            let mut r = Vec::new();
-            let tail = path.iter().try_fold(tree, |node, frag| {
-                r.push(node);
-                node.children()?
-                    .iter()
-                    .copied()
-                    .find(|node| provider.compare(node.fragment_any(), frag))
-            })?;
-            r.push(tail);
-            Some(r)
-        }
-
-        let Some(path) = path_trans(&self.tree, &*self.provider, &event.path) else {
-            crate::log!("event: can't translate (broken path?)");
-            return Ok(());
-        };
-
-        let maybe_dest = match &event.kind {
-            EventKind::Modify(Some(dest), _) | EventKind::Copies(Some(dest), _) => {
-                let Some(dest) = path_trans(&self.tree, &*self.provider, dest) else {
-                    crate::log!("event: can't translate (broken dest path?)");
-                    return Ok(());
-                };
-                Some(dest)
-            }
-            _ => None,
-        };
-
+    fn process_event(&mut self, event: Event) {
         self.provider.event_occured(&event);
-
-        let path: NodePath = path[..].into();
-        let maybe_dest: Option<NodePath> = maybe_dest.as_ref().map(|v| v[..].into());
-
-        // TODO: todo
+        let path = self.tree.unresolve(&event.path[..].into());
+        use EventKind::*;
         match event.kind {
-            EventKind::Create(frag) => {
-                crate::log!("event: create {path:?} {:?}", Node::new(frag));
-            }
-            EventKind::Modify(_, frag) => {
-                if let Some(frag) = frag {
-                    crate::log!("event: modify {path:?} {maybe_dest:?} Some({frag:p})");
-                } else {
-                    crate::log!("event: modify {path:?} {maybe_dest:?} None");
-                }
-            }
-            EventKind::Copies(_, frag) => {
-                if let Some(frag) = frag {
-                    crate::log!("event: copies {path:?} {maybe_dest:?} Some({frag:p})");
-                } else {
-                    crate::log!("event: copies {path:?} {maybe_dest:?} None");
-                }
-            }
-            EventKind::Remove => {
-                crate::log!("event: remove {path:?}");
-            }
-            EventKind::Reload => {
-                crate::log!("event: reload {path:?}");
-            }
-        };
+            Create(frag) => self.process_event_create(&path[..], frag),
+            Modify(dest, frag) => todo!("process_event_modify({path:?}, {dest:?}, {frag:?})"),
+            Copies(dest, frag) => todo!("process_event_copies({path:?}, {dest:?}, {frag:?})"),
+            Remove => self.process_event_remove(&path[..]),
+            Reload => todo!(),
+        }
+    }
 
-        let mut buf = b"\x1b7".to_vec();
-        self.view_render(&mut buf, false).unwrap(); // unwrap: render to a vec
-        buf.extend(b"\x1b8");
-        io::stderr().write_all(&buf)
+    pub fn process_event_create(&mut self, path: &[usize], frag: Fragment) {
+        let child = Node::new(frag);
+        crate::log!("event: create {path:?} {child:#?}");
+        self.tree.add_child(&mut *self.provider, path, child);
+    }
+
+    pub fn process_event_remove(&mut self, path: &[usize]) {
+        crate::log!("event: remove {path:?}");
+        let l = path.len() - 1;
+        self.tree.remove_child(&path[..l], path[l]);
     }
 
     /// Specific borrows needed in `treest:provider_request` because
@@ -261,7 +237,7 @@ impl Space {
             return Some(node.child_count());
         }
         Some(self.tree.load(
-            &mut self.provider,
+            &mut *self.provider,
             // note: at this point the path can be trusted because resolve_node_mut above
             match &at {
                 Target::Cursor => &self.cursor.1[..self.cursor.0],

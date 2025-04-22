@@ -24,6 +24,8 @@ use crate::provider::scratch::Scratch;
 use crate::provider::Provider;
 use crate::terminal::{self, RestoreWithPanicHook};
 
+pub use space::Bidoof;
+
 #[derive(Error, Debug)]
 #[error("{0}")]
 pub struct MainLoopExitText(String);

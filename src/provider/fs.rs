@@ -1,7 +1,6 @@
 use std::cmp::Ordering;
 use std::fmt::{Display, Formatter, Result as FmtResult};
-use std::fs::{self, File, Metadata};
-use std::io::Write;
+use std::fs::{self, Metadata};
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 
@@ -9,8 +8,8 @@ use anyhow::Result;
 use lscolors::{LsColors, Style};
 use thiserror::Error;
 
-use crate::provider::{Event, Provider};
-use crate::tree::{Fragment, NodePath};
+use crate::provider::{Event, EventKind, EventPoller, Provider};
+use crate::tree::{Fragment, Node, NodePath};
 
 pub struct Fs(PathBuf);
 
@@ -20,7 +19,7 @@ pub enum FsProviderError {
     NotADirectory,
 }
 
-#[derive(PartialEq)]
+#[derive(Debug, PartialEq)]
 enum FsNodeKind {
     Directory,
     SymLink(Option<PathBuf>), // FIXME: broken
@@ -34,6 +33,7 @@ enum FsNodeKind {
 
 use FsNodeKind::*;
 
+#[derive(Debug)]
 pub struct FsNode {
     kind: FsNodeKind,
     name: String,
@@ -245,11 +245,9 @@ impl Provider for Fs {
         components.join("/")
     }
 
-    fn compare(&self, in_tree: &Fragment, in_event: &Fragment) -> bool {
-        let in_tree: &FsNode = in_tree.as_any().downcast_ref().unwrap();
-        // TODO: say
-        let in_event: &String = in_event.as_any().downcast_ref().unwrap();
-        &in_tree.name == in_event
+    fn split<'a>(&self, path: &'a NodePath<'a>, text: String) -> Result<(Vec<&'a Node>, Fragment)> {
+        todo!("split {path:?} {text:?}")
+        //Ok((path.iter_all().collect(), Box::new(text)))
     }
 
     fn breadcrumbs(&self, path: &NodePath) -> String {
@@ -270,6 +268,7 @@ impl Provider for Fs {
                             "{:02}:{:02}:{:02} ",
                             // TODO(+2): get tz properly, likely stealing from
                             // https://github.com/chronotope/chrono/tree/main/src/offset/local/tz_info
+                            // or using the crate directly (or the crate time)
                             (s / 60 / 60) % 24 + 2,
                             (s / 60) % 60,
                             s % 60,
@@ -289,75 +288,42 @@ impl Provider for Fs {
         r
     }
 
-    fn request_mk(&mut self, path: &NodePath, text: String) -> Result<Option<Event>> {
-        writeln!(
-            File::options()
-                .append(true)
-                .open("./would.notquite.sh")
-                .unwrap(),
-            "mk {:?} {text:?}",
-            self.components(path).join("/"),
-        )?;
-        Ok(None)
+    fn event_poller(&mut self) -> Option<EventPoller> {
+        None // TODO
     }
 
-    fn request_cp(&mut self, path: &NodePath, text: String) -> Result<Option<Event>> {
-        writeln!(
-            File::options()
-                .append(true)
-                .open("./would.notquite.sh")
-                .unwrap(),
-            "cp {:?} {text:?}",
-            self.components(path).join("/"),
-        )?;
-        Ok(None)
-    }
-
-    fn request_rm(&mut self, path: &NodePath) -> Result<Option<Event>> {
-        writeln!(
-            File::options()
-                .append(true)
-                .open("./would.notquite.sh")
-                .unwrap(),
-            "rm {:?}",
-            self.components(path).join("/"),
-        )?;
-        Ok(None)
-    }
-
-    fn request_mv(&mut self, path: &NodePath, text: String) -> Result<Option<Event>> {
-        self.request_cp(path, text)?;
-        self.request_rm(path)?;
-        Ok(None)
-    }
-
-    fn request_ch(&mut self, path: &NodePath, text: String) -> Result<Option<Event>> {
-        writeln!(
-            File::options()
-                .append(true)
-                .open("./would.notquite.sh")
-                .unwrap(),
-            "ch {:?} {text:?}",
-            self.components(path).join("/"),
-        )?;
-        Ok(None)
-    }
-
-    fn request_vi(&mut self, path: &NodePath) -> Result<Vec<String>> {
-        let bytes = fs::read(self.components(path).into_iter().collect::<PathBuf>())?;
-        Ok(String::from_utf8_lossy(&bytes)
-            .lines()
-            .map(String::from)
-            .collect())
-    }
-
-    fn request_ex(
-        &mut self,
-        path: &NodePath,
-        text: String,
-    ) -> Result<(Vec<String>, Option<Event>)> {
-        _ = (path, text);
-        Ok((Vec::new(), None))
+    fn event_occured(&mut self, event: &Event) {
+        let path = self.components(&event.path[..].into());
+        match &event.kind {
+            EventKind::Create(frag) => {
+                todo!(
+                    "fs: create {path:?} {:?}",
+                    frag.as_any().downcast_ref::<FsNode>(),
+                )
+            }
+            EventKind::Modify(dest, frag) => {
+                todo!(
+                    "fs: modify {path:?} {:?} {:?}",
+                    dest.as_ref()
+                        .map(|dest| self.components(&dest[..].into()))
+                        .unwrap_or_default(),
+                    frag.as_ref()
+                        .map(|frag| frag.as_any().downcast_ref::<FsNode>()),
+                )
+            }
+            EventKind::Copies(dest, frag) => {
+                todo!(
+                    "fs: copies {path:?} {:?} {:?}",
+                    dest.as_ref()
+                        .map(|dest| self.components(&dest[..].into()))
+                        .unwrap_or_default(),
+                    frag.as_ref()
+                        .map(|frag| frag.as_any().downcast_ref::<FsNode>()),
+                )
+            }
+            EventKind::Remove => todo!("fs: remove {path:?}"),
+            EventKind::Reload => todo!("fs: reload {path:?}"),
+        }
     }
 }
 

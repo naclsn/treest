@@ -22,6 +22,7 @@ serde_yml = "0.0.12"
 sqlite = "0.37.0"
 sysinfo = { version = "0.34.2", default-features = false, features = ["system"] }
 thiserror = "2.0.12"
+time = "0.3.41"
 toml = { version = "0.8.20", default-features = false, features = ["parse"] }
 unicode-width = { version = "0.2.0", default-features = false }
 xml-rs = "0.8.26"

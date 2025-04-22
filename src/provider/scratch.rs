@@ -2,8 +2,8 @@ use std::cmp::Ordering;
 
 use anyhow::Result;
 
-use crate::provider::{Event, EventKind, Provider};
-use crate::tree::{Fragment, NodePath};
+use crate::provider::Provider;
+use crate::tree::{Fragment, Node, NodePath};
 
 pub struct Scratch;
 
@@ -42,58 +42,9 @@ impl Provider for Scratch {
         components.join(" ")
     }
 
-    fn compare(&self, in_tree: &Fragment, in_event: &Fragment) -> bool {
-        let a: &String = in_tree.as_any().downcast_ref().unwrap();
-        let b: &String = in_event.as_any().downcast_ref().unwrap();
-        a == b
+    fn split<'a>(&self, path: &'a NodePath<'a>, text: String) -> Result<(Vec<&'a Node>, Fragment)> {
+        Ok((path.iter_all().collect(), Box::new(text)))
     }
-
-    fn request_mk(&mut self, path: &NodePath, text: String) -> Result<Option<Event>> {
-        Ok(Some(Event {
-            path: path
-                .iter_all()
-                .map(|n| Box::new(n.fragment::<String>().clone()) as _)
-                .collect(),
-            kind: EventKind::Create(Box::new(text)),
-        }))
-    }
-
-    fn request_cp(&mut self, path: &NodePath, text: String) -> Result<Option<Event>> {
-        Ok(Some(Event {
-            path: path
-                .head
-                .iter()
-                .map(|n| Box::new(n.fragment::<String>().clone()) as _)
-                .collect(),
-            kind: EventKind::Create(Box::new(text)),
-        }))
-    }
-
-    fn request_rm(&mut self, path: &NodePath) -> Result<Option<Event>> {
-        todo!()
-    }
-
-    /*
-    fn request_mv(&mut self, path: &NodePath, text: String) -> Result<Option<Event>> {
-        todo!()
-    }
-
-    fn request_ch(&mut self, path: &NodePath, text: String) -> Result<Option<Event>> {
-        todo!()
-    }
-
-    fn request_vi(&mut self, path: &NodePath) -> Result<Vec<String>> {
-        todo!()
-    }
-
-    fn request_ex(
-        &mut self,
-        path: &NodePath,
-        text: String,
-    ) -> Result<(Vec<String>, Option<Event>)> {
-        todo!()
-    }
-    */
 }
 
 impl Scratch {

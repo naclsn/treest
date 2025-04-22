@@ -1,4 +1,5 @@
 use std::any::Any;
+use std::cmp::Ordering;
 use std::fmt::{Debug, Formatter, Result as FmtResult};
 
 use crate::provider::Provider;
@@ -15,7 +16,7 @@ pub type Fragment = Box<dyn FragmentTrait>;
 
 impl Debug for Fragment {
     fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
-        write!(f, "{self:p}")
+        write!(f, "{:p}", *self)
     }
 }
 
@@ -27,14 +28,15 @@ pub struct Node {
     marked: bool,
 }
 
+/// basically a slice of &Node with a non-empty guarantee
 #[derive(Debug, Clone)]
 pub struct NodePath<'a> {
     pub head: &'a [&'a Node],
     pub tail: &'a Node,
 }
 
-impl<'a> From<&'a [&'a Node]> for NodePath<'a> {
-    fn from(value: &'a [&'a Node]) -> Self {
+impl<'a, 'b: 'a> From<&'b [&'a Node]> for NodePath<'a> {
+    fn from(value: &'b [&'a Node]) -> Self {
         let k = value.len() - 1;
         Self {
             head: &value[..k],
@@ -43,8 +45,18 @@ impl<'a> From<&'a [&'a Node]> for NodePath<'a> {
     }
 }
 
-impl<'a> NodePath<'a> {
-    pub fn iter_all(&self) -> impl Iterator<Item = &'a Node> {
+impl<'a, 'b: 'a> From<&'b Vec<&'a Node>> for NodePath<'a> {
+    fn from(value: &'b Vec<&'a Node>) -> Self {
+        let k = value.len() - 1;
+        Self {
+            head: &value[..k],
+            tail: value[k],
+        }
+    }
+}
+
+impl NodePath<'_> {
+    pub fn iter_all(&self) -> impl Iterator<Item = &Node> {
         self.head.iter().copied().chain(std::iter::once(self.tail))
     }
 }
@@ -61,10 +73,6 @@ impl Node {
 
     pub fn fragment<T: 'static>(&self) -> &T {
         (*self.fragment).as_any().downcast_ref().unwrap()
-    }
-
-    pub fn fragment_any(&self) -> &Fragment {
-        &self.fragment
     }
 
     pub fn is_loaded(&self) -> bool {
@@ -87,10 +95,10 @@ impl Node {
         self.marked = is;
     }
 
-    pub fn children(&self) -> Option<Vec<&Node>> {
+    pub fn children(&self) -> Option<impl Iterator<Item = &Node>> {
         self.children
             .as_ref()
-            .map(|(nodes, sel)| sel.iter().map(|k| &nodes[*k]).collect())
+            .map(|(nodes, sel)| sel.iter().map(|k| &nodes[*k]))
     }
 
     pub fn child_count(&self) -> usize {
@@ -111,11 +119,28 @@ impl Node {
     }
 
     /// The returned list will be 1 longer than `path` (think poles and power lines).
-    pub fn resolve(&self, path: &[usize]) -> Vec<&Node> {
-        path.iter().fold(vec![self], |mut acc, cur| {
+    pub fn resolve(&self, index_path: &[usize]) -> Vec<&Node> {
+        index_path.iter().fold(vec![self], |mut acc, cur| {
             acc.push(acc.last().unwrap().child(*cur).unwrap());
             acc
         })
+    }
+
+    /// The returned list will be 1 shorter than `node_path` (think poles and power lines).
+    pub fn unresolve(&self, node_path: &NodePath) -> Vec<usize> {
+        let mut it = node_path.iter_all();
+        let me = it.next().unwrap();
+        assert!(std::ptr::eq(me, self));
+        it.fold((Vec::new(), me), |(mut acc, node), cur| {
+            acc.push(
+                node.children()
+                    .unwrap()
+                    .position(|child| std::ptr::eq(child, cur))
+                    .unwrap(),
+            );
+            (acc, cur)
+        })
+        .0
     }
 
     pub fn resolve_node(&self, path: &[usize]) -> &Node {
@@ -137,6 +162,50 @@ impl Node {
         path.iter().try_fold(self, |acc, cur| acc.child_mut(*cur))
     }
 
+    /// Add child node to the target at path.
+    pub fn add_child(&mut self, provider: &mut dyn Provider, path: &[usize], child: Node) {
+        // XXX: yeah, ik, ill assume i know what im doing; couldnt find a way to express this op
+        let parents = self.resolve(path);
+        let target = *parents.last().unwrap() as *const _ as *mut Node;
+
+        unsafe {
+            let (nodes, sel) = (*target).children.get_or_insert_default();
+
+            let child_path = NodePath {
+                head: &parents,
+                tail: &child,
+            };
+            if provider.keep(&child_path) {
+                // find the index in `sel` that we need to insert before
+                match sel.iter().position(|k| {
+                    provider.order(
+                        &child_path,
+                        &NodePath {
+                            head: &parents,
+                            tail: &nodes[*k],
+                        },
+                    ) == Ordering::Less
+                }) {
+                    Some(pos) => sel.insert(pos, nodes.len()),
+                    None => sel.push(nodes.len()), // otherwise it'll be last
+                }
+            }
+
+            nodes.push(child);
+        }
+    }
+
+    /// Remove child node from the target at path.
+    pub fn remove_child(&mut self, path: &[usize], child: usize) {
+        let target = self.resolve_node_mut(path);
+        let (nodes, sel) = target.children.as_mut().unwrap();
+        let pk = sel.remove(child);
+        nodes.swap_remove(pk);
+        // adjust indices: with swap_remove, the last child changes index
+        // if it was kept (Provider::keep) then find and update it
+        sel.iter_mut().find(|k| nodes.len() == **k).map(|k| *k = pk);
+    }
+
     /// Load the child nodes for the target at path.
     ///
     /// `folded` indicates whether to actually unfold the node.
@@ -147,7 +216,7 @@ impl Node {
     /// The number of (visible) children is always returned.
     pub fn load(
         &mut self,
-        provider: &mut Box<dyn Provider>,
+        provider: &mut dyn Provider,
         path: &[usize],
         reload: bool,
         folded: bool,

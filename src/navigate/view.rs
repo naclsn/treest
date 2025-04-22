@@ -213,7 +213,8 @@ impl View {
             *state.total_height += 1;
 
             if !node.is_folded() {
-                if let &[ref init_children @ .., last_child] = &node.children().unwrap()[..] {
+                let children: Vec<_> = node.children().unwrap().collect();
+                if let &[ref init_children @ .., last_child] = &children[..] {
                     // TODO: singlechildline
                     /*if init_children.is_empty() && state.singlechildline {
                         // child occupies same line

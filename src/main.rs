@@ -17,11 +17,16 @@ mod log {
     pub(crate) fn log(_file: &str, _line: u32, _column: u32, _fmt: std::fmt::Arguments) {
         #[cfg(feature = "log")]
         {
-            use std::{fs::File, io::Write, sync::OnceLock, thread};
+            use std::{fs::File, io::Write, sync::OnceLock, thread, time::SystemTime};
+            use time::OffsetDateTime;
             static LOG: OnceLock<File> = OnceLock::new();
             let mut log = LOG.get_or_init(|| std::fs::File::create("/tmp/treest.log").unwrap());
+            let time: OffsetDateTime = SystemTime::now().into();
             let this = thread::current();
-            _ = writeln!(log, "{_file}:{_line}:{_column} in {:?}", this.name());
+            let name = this.name().unwrap_or("<unknown>");
+            _ = write!(log, "\x1b[36m{time}\x1b[m ");
+            _ = write!(log, "\x1b[35m{_file}:{_line}:{_column}\x1b[m ");
+            _ = writeln!(log, "in thread {name}");
             _ = log.write_fmt(_fmt);
             _ = writeln!(log);
         }
