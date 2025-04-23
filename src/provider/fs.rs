@@ -5,6 +5,7 @@ use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 
 use anyhow::Result;
+use chrono::{DateTime, Datelike, Local, Timelike};
 use lscolors::{LsColors, Style};
 use thiserror::Error;
 
@@ -261,23 +262,14 @@ impl Provider for Fs {
                     .modified()
                     .ok()
                     .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                    .and_then(|du| DateTime::from_timestamp(du.as_secs() as i64, du.subsec_nanos()))
+                    .map(|dt| dt.with_timezone(&Local))
                 {
-                    Some(duration) => {
-                        let s = duration.as_secs();
-                        r.push_str(&format!(
-                            "{:02}:{:02}:{:02} ",
-                            // TODO(+2): get tz properly, likely stealing from
-                            // https://github.com/chronotope/chrono/tree/main/src/offset/local/tz_info
-                            // or using the crate directly (or the crate time)
-                            (s / 60 / 60) % 24 + 2,
-                            (s / 60) % 60,
-                            s % 60,
-                        ));
-                    }
-                    None => r.push_str("??:??:?? "),
+                    Some(dt) => r.push_str(&dt.format("%b %e %H:%M ").to_string()),
+                    None => r.push_str("??? ?? ??:?? "),
                 }
             }
-            None => r.push_str("        ? ??:??:?? "),
+            None => r.push_str("        ? ??? ?? ??:?? "),
         }
 
         for n in path.head {
