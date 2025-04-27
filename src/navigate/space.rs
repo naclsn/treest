@@ -3,6 +3,8 @@ use std::ops::{Deref, Range};
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::thread::Builder;
 
+use anyhow::Result;
+
 use crate::lua::structs::{IndexPath, NodeInfo, Target};
 use crate::navigate::options::GlobalOptionsRef;
 use crate::navigate::view::{View, ViewSpaceSubset};
@@ -111,25 +113,76 @@ impl Space {
         let path = self.tree.unresolve(&event.path[..].into());
         use EventKind::*;
         match event.kind {
+            Copies(dest, frag) => todo!("process_event_copies({path:?}, {dest:?}, {frag:?})"),
             Create(frag) => self.process_event_create(&path[..], frag),
             Modify(dest, frag) => todo!("process_event_modify({path:?}, {dest:?}, {frag:?})"),
-            Copies(dest, frag) => todo!("process_event_copies({path:?}, {dest:?}, {frag:?})"),
-            Remove => self.process_event_remove(&path[..]),
             Reload => todo!(),
+            Remove => self.process_event_remove(&path[..]),
         }
     }
 
+    // {{{ process event stuff
+    /// does not call `provider.event_occured`
     pub fn process_event_create(&mut self, path: &[usize], frag: Fragment) {
         let child = Node::new(frag);
         crate::log!("event: create {path:?} {child:#?}");
         self.tree.add_child(&mut *self.provider, path, child);
     }
 
+    /// does not call `provider.event_occured`
     pub fn process_event_remove(&mut self, path: &[usize]) {
         crate::log!("event: remove {path:?}");
         let l = path.len() - 1;
         self.tree.remove_child(&path[..l], path[l]);
     }
+    // }}}
+
+    // {{{ request event stuff
+    pub fn request_event_create(&mut self, target: Target, text: String) -> Result<()> {
+        let index_path = self.target_to_path(target);
+        let (tree, p) = self.tree_and_mut_provider();
+
+        let path = tree.resolve(&index_path);
+        let node_path = &path[..].into();
+
+        let (path, frag) = p.split(node_path, text)?;
+        //if path.is_empty() {
+        //    return Err("path for target ended up empty");
+        //}
+
+        let kind = EventKind::Create(frag);
+        let event = Event { path, kind };
+        p.event_request(&event);
+        p.event_occured(&event);
+
+        // might unresolve to the same exact one (if node_path and path are
+        // same ie when split did just iter_all collect) tho also might not
+        let index_path = tree.unresolve(node_path);
+        // well n't this be dum
+        let frag = match event.kind {
+            EventKind::Create(frag) => frag,
+            _ => unreachable!(),
+        };
+        self.process_event_create(&index_path, frag);
+        Ok(())
+    }
+
+    pub fn request_event_remove(&mut self, target: Target) -> Result<()> {
+        let index_path = self.target_to_path(target);
+        let (tree, p) = self.tree_and_mut_provider();
+
+        let event = Event {
+            path: tree.resolve(&index_path),
+            kind: EventKind::Remove,
+        };
+        p.event_request(&event);
+        p.event_occured(&event);
+
+        self.process_event_remove(&index_path);
+        Ok(())
+    }
+    // }}}
+    // }}}
 
     /// Specific borrows needed in `treest:provider_request` because
     /// it cannot be analyzed by the borrow checker through the MutexGuard.

@@ -17,8 +17,8 @@ mod log {
     pub(crate) fn log(_file: &str, _line: u32, _column: u32, _fmt: std::fmt::Arguments) {
         #[cfg(feature = "log")]
         {
-            use std::{fs::File, io::Write, sync::OnceLock, thread};
             use chrono::Local;
+            use std::{fs::File, io::Write, sync::OnceLock, thread};
             static LOG: OnceLock<File> = OnceLock::new();
             let mut log = LOG.get_or_init(|| std::fs::File::create("/tmp/treest.log").unwrap());
             let time = Local::now();

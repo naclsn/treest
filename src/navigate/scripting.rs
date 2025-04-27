@@ -70,9 +70,7 @@ impl UserData for Navigate {
         methods.add_method_mut("_tick", |_, this, ()| this._tick());
 
         make_methods! { methods;
-            fn bidoof(target, text) mut;
-            fn bibarel(target) mut;
-
+            //fn provider_request(req, target, text) mut;
             fn cursor_get();
             fn cursor_set(target) mut;
             fn force_redraw() mut;
@@ -100,13 +98,14 @@ impl UserData for Navigate {
             fn option_set(name, value) mut;
             fn provider_join_components(components);
             fn provider_name();
-            //fn provider_request(req, target, text) mut;
             fn quit(text) mut;
             fn register_get(name);
             fn register_get_hist(name);
             fn register_list();
             fn register_prompt(ps, completion, then) mut;
             fn register_set(name, value) mut;
+            fn request_create(target, text) mut;
+            fn request_remove(target) mut;
             fn search_deep(q, flags) mut;
             fn search_level(q, flags);
             fn space_close(placement) mut;
@@ -199,54 +198,6 @@ impl Navigate {
                 Some(callback.bind_all(ans)?)
             }
         })
-    }
-
-    /// Exported in treest.
-    fn bidoof(&mut self, target: Target, text: String) -> Result<()> {
-        let mut space = self.space_mut();
-        let index_path = space.target_to_path(target);
-        crate::log!("bidoof: index_path = {index_path:#?}");
-        let (tree, p) = space.tree_and_mut_provider();
-
-        let path = tree.resolve(&index_path);
-        let node_path = &path[..].into();
-        crate::log!("bidoof: node_path = {node_path:#?}");
-
-        let (path, frag) = p.split(node_path, text).map_err(Error::external)?;
-        assert!(!path.is_empty());
-        let kind = EventKind::Create(frag);
-        let event = Event { path, kind };
-        crate::log!("bidoof: event = {event:#?}");
-        p.event_occured(&event);
-        // well n't this be dum
-        let frag = match event.kind {
-            EventKind::Create(frag) => frag,
-            _ => unreachable!(),
-        };
-
-        // might unresolve to the same exact one tho
-        // if node_path and path are same ie when split did just iter_all collect
-        let index_path = tree.unresolve(node_path);
-        space.process_event_create(&index_path, frag);
-        Ok(())
-    }
-
-    /// Exported in treest.
-    fn bibarel(&mut self, target: Target) -> Result<()> {
-        let mut space = self.space_mut();
-        let index_path = space.target_to_path(target);
-        crate::log!("bibarel: index_path = {index_path:#?}");
-        let (tree, p) = space.tree_and_mut_provider();
-
-        let event = Event {
-            path: tree.resolve(&index_path),
-            kind: EventKind::Remove,
-        };
-        crate::log!("bibarel: event = {event:#?}");
-        p.event_occured(&event);
-
-        space.process_event_remove(&index_path);
-        Ok(())
     }
 
     /// Exported in treest.
@@ -516,54 +467,6 @@ impl Navigate {
         Ok(self.space().provider_name().to_string())
     }
 
-    /* /// Exported in treest.
-    /// Execute a provider request at target (cursor if `nil`).
-    ///
-    /// It will be interpreted in a provider-specific way.
-    /// `text` is not relevant and not used with `'rm'` and `'vi'`.
-    /// The result is only (potentially) relevant with `'vi'` and `'ex'`.
-    fn provider_request(
-        &mut self,
-        req: RequestFlags,
-        target: Target,
-        text: Option<String>,
-    ) -> Result<Option<Vec<String>>> {
-        if !matches!(req.request, "rm" | "vi") && text.is_none() {
-            // matches mlua's `FromLua for String`
-            return Err(Error::FromLuaConversionError {
-                from: "nil",
-                to: "string".to_string(),
-                message: Some("expected string or number".to_string()),
-            });
-        }
-
-        let mut space = self.space_mut();
-        let index_path = space.target_to_path(target);
-        let (tree, p) = space.tree_and_mut_provider();
-
-        let path = tree.resolve(&index_path);
-        let path = &path[..].into();
-
-        let (r, ev) = match req.request {
-            "mk" => p.request_mk(path, text.unwrap()).map(|ev| (None, ev)),
-            "cp" => p.request_cp(path, text.unwrap()).map(|ev| (None, ev)),
-            "rm" => p.request_rm(path).map(|ev| (None, ev)),
-            "mv" => p.request_mv(path, text.unwrap()).map(|ev| (None, ev)),
-            "ch" => p.request_ch(path, text.unwrap()).map(|ev| (None, ev)),
-            "vi" => p.request_vi(path).map(|v| (Some(v), None)),
-            "ex" => p.request_ex(path, text.unwrap()).map(|p| (Some(p.0), p.1)),
-            _ => unreachable!(),
-        }
-        .map_err(Error::external)?;
-
-        if let Some(ev) = ev {
-            space.process_event(ev).map_err(Error::external)?;
-        }
-
-        Ok(r)
-    }
-    */
-
     /// Exported in treest.
     /// Quit the application.
     ///
@@ -620,7 +523,8 @@ impl Navigate {
     ) -> Result<()> {
         terminal::cursor(true); // reset again in Input::tick
         eprint!("{ps}");
-        let history = self.register_entries(&ps).to_vec();
+        let sps = &ps[..ps.bytes().position(|c| b'\x1b' == c).unwrap_or(ps.len())];
+        let history = self.register_entries(sps).to_vec();
         self.input.set_prompt(
             Prompt::new(
                 ps,
@@ -646,6 +550,26 @@ impl Navigate {
     fn register_set(&mut self, name: String, value: String) -> Result<()> {
         self.register_push(&name, value);
         Ok(())
+    }
+
+    /// Exported in treest.
+    /// Request the provider for a create event.
+    ///
+    /// `target` may be nil for cursor. `text` interpretation may be provider-dependent.
+    fn request_create(&mut self, target: Target, text: String) -> Result<()> {
+        self.space_mut()
+            .request_event_create(target, text)
+            .map_err(Error::external)
+    }
+
+    /// Exported in treest.
+    /// Request the provider for a remove event.
+    ///
+    /// `target` may be nil for cursor.
+    fn request_remove(&mut self, target: Target) -> Result<()> {
+        self.space_mut()
+            .request_event_remove(target)
+            .map_err(Error::external)
     }
 
     /// Exported in treest.

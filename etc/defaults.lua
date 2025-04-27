@@ -66,24 +66,18 @@ m.commands = {
     suspend = function() treest:suspend() end,
 
     quit = function()
-        --if not has spaces then treest:quit() end
-        treest:space_close()
-        -- TODO(wip)
-        --if last
-        --then
-        --    treest:quit()
-        --else
-        treest:force_redraw()
-        --end
+        if 'scratch' == treest:provider_name() and 1 == treest:space_count()
+        then
+            treest:quit()
+        else
+            treest:space_close()
+            treest:force_redraw()
+        end
     end,
 
     unload = function()
-        -- TODO(wip)
-        --if has spaces
-        --then
         treest:space_close()
         treest:force_redraw()
-        --end
     end,
 
     edit = function(arg)
@@ -178,30 +172,24 @@ m.commands = {
 }
 
 ---@param req RequestFlags
-local function request(req)
-    ---@param ans string
-    local function request_do(ans)
-        local res = treest:provider_request(req, nil, ans)
-        if res then treest:message(res) end
-    end
+---@param does fun(ans:string)
+local function request(req, does)
     return function(arg)
         if '' == arg
         then
             local path = treest:provider_join_components(treest:node_info().components)
-            local xps = req .. ' \x1b[37m' .. path .. '\x1b[m '
-            treest:register_prompt(xps, m.completions.files, request_do)
+            local xps = req .. ' \x1b[36m' .. path .. '\x1b[m '
+            treest:register_prompt(xps, m.completions.files, does)
         else
-            request_do(arg)
+            does(arg)
         end
     end
 end
-m.commands.mk = request('mk')
-m.commands.cp = request('cp')
-m.commands.rm = request('rm')
-m.commands.mv = request('mv')
-m.commands.ch = request('ch')
-m.commands.vi = request('vi')
-m.commands.ex = request('ex')
+m.commands.mk = request('mk', function(ans) treest:request_create(nil, ans) end)
+m.commands.cp = request('cp', function(ans) treest:request_copies(nil, ans) end)
+m.commands.rm = request('rm', function(ans) treest:request_remove(nil, ans) end)
+--m.commands.mv = request('mv', function(ans) treest:request_(nil, ans) end)
+--m.commands.ch = request('ch', function(ans) treest:request_change(nil, ans) end)
 
 local function alias(com, ...)
     for _, al in pairs { ... } do m.commands[al] = m.commands[com] end
