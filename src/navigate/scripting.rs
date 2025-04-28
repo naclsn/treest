@@ -12,7 +12,7 @@ use crate::navigate::input::InputTickResponse;
 use crate::navigate::options::GlobalOptions;
 use crate::navigate::{Navigate, ViewJumpBy};
 use crate::prompt::{self, Prompt};
-use crate::provider::{self, Event, EventKind};
+use crate::provider;
 use crate::terminal::{self, KeyTransError};
 use crate::tree::NodePath;
 

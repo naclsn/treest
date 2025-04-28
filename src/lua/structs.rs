@@ -35,10 +35,6 @@ crate::flags_lua_conversion! {
         pub name: "fs",
     }
 
-    pub struct RequestFlags {
-        pub request: "mk" | "cp" | "rm" | "mv" | "ch" | "vi" | "ex",
-    }
-
     pub struct SearchFlags {
         pub wrapping: "wrap" | "sat",
         pub direction: "next" | "prev",

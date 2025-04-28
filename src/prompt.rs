@@ -53,11 +53,11 @@ pub enum PromptState {
 /// * backslash and single quotes preserve literal meaning
 /// * single quotes cannot contain a single quote
 /// * backslash in double quotes escape the next character:
-///     `\t` -> tab (0x09)
-///     `\n` -> newline (0x10)
-///     `\r` -> carriage return (0x13)
-///     `\e` -> escape (0x1b)
-///     anything else is the character itself (so `\"` -> double quote ...)
+///   - `\t` -> tab (0x09)
+///   - `\n` -> newline (0x10)
+///   - `\r` -> carriage return (0x13)
+///   - `\e` -> escape (0x1b)
+///   - anything else is the character itself (so `\"` -> double quote ...)
 ///
 /// No environment variable interpolation is performed!
 ///
@@ -152,7 +152,7 @@ pub fn lua_tokens_split(line: &str, point: Option<usize>) -> PromptSplitInfo {
         head = line.len() - line[head..].trim_start().len();
         head < line.len()
     } {
-        let ahead = match line[head..].as_bytes() {
+        let ahead = match &line.as_bytes()[head..] {
             [b'a', b'n', b'd', rest @ ..]
             | [b'b', b'r', b'e', b'a', b'k', rest @ ..]
             | [b'd', b'o', rest @ ..]

@@ -171,25 +171,25 @@ m.commands = {
     end,
 }
 
----@param req RequestFlags
+---@param req string
 ---@param does fun(ans:string)
 local function request(req, does)
     return function(arg)
         if '' == arg
         then
             local path = treest:provider_join_components(treest:node_info().components)
-            local xps = req .. ' \x1b[36m' .. path .. '\x1b[m '
+            local xps = '#\x1b[m' .. req .. ' \x1b[36m' .. path .. '\x1b[m '
             treest:register_prompt(xps, m.completions.files, does)
         else
             does(arg)
         end
     end
 end
-m.commands.mk = request('mk', function(ans) treest:request_create(nil, ans) end)
-m.commands.cp = request('cp', function(ans) treest:request_copies(nil, ans) end)
-m.commands.rm = request('rm', function(ans) treest:request_remove(nil, ans) end)
---m.commands.mv = request('mv', function(ans) treest:request_(nil, ans) end)
---m.commands.ch = request('ch', function(ans) treest:request_change(nil, ans) end)
+m.commands.copies = request('copies', function(ans) treest:request_copies(nil, nil, ans) end)
+m.commands.create = request('create', function(ans) treest:request_create(nil, ans) end)
+m.commands.modify = request('modify', function(ans) treest:request_modify(nil, nil, ans) end)
+m.commands.reload = request('reload', function(ans) treest:request_reload(nil) end)
+m.commands.remove = request('remove', function(ans) treest:request_remove(nil) end)
 
 local function alias(com, ...)
     for _, al in pairs { ... } do m.commands[al] = m.commands[com] end
@@ -206,13 +206,18 @@ alias('set', 'se')
 alias('suspend', 'sus', 'stop', 'st')
 alias('unload', 'bd', 'bdel', 'bdelete', 'bun', 'bunload')
 alias('unmap', 'unm')
+-- XXX: reasonably, should these just be in my user config?
+alias('copies', 'cp')
+alias('create', 'mk')
+alias('modify', 'mv', 'ch')
+alias('remove', 'rm')
 
 local function complete(func, ...)
     for _, com in pairs { ... } do m.completions.for_command[com] = func end
 end
 complete(m.completions.files,
     'edit', 'ed', 'e', 'split', 'sp', 'vsplit', 'vs',
-    'mk', 'cp', 'rm', 'ch', 'vi', 'ex')
+    'copies', 'cp', 'create', 'mk', 'modify', 'mv', 'ch', 'reload', 'remove', 'rm')
 complete(m.completions.script,
     'echo', 'ec',
     'eval', 'ev', 'let', 'local', 'call', 'cal',

@@ -116,7 +116,7 @@ impl Space {
             Copies(dest, frag) => todo!("process_event_copies({path:?}, {dest:?}, {frag:?})"),
             Create(frag) => self.process_event_create(&path[..], frag),
             Modify(dest, frag) => todo!("process_event_modify({path:?}, {dest:?}, {frag:?})"),
-            Reload => todo!(),
+            Reload => todo!("process_event_reload({path:?})"),
             Remove => self.process_event_remove(&path[..]),
         }
     }

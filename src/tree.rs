@@ -203,7 +203,9 @@ impl Node {
         nodes.swap_remove(pk);
         // adjust indices: with swap_remove, the last child changes index
         // if it was kept (Provider::keep) then find and update it
-        sel.iter_mut().find(|k| nodes.len() == **k).map(|k| *k = pk);
+        if let Some(k) = sel.iter_mut().find(|k| nodes.len() == **k) {
+            *k = pk;
+        }
     }
 
     /// Load the child nodes for the target at path.

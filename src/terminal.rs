@@ -240,12 +240,12 @@ pub fn keytrans(text: &str) -> Result<Vec<u8>, KeyTransError> {
                 let (end, _) = iter
                     .find(|(_, chr)| '>' == *chr)
                     .ok_or(KeyTransError::UnfinishedForm(start))?;
-                r.extend(text[at..start].as_bytes());
+                r.extend(&text.as_bytes()[at..start]);
                 at = end + 1;
-                keytrans1(text[start + 1..end].as_bytes(), &mut r)?;
+                keytrans1(&text.as_bytes()[start + 1..end], &mut r)?;
             }
             None => {
-                r.extend(text[at..text.len()].as_bytes());
+                r.extend(&text.as_bytes()[at..text.len()]);
                 break;
             }
         }

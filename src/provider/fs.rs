@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 
 use anyhow::Result;
-use chrono::{DateTime, Datelike, Local, Timelike};
+use chrono::{DateTime, Local};
 use lscolors::{LsColors, Style};
 use thiserror::Error;
 
