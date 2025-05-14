@@ -32,7 +32,7 @@ crate::flags_lua_conversion! {
 
     pub struct ProviderFlags {
         // updated manually...
-        pub name: "fs",
+        pub name: "fs" | "json" | "scratch",
     }
 
     pub struct SearchFlags {

@@ -126,6 +126,7 @@ macro_rules! providers {
 
 providers! {
     fs::Fs,
+    json::Json,
     scratch::Scratch,
 }
 // lua::structs::ProviderFlags is updated manually...
