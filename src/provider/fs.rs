@@ -22,7 +22,7 @@ pub enum FsProviderError {
 
 #[derive(Debug, PartialEq)]
 enum FsNodeKind {
-    Directory,
+    Directory(usize),
     SymLink(Option<PathBuf>), // FIXME: broken
     NamedPipe,
     CharDevice,
@@ -54,7 +54,7 @@ impl From<(PathBuf, &Option<Metadata>)> for FsNodeKind {
         let Some(meta) = value.1 else { return Regular };
 
         if meta.is_dir() {
-            Directory
+            Directory(value.0.read_dir().map(|ls| ls.count()).unwrap_or(0))
         } else if meta.is_symlink() {
             SymLink(fs::read_link(value.0).ok())
         } else {
@@ -82,15 +82,21 @@ impl From<(PathBuf, &Option<Metadata>)> for FsNodeKind {
 #[cfg(windows)]
 impl From<(PathBuf, &Option<Metadata>)> for FsNodeKind {
     fn from(value: (PathBuf, &Option<Metadata>)) -> Self {
-        match value.0.extension() {
-            Some(name)
-                if [".exe", ".bat", ".cmd", ".com"]
-                    .iter()
-                    .any(|ext| *ext == name) =>
-            {
-                Executable
+        let Some(meta) = value.1 else { return Regular };
+
+        if meta.is_dir() {
+            Directory(value.0.read_dir().map(|ls| ls.count()).unwrap_or(0))
+        } else {
+            match value.0.extension() {
+                Some(name)
+                    if [".exe", ".bat", ".cmd", ".com"]
+                        .iter()
+                        .any(|ext| *ext == name) =>
+                {
+                    Executable
+                }
+                _ => Regular,
             }
-            _ => Regular,
         }
     }
 }
@@ -117,7 +123,7 @@ fn write_meta(node: &FsNode) -> String {
     format!(
         "{}{}{}{}",
         match node.kind {
-            Directory => 'd',
+            Directory(_) => 'd',
             SymLink(_) => 'l',
             NamedPipe => 'p',
             CharDevice => 'c',
@@ -167,7 +173,7 @@ impl Display for FsNode {
                 .unwrap_or_default()
                 .paint(&self.name),
             match self.kind {
-                Directory => "/",
+                Directory(_) => "/",
                 SymLink(_) => "@",
                 NamedPipe => "|",
                 CharDevice | BlockDevice | Regular => "",
@@ -175,6 +181,12 @@ impl Display for FsNode {
                 Executable => "*",
             }
         )?;
+
+        if f.alternate() {
+            if let Directory(count) = self.kind {
+                write!(f, " \x1b[37m({count})")?;
+            }
+        }
 
         if let SymLink(Some(path)) = &self.kind {
             write!(f, " -> {}", path.display())?;
@@ -187,7 +199,7 @@ impl Display for FsNode {
 impl Provider for Fs {
     fn provide_root(&self) -> Fragment {
         Box::new(FsNode {
-            kind: Directory,
+            kind: Directory(self.0.read_dir().map(|ls| ls.count()).unwrap_or(0)),
             name: self.0.to_string_lossy().trim_end_matches('/').to_string(),
             meta: self.0.metadata().ok(),
         })
@@ -231,7 +243,7 @@ impl Provider for Fs {
 
     fn display(&self, path: &NodePath) -> String {
         let node: &FsNode = path.tail.fragment();
-        node.to_string()
+        format!("{node:#}")
     }
 
     fn components(&self, path: &NodePath) -> Vec<String> {

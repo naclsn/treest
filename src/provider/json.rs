@@ -69,10 +69,10 @@ impl Provider for Json {
             Value::Number(n) => format!("{k}: \x1b[33m{n}"),
             Value::String(s) => {
                 let ss = &s[..s.char_indices().nth(42).map(|p| p.0).unwrap_or(s.len())];
-                format!("{k}: \x1b[37m(x{})\x1b[32m{:?}", s.len(), ss)
+                format!("{k}: \x1b[37m({})\x1b[32m{:?}", s.len(), ss)
             }
-            Value::Array(a) => format!("{k}: \x1b[37m[x{}]", a.len()),
-            Value::Object(o) => format!("{k}: \x1b[37m{{x{}}}", o.len()),
+            Value::Array(a) => format!("{k}: \x1b[37m[{}]", a.len()),
+            Value::Object(o) => format!("{k}: \x1b[37m{{{}}}", o.len()),
         }
     }
 
