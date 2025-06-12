@@ -70,7 +70,6 @@ impl UserData for Navigate {
         methods.add_method_mut("_tick", |_, this, ()| this._tick());
 
         make_methods! { methods;
-            //fn provider_request(req, target, text) mut;
             fn cursor_get();
             fn cursor_set(target) mut;
             fn force_redraw() mut;

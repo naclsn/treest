@@ -98,7 +98,7 @@ impl Space {
                     .is_none()
                 {
                     // assume unrecoverable situation, bail out
-                    crate::log!("something when wrong");
+                    crate::log!("something went wrong");
                     break;
                 }
             }
@@ -108,6 +108,7 @@ impl Space {
         space
     }
 
+    // {{{ process event stuff (private thingy)
     fn process_event(&mut self, event: Event) {
         self.provider.event_occured(&event);
         let path = self.tree.unresolve(&event.path[..].into());
@@ -121,23 +122,24 @@ impl Space {
         }
     }
 
-    // {{{ process event stuff
     /// does not call `provider.event_occured`
-    pub fn process_event_create(&mut self, path: &[usize], frag: Fragment) {
+    fn process_event_create(&mut self, path: &[usize], frag: Fragment) {
         let child = Node::new(frag);
         crate::log!("event: create {path:?} {child:#?}");
         self.tree.add_child(&mut *self.provider, path, child);
     }
 
     /// does not call `provider.event_occured`
-    pub fn process_event_remove(&mut self, path: &[usize]) {
+    fn process_event_remove(&mut self, path: &[usize]) {
         crate::log!("event: remove {path:?}");
         let l = path.len() - 1;
         self.tree.remove_child(&path[..l], path[l]);
     }
     // }}}
 
-    // {{{ request event stuff
+    // {{{ request event stuff (public interface)
+    /// `request_..` is the public interface to `process_..`;
+    /// it calls the later as well as `provider.event_request`/`.._occured`
     pub fn request_event_create(&mut self, target: Target, text: String) -> Result<()> {
         let index_path = self.target_to_path(target);
         let (tree, p) = self.tree_and_mut_provider();
@@ -167,6 +169,8 @@ impl Space {
         Ok(())
     }
 
+    /// `request_..` is the public interface to `process_..`;
+    /// it calls the later as well as `provider.event_request`/`.._occured`
     pub fn request_event_remove(&mut self, target: Target) -> Result<()> {
         let index_path = self.target_to_path(target);
         let (tree, p) = self.tree_and_mut_provider();

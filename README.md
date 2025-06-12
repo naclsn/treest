@@ -22,7 +22,6 @@ $ cargo r -- --help # (same without installing)
 
 * doc/help situation (`.config/treest.lua`, `require('defaults')` and `treest --lua-meta`)
 * thing too long that cause terminal line wrap (render and prompt)
-* subtrees (actually ll have vertical splits on other trees)
 
 #### settings, config, ..
 

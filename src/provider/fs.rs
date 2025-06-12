@@ -23,7 +23,7 @@ pub enum FsProviderError {
 #[derive(Debug, PartialEq)]
 enum FsNodeKind {
     Directory(usize),
-    SymLink(Option<PathBuf>), // FIXME: broken
+    SymLink(String, Box<FsNodeKind>),
     NamedPipe,
     CharDevice,
     BlockDevice,
@@ -41,12 +41,6 @@ pub struct FsNode {
     meta: Option<Metadata>,
 }
 
-impl PartialEq for FsNode {
-    fn eq(&self, other: &Self) -> bool {
-        self.name == other.name
-    }
-}
-
 // platform-dep {{{
 #[cfg(unix)]
 impl From<(PathBuf, &Option<Metadata>)> for FsNodeKind {
@@ -56,7 +50,16 @@ impl From<(PathBuf, &Option<Metadata>)> for FsNodeKind {
         if meta.is_dir() {
             Directory(value.0.read_dir().map(|ls| ls.count()).unwrap_or(0))
         } else if meta.is_symlink() {
-            SymLink(fs::read_link(value.0).ok())
+            let target = fs::read_link(&value.0)
+                .map(|t| t.to_string_lossy().to_string())
+                .unwrap_or("?".to_string());
+
+            let full_path = value.0.parent().unwrap().join(&target);
+            let meta = full_path.metadata().ok();
+
+            // TODO: protect from infinite recursion
+            //   and while at it, don't use this `From<(,)>` weird idea
+            SymLink(target, Box::new((full_path, &meta).into()))
         } else {
             use std::os::unix::fs::FileTypeExt;
             use std::os::unix::fs::PermissionsExt;
@@ -124,7 +127,7 @@ fn write_meta(node: &FsNode) -> String {
         "{}{}{}{}",
         match node.kind {
             Directory(_) => 'd',
-            SymLink(_) => 'l',
+            SymLink(_, _) => 'l',
             NamedPipe => 'p',
             CharDevice => 'c',
             BlockDevice => 'b',
@@ -149,7 +152,7 @@ fn write_meta(node: &FsNode) -> String {
         "{}{}{}{}",
         match node.kind {
             Directory => 'd',
-            SymLink(_) => 'l',
+            SymLink(_, _) => 'l',
             _ => '-',
         },
         write_perm(0b101 | if ro { 0b000 } else { 0b010 }), // owner
@@ -161,38 +164,50 @@ fn write_meta(node: &FsNode) -> String {
 
 static LS_COLORS: OnceLock<LsColors> = OnceLock::new();
 
-impl Display for FsNode {
-    fn fmt(&self, f: &mut Formatter) -> FmtResult {
-        write!(
-            f,
-            "{}{}",
-            LS_COLORS
-                .get_or_init(|| LsColors::from_env().unwrap_or_default())
-                .style_for_path_with_metadata(&self.name, self.meta.as_ref())
-                .map(Style::to_ansi_term_style)
-                .unwrap_or_default()
-                .paint(&self.name),
-            match self.kind {
-                Directory(_) => "/",
-                SymLink(_) => "@",
-                NamedPipe => "|",
-                CharDevice | BlockDevice | Regular => "",
-                Socket => "=",
-                Executable => "*",
+impl FsNode {
+    fn display(&self, full_path: &Path, show_child_count: bool) -> String {
+        let ls_colors = LS_COLORS.get_or_init(|| LsColors::from_env().unwrap_or_default());
+
+        let mut r = ls_colors
+            .style_for_path_with_metadata(full_path, self.meta.as_ref())
+            .map(Style::to_ansi_term_style)
+            .unwrap_or_default()
+            .paint(&self.name)
+            .to_string();
+
+        match &self.kind {
+            Directory(count) => {
+                r.push('/');
+                if show_child_count {
+                    r += &format!(" \x1b[37m({count})");
+                }
             }
-        )?;
 
-        if f.alternate() {
-            if let Directory(count) = self.kind {
-                write!(f, " \x1b[37m({count})")?;
+            SymLink(target, kind) => {
+                r += "@ -> ";
+                r += &ls_colors
+                    .style_for_path(full_path.parent().unwrap().join(target))
+                    .map(Style::to_ansi_term_style)
+                    .unwrap_or_default()
+                    .paint(target)
+                    .to_string();
+                match &**kind {
+                    Directory(_) => r.push('/'),
+                    SymLink(_, _) => r.push('@'),
+                    NamedPipe => r.push('|'),
+                    CharDevice | BlockDevice | Regular => (),
+                    Socket => r.push('='),
+                    Executable => r.push('*'),
+                }
             }
-        }
 
-        if let SymLink(Some(path)) = &self.kind {
-            write!(f, " -> {}", path.display())?;
-        }
+            NamedPipe => r.push('|'),
+            CharDevice | BlockDevice | Regular => (),
+            Socket => r.push('='),
+            Executable => r.push('*'),
+        };
 
-        Ok(())
+        r
     }
 }
 
@@ -243,7 +258,13 @@ impl Provider for Fs {
 
     fn display(&self, path: &NodePath) -> String {
         let node: &FsNode = path.tail.fragment();
-        format!("{node:#}")
+        let mut full_path: PathBuf = path
+            .head
+            .iter()
+            .map(|it| &it.fragment::<FsNode>().name)
+            .collect();
+        full_path.push(&node.name);
+        node.display(&full_path, true)
     }
 
     fn components(&self, path: &NodePath) -> Vec<String> {
@@ -284,10 +305,16 @@ impl Provider for Fs {
             None => r.push_str("        ? ??? ?? ??:?? "),
         }
 
+        let mut full_path = PathBuf::new();
         for n in path.head {
-            r.push_str(&n.fragment::<FsNode>().to_string());
+            let n: &FsNode = n.fragment();
+            full_path.push(&n.name);
+            r.push_str(&n.display(&full_path, false));
         }
-        r.push_str(&path.tail.fragment::<FsNode>().to_string());
+
+        let n: &FsNode = path.tail.fragment();
+        full_path.push(&n.name);
+        r.push_str(&n.display(&full_path, false));
 
         r
     }
