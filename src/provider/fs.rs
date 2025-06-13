@@ -177,7 +177,7 @@ impl FsNode {
 
         match &self.kind {
             Directory(count) => {
-                r.push('/');
+                r.push(std::path::MAIN_SEPARATOR);
                 if show_child_count {
                     r += &format!(" \x1b[37m({count})");
                 }
@@ -192,7 +192,7 @@ impl FsNode {
                     .paint(target)
                     .to_string();
                 match &**kind {
-                    Directory(_) => r.push('/'),
+                    Directory(_) => r.push(std::path::MAIN_SEPARATOR),
                     SymLink(_, _) => r.push('@'),
                     NamedPipe => r.push('|'),
                     CharDevice | BlockDevice | Regular => (),
@@ -215,7 +215,7 @@ impl Provider for Fs {
     fn provide_root(&self) -> Fragment {
         Box::new(FsNode {
             kind: Directory(self.0.read_dir().map(|ls| ls.count()).unwrap_or(0)),
-            name: self.0.to_string_lossy().trim_end_matches('/').to_string(),
+            name: self.0.to_string_lossy().trim_end_matches(std::path::MAIN_SEPARATOR).to_string(),
             meta: self.0.metadata().ok(),
         })
     }
@@ -276,7 +276,7 @@ impl Provider for Fs {
     }
 
     fn join(&self, components: &[String]) -> String {
-        components.join("/")
+        components.join(std::path::MAIN_SEPARATOR_STR)
     }
 
     fn split<'a>(&self, path: &'a NodePath<'a>, text: String) -> Result<(Vec<&'a Node>, Fragment)> {
