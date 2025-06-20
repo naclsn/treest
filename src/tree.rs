@@ -118,6 +118,11 @@ impl Node {
             .map(|(nodes, sel)| &mut nodes[sel[nth]])
     }
 
+    //pub fn iter_recursive(&self) -> Option<impl Iterator<Item = &Node>> {
+    //    self.children()
+    //        .map(|chs| chs.filter_map(Node::iter_recursive).flatten())
+    //}
+
     /// The returned list will be 1 longer than `path` (think poles and power lines).
     pub fn resolve(&self, index_path: &[usize]) -> Vec<&Node> {
         index_path.iter().fold(vec![self], |mut acc, cur| {

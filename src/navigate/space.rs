@@ -248,9 +248,10 @@ impl Space {
     //    f(trust, path)
     //}
 
-    pub fn target_to_path(&self, at: Target) -> IndexPath {
+    pub fn target_to_path(&self, at: Target) -> IndexPath { // TODO: Option
         match at {
             Target::Cursor => self.cursor.1[..self.cursor.0].into(),
+            Target::Marked(n) => self.iter_marked().nth(n).unwrap(), // XXX: no (ret should be option and below should check and None if not ok)
             Target::Path(path) => path, // XXX: untrusted path escalate to index path...
             Target::TrustedPath(path) => path,
         }
@@ -259,6 +260,10 @@ impl Space {
     pub fn resolve_node(&self, at: &Target) -> Option<&Node> {
         match at {
             Target::Cursor => Some(self.tree.resolve_node(&self.cursor.1[..self.cursor.0])),
+            Target::Marked(n) => self
+                .iter_marked()
+                .nth(*n)
+                .map(|path| self.tree.resolve_node(&path)),
             Target::Path(path) => self.tree.try_resolve_node(path),
             Target::TrustedPath(path) => Some(self.tree.resolve_node(path)),
         }
@@ -267,6 +272,10 @@ impl Space {
     pub fn resolve_node_mut(&mut self, at: &Target) -> Option<&mut Node> {
         match at {
             Target::Cursor => Some(self.tree.resolve_node_mut(&self.cursor.1[..self.cursor.0])),
+            Target::Marked(n) => {
+                let mby = self.iter_marked().nth(*n);
+                mby.map(|path| self.tree.resolve_node_mut(&path))
+            }
             Target::Path(path) => self.tree.try_resolve_node_mut(path),
             Target::TrustedPath(path) => Some(self.tree.resolve_node_mut(path)),
         }
@@ -293,14 +302,19 @@ impl Space {
             node.set_folded(is);
             return Some(node.child_count());
         }
+        // note: at this point the path can be trusted because resolve_node_mut above
+        let path = match &at {
+            Target::Cursor => &self.cursor.1[..self.cursor.0],
+            Target::Marked(n) => &self
+                .iter_marked()
+                .nth(*n)
+                .expect("resolve_node_mut should have returned None")[..],
+            Target::Path(path) => &path[..],
+            Target::TrustedPath(path) => &path[..],
+        };
         Some(self.tree.load(
             &mut *self.provider,
-            // note: at this point the path can be trusted because resolve_node_mut above
-            match &at {
-                Target::Cursor => &self.cursor.1[..self.cursor.0],
-                Target::Path(path) => &path[..],
-                Target::TrustedPath(path) => &path[..],
-            },
+            path,
             // note: already know it isn't loaded, skip the check
             true,
             is,
@@ -318,6 +332,31 @@ impl Space {
     }
     pub fn get_marked(&self, at: Target) -> Option<bool> {
         self.resolve_node(&at).map(Node::is_marked)
+    }
+
+    /// depth-first, parent after children
+    pub fn iter_marked(&self) -> impl Iterator<Item = IndexPath> + use<'_> {
+        let mut path = Vec::new();
+        let mut stack: Vec<(&Node, _)> = Vec::new();
+        stack.push((&self.tree, self.tree.children().map(|chs| chs.enumerate())));
+
+        std::iter::from_fn(move || loop {
+            if let Some((cur, chs)) = stack.last_mut() {
+                if let Some((k, ch)) = chs.as_mut().and_then(|chs| chs.next()) {
+                    path.push(k);
+                    stack.push((ch, ch.children().map(|chs| chs.enumerate())));
+                } else {
+                    let marked = cur.is_marked().then(|| path.clone().into());
+                    path.pop();
+                    stack.pop();
+                    if marked.is_some() {
+                        return marked;
+                    }
+                }
+            } else {
+                return None;
+            }
+        })
     }
 
     pub fn cursor_enter(&mut self) {

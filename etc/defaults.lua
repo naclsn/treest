@@ -263,7 +263,7 @@ m.keys = {
 
     ['!'] = function()
         treest:register_prompt('!', m.completions.files, function(ans)
-            local p = assert(io.popen(ans .. ' 2>&1', 'r'))
+            local p = assert(io.popen(treest:command_expand(ans) .. ' 2>&1', 'r'))
             treest:message(assert(p:read('*a')))
             p:close()
         end)

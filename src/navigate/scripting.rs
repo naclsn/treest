@@ -70,6 +70,7 @@ impl UserData for Navigate {
         methods.add_method_mut("_tick", |_, this, ()| this._tick());
 
         make_methods! { methods;
+            fn command_expand(text);
             fn cursor_get();
             fn cursor_set(target) mut;
             fn force_redraw() mut;
@@ -216,6 +217,62 @@ impl Navigate {
             self.space_mut().cursor_to(path.len(), path);
         }
         Ok(())
+    }
+
+    /// Exported in treest.
+    /// Expand wildcards and special symbols in string.
+    ///
+    /// This will expand all occurences (with optional modifiers)
+    /// of unescaped symbols in:
+    ///     %   node name at cursor
+    ///     #   first marked node name (or empty)
+    ///     #n  nth marked node name
+    ///     #*  all marked nodes name
+    ///
+    /// Modifiers:
+    ///     :p  expand to full path instead of only the name
+    ///     :h  head (last path component removed)
+    ///     :t  tail (last path component only)
+    fn command_expand(&self, text: BString) -> Result<BString> {
+        let mut r = Vec::new();
+        let space = self.space();
+
+        let mut iter = text.iter().peekable();
+        while let Some(&b) = iter.next() {
+            match b {
+                b'\\' => r.push(iter.next().copied().unwrap_or(b'\\')),
+
+                b'%' => {
+                    let path = space.target_to_path(Target::Cursor);
+                    r.extend(format!("{path:?}").as_bytes());
+                }
+
+                b'#' => match iter.next_if(|b| b.is_ascii_digit() || b'*' == **b) {
+                    None => {
+                        let path = space.target_to_path(Target::Marked(0));
+                        r.extend(format!("{path:?}").as_bytes());
+                    }
+                    Some(n @ b'1'..=b'9') => {
+                        let mut n = (*n - b'0') as usize;
+                        while let Some(b) = iter.next_if(|b| b.is_ascii_digit()) {
+                            n = 10 * n + (*b - b'0') as usize;
+                        }
+                        let path = space.target_to_path(Target::Marked(n - 1));
+                        r.extend(format!("{path:?}").as_bytes());
+                    }
+                    Some(b'*') => {
+                        for path in space.iter_marked() {
+                            r.extend(format!("{path:?}").as_bytes());
+                        }
+                    }
+                    _ => unreachable!(),
+                },
+
+                _ => r.push(b),
+            }
+        }
+
+        Ok(BString::new(r))
     }
 
     /// Exported in treest.

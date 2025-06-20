@@ -108,8 +108,8 @@ mod _target {
     #[derive(Debug, Clone)]
     pub enum Target {
         Cursor,
+        Marked(usize),
         Path(IndexPath),
-        #[allow(dead_code)] // m keepin it for now
         TrustedPath(IndexPath),
     }
 
@@ -117,7 +117,32 @@ mod _target {
         fn from_lua(value: Value, lua: &Lua) -> Result<Self> {
             match value {
                 Value::Nil => Ok(Target::Cursor),
-                _ => Ok(Target::Path(IndexPath::from_lua(value, lua)?)),
+                Value::String(s) => {
+                    let bytes = s.as_bytes();
+                    match bytes[0] {
+                        b'%' if 1 == bytes.len() => Ok(Target::Cursor),
+                        b'#' if 1 == bytes.len() => Ok(Target::Marked(0)),
+                        b'#' if 1 < bytes.len() && bytes[1..].iter().all(u8::is_ascii_digit) => {
+                            Ok(Target::Marked(
+                                bytes[1..]
+                                    .iter()
+                                    .fold(0, |cur, acc| 10 * cur + (*acc - b'0') as usize)
+                                    - 1,
+                            ))
+                        }
+                        _ => Err(Error::FromLuaConversionError {
+                            from: "string",
+                            to: "Target".to_string(),
+                            message: Some("expected string '%' or '#' or '#n'".to_string()),
+                        }),
+                    }
+                }
+                Value::Table(_) => Ok(Target::Path(IndexPath::from_lua(value, lua)?)),
+                _ => Err(Error::FromLuaConversionError {
+                    from: value.type_name(),
+                    to: "Target".to_string(),
+                    message: Some("expected string or table".to_string()),
+                }),
             }
         }
     }
