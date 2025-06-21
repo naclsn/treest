@@ -233,46 +233,65 @@ impl Navigate {
     ///     :p  expand to full path instead of only the name
     ///     :h  head (last path component removed)
     ///     :t  tail (last path component only)
-    fn command_expand(&self, text: BString) -> Result<BString> {
-        let mut r = Vec::new();
+    fn command_expand(&self, text: String) -> Result<String> {
+        let mut r = String::new();
         let space = self.space();
 
-        let mut iter = text.iter().peekable();
-        while let Some(&b) = iter.next() {
-            match b {
-                b'\\' => r.push(iter.next().copied().unwrap_or(b'\\')),
+        let mut iter = text.chars().peekable();
+        while let Some(b) = iter.next() {
+            let expand = match b {
+                '%' => vec![space.target_to_path(Target::Cursor)],
 
-                b'%' => {
-                    let path = space.target_to_path(Target::Cursor);
-                    r.extend(format!("{path:?}").as_bytes());
-                }
-
-                b'#' => match iter.next_if(|b| b.is_ascii_digit() || b'*' == **b) {
-                    None => {
-                        let path = space.target_to_path(Target::Marked(0));
-                        r.extend(format!("{path:?}").as_bytes());
-                    }
-                    Some(n @ b'1'..=b'9') => {
-                        let mut n = (*n - b'0') as usize;
+                '#' => match iter.next_if(|b| b.is_ascii_digit() || '*' == *b) {
+                    None => vec![space.target_to_path(Target::Marked(0))],
+                    Some(n @ '1'..='9') => {
+                        let mut n = n as usize - 48;
                         while let Some(b) = iter.next_if(|b| b.is_ascii_digit()) {
-                            n = 10 * n + (*b - b'0') as usize;
+                            n = 10 * n + b as usize - 48;
                         }
-                        let path = space.target_to_path(Target::Marked(n - 1));
-                        r.extend(format!("{path:?}").as_bytes());
+                        vec![space.target_to_path(Target::Marked(n - 1))]
                     }
-                    Some(b'*') => {
-                        for path in space.iter_marked() {
-                            r.extend(format!("{path:?}").as_bytes());
-                        }
-                    }
+                    Some('*') => space.iter_marked().collect(),
                     _ => unreachable!(),
                 },
 
-                _ => r.push(b),
+                '\\' => {
+                    r.push(iter.next().unwrap_or('\\'));
+                    Vec::new()
+                }
+                _ => {
+                    r.push(b);
+                    Vec::new()
+                }
+            };
+
+            if !expand.is_empty() {
+                let compss: Vec<_> = expand
+                    .into_iter()
+                    .map(|path| {
+                        let path = space.tree.resolve(&path);
+                        space.provider.components(&path[..].into())
+                    })
+                    .collect();
+
+                while iter.next_if_eq(&':').is_some() {
+                    match iter.next() {
+                        Some('p') => todo!(),
+                        Some('h') => todo!(),
+                        Some('t') => todo!(),
+                        _ => (),
+                    }
+                }
+
+                r.push_str(&space.provider.join(&compss[0]));
+                for comps in &compss[1..] {
+                    r.push(' ');
+                    r.push_str(&space.provider.join(&comps));
+                }
             }
         }
 
-        Ok(BString::new(r))
+        Ok(r)
     }
 
     /// Exported in treest.

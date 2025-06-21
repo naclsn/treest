@@ -46,7 +46,7 @@ pub trait Provider: Send {
     ///   * Vec is just `path.iter_all().collect()`
     ///   * Fragment is built from whole `text`
     ///
-    /// however some provided will need to interpret `text` as containing a path (such as `..`
+    /// however some providers will need to interpret `text` as containing a path (such as `..`
     /// components and so one) in which case this should also return the corrected path
     fn split<'a>(&self, path: &'a NodePath<'a>, text: String) -> Result<(Vec<&'a Node>, Fragment)>;
 
