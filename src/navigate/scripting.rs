@@ -230,9 +230,8 @@ impl Navigate {
     ///     #*  all marked nodes name
     ///
     /// Modifiers:
-    ///     :p  expand to full path instead of only the name
-    ///     :h  head (last path component removed)
-    ///     :t  tail (last path component only)
+    ///     :h  expand to only head (last path component removed)
+    ///     :t  expand to only tail (last path component only)
     fn command_expand(&self, text: String) -> Result<String> {
         let mut r = String::new();
         let space = self.space();
@@ -240,53 +239,68 @@ impl Navigate {
         let mut iter = text.chars().peekable();
         while let Some(b) = iter.next() {
             let expand = match b {
-                '%' => vec![space.target_to_path(Target::Cursor)],
+                '%' => space.target_to_path(Target::Cursor).map(|path| vec![path]),
 
                 '#' => match iter.next_if(|b| b.is_ascii_digit() || '*' == *b) {
-                    None => vec![space.target_to_path(Target::Marked(0))],
+                    None => space
+                        .target_to_path(Target::Marked(0))
+                        .map(|path| vec![path]),
                     Some(n @ '1'..='9') => {
                         let mut n = n as usize - 48;
                         while let Some(b) = iter.next_if(|b| b.is_ascii_digit()) {
                             n = 10 * n + b as usize - 48;
                         }
-                        vec![space.target_to_path(Target::Marked(n - 1))]
+                        space
+                            .target_to_path(Target::Marked(n - 1))
+                            .map(|path| vec![path])
                     }
-                    Some('*') => space.iter_marked().collect(),
+                    Some('*') => Some(space.iter_marked().collect()),
                     _ => unreachable!(),
                 },
 
                 '\\' => {
                     r.push(iter.next().unwrap_or('\\'));
-                    Vec::new()
+                    None
                 }
                 _ => {
                     r.push(b);
-                    Vec::new()
+                    None
                 }
             };
 
-            if !expand.is_empty() {
-                let compss: Vec<_> = expand
-                    .into_iter()
-                    .map(|path| {
-                        let path = space.tree.resolve(&path);
-                        space.provider.components(&path[..].into())
-                    })
-                    .collect();
+            if let Some(expand) = expand {
+                if !expand.is_empty() {
+                    let mut compss: Vec<_> = expand
+                        .into_iter()
+                        .map(|path| {
+                            let path = space.tree.resolve(&path);
+                            space.provider.components(&path[..].into())
+                        })
+                        .collect();
 
-                while iter.next_if_eq(&':').is_some() {
-                    match iter.next() {
-                        Some('p') => todo!(),
-                        Some('h') => todo!(),
-                        Some('t') => todo!(),
-                        _ => (),
+                    while iter.next_if_eq(&':').is_some() {
+                        match iter.next() {
+                            Some('h') => {
+                                _ = compss
+                                    .iter_mut()
+                                    .map(|comps| (1 < comps.len()).then(|| comps.pop()))
+                                    .last()
+                            }
+                            Some('t') => {
+                                _ = compss
+                                    .iter_mut()
+                                    .map(|comps| comps.splice(..comps.len() - 1, None))
+                                    .last()
+                            }
+                            _ => (),
+                        }
                     }
-                }
 
-                r.push_str(&space.provider.join(&compss[0]));
-                for comps in &compss[1..] {
-                    r.push(' ');
-                    r.push_str(&space.provider.join(&comps));
+                    r.push_str(&space.provider.join(&compss[0]));
+                    for comps in &compss[1..] {
+                        r.push(' ');
+                        r.push_str(&space.provider.join(comps));
+                    }
                 }
             }
         }

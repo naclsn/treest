@@ -4,6 +4,7 @@ use std::sync::{Arc, Mutex, MutexGuard};
 use std::thread::Builder;
 
 use anyhow::Result;
+use thiserror::Error;
 
 use crate::lua::structs::{IndexPath, NodeInfo, Target};
 use crate::navigate::options::GlobalOptionsRef;
@@ -43,6 +44,12 @@ impl Drop for Space {
     fn drop(&mut self) {
         // TODO: stop poller thread
     }
+}
+
+#[derive(Error, Debug)]
+pub enum SpaceNavError {
+    #[error("erroneous target")]
+    BrokenTarget,
 }
 
 impl Space {
@@ -141,7 +148,9 @@ impl Space {
     /// `request_..` is the public interface to `process_..`;
     /// it calls the later as well as `provider.event_request`/`.._occured`
     pub fn request_event_create(&mut self, target: Target, text: String) -> Result<()> {
-        let index_path = self.target_to_path(target);
+        let index_path = self
+            .target_to_path(target)
+            .ok_or(SpaceNavError::BrokenTarget)?;
         let (tree, p) = self.tree_and_mut_provider();
 
         let path = tree.resolve(&index_path);
@@ -172,7 +181,9 @@ impl Space {
     /// `request_..` is the public interface to `process_..`;
     /// it calls the later as well as `provider.event_request`/`.._occured`
     pub fn request_event_remove(&mut self, target: Target) -> Result<()> {
-        let index_path = self.target_to_path(target);
+        let index_path = self
+            .target_to_path(target)
+            .ok_or(SpaceNavError::BrokenTarget)?;
         let (tree, p) = self.tree_and_mut_provider();
 
         let event = Event {
@@ -248,12 +259,12 @@ impl Space {
     //    f(trust, path)
     //}
 
-    pub fn target_to_path(&self, at: Target) -> IndexPath { // TODO: Option
+    pub fn target_to_path(&self, at: Target) -> Option<IndexPath> {
         match at {
-            Target::Cursor => self.cursor.1[..self.cursor.0].into(),
-            Target::Marked(n) => self.iter_marked().nth(n).unwrap(), // XXX: no (ret should be option and below should check and None if not ok)
-            Target::Path(path) => path, // XXX: untrusted path escalate to index path...
-            Target::TrustedPath(path) => path,
+            Target::Cursor => Some(self.cursor.1[..self.cursor.0].into()),
+            Target::Marked(n) => self.iter_marked().nth(n),
+            Target::Path(path) => self.tree.try_resolve_node(&path).map(|_| path),
+            Target::TrustedPath(path) => Some(path),
         }
     }
 
@@ -283,7 +294,9 @@ impl Space {
 
     pub fn retrieve_node_info(&self, at: Target) -> Option<NodeInfo> {
         self.resolve_node(&at).map(|node| {
-            let path = self.target_to_path(at);
+            let path = self
+                .target_to_path(at)
+                .expect("resolve_node_mut should have returned None");
             let node_path = self.tree.resolve(&path);
             NodeInfo {
                 name: self.provider.display(&node_path[..].into()),
