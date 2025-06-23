@@ -451,7 +451,7 @@ impl Navigate {
             write!(f, "\x1b[{}H\x1b[K", term_row - 1)?;
             // don't render that if there is a completion session
             if self.input.get_prompt().is_none_or(|p| !p.has_compl()) {
-                // show active space breadcrump
+                // show active space breadcrumbs
                 let space = self.space();
                 let path = space.tree.resolve(space.cursor());
                 write!(f, "{}\r\n", space.provider.breadcrumbs(&path[..].into()))?;

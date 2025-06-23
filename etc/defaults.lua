@@ -66,7 +66,8 @@ m.commands = {
     suspend = function() treest:suspend() end,
 
     quit = function()
-        if 'scratch' == treest:provider_name() and 1 == treest:space_count()
+        if --'scratch' == treest:provider_name() and
+            1 == treest:space_count()
         then
             treest:quit()
         else

@@ -281,16 +281,14 @@ impl Navigate {
                     while iter.next_if_eq(&':').is_some() {
                         match iter.next() {
                             Some('h') => {
-                                _ = compss
-                                    .iter_mut()
-                                    .map(|comps| (1 < comps.len()).then(|| comps.pop()))
-                                    .last()
+                                for comps in &mut compss {
+                                    (1 < comps.len()).then(|| comps.pop());
+                                }
                             }
                             Some('t') => {
-                                _ = compss
-                                    .iter_mut()
-                                    .map(|comps| comps.splice(..comps.len() - 1, None))
-                                    .last()
+                                for comps in &mut compss {
+                                    comps.splice(..comps.len() - 1, None);
+                                }
                             }
                             _ => (),
                         }

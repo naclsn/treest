@@ -17,7 +17,7 @@ pub struct Space {
     pub provider: Box<dyn Provider>,
     provider_name: String,
     pub view: View,
-    pub cursor: (usize, IndexPath),
+    cursor: (usize, IndexPath),
     pub options: GlobalOptionsRef,
 }
 
@@ -50,6 +50,8 @@ impl Drop for Space {
 pub enum SpaceNavError {
     #[error("erroneous target")]
     BrokenTarget,
+    #[error("attempt at removing root")]
+    CannotRemoveRoot,
 }
 
 impl Space {
@@ -184,6 +186,9 @@ impl Space {
         let index_path = self
             .target_to_path(target)
             .ok_or(SpaceNavError::BrokenTarget)?;
+        if index_path.is_empty() {
+            return Err(SpaceNavError::CannotRemoveRoot)?;
+        }
         let (tree, p) = self.tree_and_mut_provider();
 
         let event = Event {
@@ -378,6 +383,9 @@ impl Space {
         };
         if 0 == child_count {
             return;
+        }
+        if child_count <= self.cursor.1.len() {
+            self.cursor_truncate();
         }
         if self.cursor.1.len() == self.cursor.0 {
             self.cursor.1.push(0);
