@@ -143,6 +143,10 @@ impl Space {
         crate::log!("event: remove {path:?}");
         let l = path.len() - 1;
         self.tree.remove_child(&path[..l], path[l]);
+        if path.len() <= self.cursor.1.len() && self.cursor.1[..path.len()] == *path {
+            self.cursor.0 = l;
+            self.cursor_truncate();
+        }
     }
     // }}}
 

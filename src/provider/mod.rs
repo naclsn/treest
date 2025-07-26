@@ -66,7 +66,16 @@ pub trait Provider: Send {
     /// `event_occured` will automatically also be called right after with the same event
     fn event_request(&mut self, event: &Event) {
         let name = std::any::type_name::<Self>();
-        crate::log!("{name}: request {event:?}");
+        crate::log!(
+            "{name}: request {}",
+            match &event.kind {
+                EventKind::Copies(_, _) => "Copies",
+                EventKind::Create(_) => "Create",
+                EventKind::Modify(_, _) => "Modify",
+                EventKind::Reload => "Reload",
+                EventKind::Remove => "Remove",
+            },
+        );
     }
 
     /// is notified of an event its event poller emitted

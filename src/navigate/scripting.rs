@@ -227,7 +227,7 @@ impl Navigate {
     ///     %   node name at cursor
     ///     #   first marked node name (or empty)
     ///     #n  nth marked node name
-    ///     #*  all marked nodes name
+    ///     ##  all marked nodes name
     ///
     /// Modifiers:
     ///     :h  expand to only head (last path component removed)
@@ -241,7 +241,7 @@ impl Navigate {
             let expand = match b {
                 '%' => space.target_to_path(Target::Cursor).map(|path| vec![path]),
 
-                '#' => match iter.next_if(|b| b.is_ascii_digit() || '*' == *b) {
+                '#' => match iter.next_if(|b| b.is_ascii_digit() || '#' == *b) {
                     None => space
                         .target_to_path(Target::Marked(0))
                         .map(|path| vec![path]),
@@ -254,7 +254,7 @@ impl Navigate {
                             .target_to_path(Target::Marked(n - 1))
                             .map(|path| vec![path])
                     }
-                    Some('*') => Some(space.iter_marked().collect()),
+                    Some('#') => Some(space.iter_marked().collect()),
                     _ => unreachable!(),
                 },
 

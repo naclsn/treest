@@ -80,7 +80,7 @@ impl Options {
     Use '--user' to provide a user config script sourced at start.
 
     Scripting is done through Lua 5.4. '--lua-meta' can generate a
-    file containing the exposed API. use '--defaults' to prints or
+    file containing the exposed API. Use '--defaults' to prints or
     write the default config script. The default config can be use
     already in user config with `require('defaults')`.
 "#
